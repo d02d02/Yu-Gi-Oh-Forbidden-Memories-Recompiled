@@ -27,7 +27,14 @@
  *
  * Build Deck (mode 7): the active pane's list (build_deck_pane_input.c).
  * The pane is idle while the viewer is up (func_800339D0 only runs it when
- * DuelEffect_UpdateState is). */
+ * DuelEffect_UpdateState is).
+ *
+ * Trade (mode 14): each side has its own list and its own pad
+ * (trade_update.c); either can open the viewer on the card under their
+ * cursor, so a pad only browses the list it opened the viewer from.
+ * MainMenu_UpdateTradeScreen does not run while the viewer is up either
+ * (main_mode_runners.c: the same `DuelEffect_UpdateState() == 0` guard as
+ * Build Deck's pane). */
 #define GINPUT_PAD1_REPEAT_SIZED_VOLATILE /* both pads: [0] and [1] */
 #include "card_browse.h"
 #include "stars.h"
@@ -54,6 +61,7 @@
 #include "game/text_box_runtime.h"
 #include "game/card_list_text_boxes.h"
 #include "game/build_deck_transition_state.h"
+#include "overlays/main_menu/trade_helpers.h"
 
 extern u8 D_8009B26C; /* main_mode_state.h: the active mode */
 
@@ -130,6 +138,37 @@ static u16 move_build_deck_cursor(int pad, int step)
     return 0;
 }
 
+/* Trade: side `pad`'s list, 7 rows to a page (D_80185CCA capped at 6 in
+ * trade_update.c), a row 22 pixels down from 36. */
+#define TRADE_PAGE_ROWS 7
+#define TRADE_ROW_HEIGHT 22
+#define TRADE_ROW_TOP 36
+
+/* Trade: moves side `pad`'s list cursor to the next card `step` along, and
+ * returns it; 0 at either end. */
+static u16 move_trade_cursor(int pad, int step)
+{
+    CardCountEntry *rows = gTrade_aInventory[pad];
+    MainMenuPair *scroll = &D_80185C8C[pad];
+    int count = CARD_COUNT_LIVE, row, at;
+    if (scroll->current != scroll->target) return NOT_THIS_LIST;
+    at = scroll->current + D_80185CCA[pad];
+    if (rows[at].id != (s16)gDuel_wViewerCardID) return NOT_THIS_LIST;
+    for (row = at + step; row >= 0 && row < count; row += step) {
+        int first;
+        if (rows[row].id == 0) continue;
+        first = page_for(row, D_80185CCA[pad], count, TRADE_PAGE_ROWS);
+        D_80185CCA[pad] = (u8)(row - first);
+        ((MainMenuWidget *)D_801845EC[pad].object)->y = D_80185CCA[pad] * TRADE_ROW_HEIGHT + TRADE_ROW_TOP;
+        if (first != scroll->current) {
+            scroll->current = scroll->target = (u16)first;
+            MainMenu_RebuildTradeInventoryRows(pad);
+        }
+        return (u16)rows[row].id;
+    }
+    return 0;
+}
+
 /* The screens that open the viewer on a list, by main mode. `move` takes
  * the pad pressed (0 or 1) and the step; it returns the card now under the
  * cursor, 0 at the end of the list, or NOT_THIS_LIST. */
@@ -138,6 +177,7 @@ static const struct {
     u16 (*move)(int pad, int step);
 } screens[] = {
     {MAIN_MODE_BUILD_DECK, move_build_deck_cursor},
+    {MAIN_MODE_TRADE, move_trade_cursor},
 };
 
 /* The viewer's opening for `id`, its pieces already where they slide to. */
