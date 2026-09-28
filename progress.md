@@ -589,14 +589,53 @@ position, and why the others did not).
   geometry: the battle animation's close-ups). Next: capture Off vs Textures
   at `near` and look at the monsters' seams, and try widening the window.
 
+### Captures were not deterministic; fixed; near camera (2026-09-28)
+
+**Everything above was captured at real-time speed.** `MEMORIES_DETERMINISTIC`
+only makes time virtual when the game speed is uncapped (`rate == -1`,
+`platform_common.c` `advance`/`Platform_WaitVBlank`); `scene_measure.py` never
+set `MEMORIES_SPEED=-1` (the smoke tools all do), so the log said `clocks: rate
+100` and "4 VBlanks missed". Off happened to replay the same (fast frames), but
+Textures did not: two identical runs differed by **10.4%** (default camera) and
+**16.7%** (near), from one VBlank more or less while the 10 models load after
+the state (`vb 2612` vs `2613`), so the monsters' animations were at another
+frame. Fixed in `scene_measure.py` (`MEMORIES_SPEED=-1`); state redone.
+Now 0 changed pixels between repeats for Off and Textures, default and near.
+
+**Numbers that change:** the M3 compare at 2x, Off vs Textures, is **7.44%**,
+not 15.30% (about half of that was animation drift). The M1/M2/M4 tables and
+the camera sweep are single-frame statistics of a real frame, so their reading
+holds, but they were not reproducible; redo them before quoting exact values.
+
+**Near camera (300), Off vs Textures, 2x:** **11.9%** of pixels change, steady
+over frames 120-480 (11.4-12.1%). Near trace, now reproducible: 3199 textured
+triangles, **927 mixed** (1021 before), 2437 projections outside the window
+(farthest miss 3.58 console px), 133 saturated; M1 max 15.7 px.
+- **The monsters' seams look the same in Off and Textures** at 3x crops
+  (`crop_mid_*.png`, `crop_dragon_*.png` in `tmp/pc/measure`): no break at
+  shared edges, even though the overlay marks nearly every monster mixed. The
+  visible change is still the field floor. So mixed triangles at this distance
+  do **not** reproduce Unchiga's distortion by eye; a mixed triangle is drawn
+  affine, which is exactly what Off draws, and its neighbours' shift is small
+  on model-sized triangles.
+- **Spikes from the monsters (a long dark shard across the top left) are the
+  game's own geometry**, not PGXP: at frame 480 Off and Textures both draw it
+  (a dragon's wing near the camera). They looked like a Textures-only artefact
+  only because the non-deterministic Textures runs sat at another animation
+  frame. The overlay's huge blue triangles at frame 300 are not in the picture
+  (the overlay draws every triangle); probably near-plane polygons the GPU
+  drops as too large. Not verified.
+
 ### Next steps (in order)
 
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
    ~~`scene_measure.py`~~ done. ~~M1/M2/M4 trace~~ done (above).
    ~~Field-edge camera~~ done (sweep above).
-2. **Close-up rejections:** Off vs Textures at `near`, look at the seams;
-   then a wider (or depth-scaled) window in `gte.c` rtp, measured with the
-   same trace (rejections → 0, mixed → few).
+2. **Close-up rejections:** ~~Off vs Textures at `near`, look at the seams~~
+   done (no visible seam breaks; captures made deterministic, above). Then a
+   wider (or depth-scaled) window in `gte.c` rtp, measured with the same trace
+   (rejections → 0, mixed → few); lower priority now that mixed triangles
+   look harmless here. Redo the default and sweep traces uncapped first.
 3. **Zone mats' mixed triangles:** which lookup misses them.
 4. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
