@@ -626,16 +626,49 @@ triangles, **927 mixed** (1021 before), 2437 projections outside the window
   (the overlay draws every triangle); probably near-plane polygons the GPU
   drops as too large. Not verified.
 
+**Sweep redone uncapped** (2x): within a few tenths of the table above
+(default 4.62 px max, 42 triangles ≥ 2 px, 24 mixed; turn ±22/45/90 max
+6.1-8.9 px, 12-24 mixed; near-half 24 mixed, 14 rejected; near 927 mixed,
+2437 rejected). The reading stands.
+
+### rtp's window widened by the truncation it allows (2026-09-28)
+
+Why vertices miss the (−1, +2) window up close: the GTE truncates IR1/IR2
+(each lost unit moves the word by up to H / SZ3 px; always < 2, since the
+division needs H < 2·SZ3) and SZ3 (moves it by up to its distance from the
+centre / SZ3). `gte.c` rtp now widens the window by `(H + that distance) / SZ3`
+on each side: the same window at the duel's distance, a few pixels up close.
+A saturated IR or a clamped word still misses by far more and is rejected.
+Test in `tests/pc/pgxp_test.c` (a vertex at view x −150.5, z 160.5: word −284,
+truly −281.3; kept; a saturated IR1 rejected). It fails on the old window and
+passes on the new one; built on its own with llvm-mingw (the full CMake
+configure still lacks zlib/libpng here), CI runs it.
+
+| View (2x) | Mixed before → after | Outside the window before → after | Max shift |
+|---|---|---|---|
+| default | 24 → 24 | 0 → 0 | 4.62 (same) |
+| turn −90 | 18 → 18 | 0 → 0 | 6.11 (same) |
+| near-half | 24 → **10** | 14 → **0** | 13.1 |
+| near | 927 → **4** | 2437 → **0** | 15.7 → 24.6 |
+
+At near, 133 projections still saturate the division (behind the near
+plane in effect: nothing to keep). Off vs Textures at near: 16.7% (was
+11.9%): the zone mat and floor quads nearest the camera, mixed before (so
+drawn like Off), are now in perspective; their panels sit a little higher and
+wider toward the near edge (`c_floor_{off,old,new}.png`), which is what a flat
+quad seen close should do. Default view unchanged (7.44%). **Commit this on
+its own: it belongs in the PGXP PR** (clean cherry-pick onto the PR branch;
+the measure lines around it in `gte.c` stay behind).
+
 ### Next steps (in order)
 
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
    ~~`scene_measure.py`~~ done. ~~M1/M2/M4 trace~~ done (above).
    ~~Field-edge camera~~ done (sweep above).
 2. **Close-up rejections:** ~~Off vs Textures at `near`, look at the seams~~
-   done (no visible seam breaks; captures made deterministic, above). Then a
-   wider (or depth-scaled) window in `gte.c` rtp, measured with the same trace
-   (rejections → 0, mixed → few); lower priority now that mixed triangles
-   look harmless here. Redo the default and sweep traces uncapped first.
+   done (no visible seam breaks; captures made deterministic, above).
+   ~~Wider window in `gte.c` rtp~~ done (rejections 0, near mixed 927 → 4).
+   Left: the user's eye on it live, close up (Hand camera L3).
 3. **Zone mats' mixed triangles:** which lookup misses them.
 4. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
