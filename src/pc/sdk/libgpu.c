@@ -477,7 +477,7 @@ void DrawOTag(u32 *list)
          * Rewritten each frame: the file holds the last one. */
         static const char *measure;
         static int looked;
-        FILE *vertices = NULL;
+        FILE *vertices = NULL, *misses = NULL;
         if (!looked) {
             looked = 1;
             measure = getenv("MEMORIES_PGXP_MEASURE");
@@ -488,6 +488,12 @@ void DrawOTag(u32 *list)
             snprintf(path, sizeof path, "%s.vertices.csv", measure);
             vertices = fopen(path, "w");
             if (vertices) fprintf(vertices, "dx,dy,w\n");
+            /* And each word that got no precise values and could be a
+             * vertex (|x| < 1024, |y| < 512), with why: stored without them
+             * by address, two vertices by value, or none. */
+            snprintf(path, sizeof path, "%s.misses.csv", measure);
+            misses = fopen(path, "w");
+            if (misses) fprintf(misses, "index,x,y,why\n");
         }
         for (i = 0; i < count && pending_precise < MAX_FRAME_PRECISE; i++) {
             PgxpVertex *vertex = &frame_precise[pending_precise];
@@ -496,11 +502,14 @@ void DrawOTag(u32 *list)
             at = Pgxp_FindAt(frame_addresses[i], frame_words[i], &vertex->x, &vertex->y, &vertex->w);
             if (at > 0) {
                 placed++;
-            } else if (at < 0) {
-                continue;
-            } else if (Pgxp_Find(frame_words[i], &vertex->x, &vertex->y, &vertex->w)) {
+            } else if (at == 0 && Pgxp_Find(frame_words[i], &vertex->x, &vertex->y, &vertex->w)) {
                 matched++;
             } else {
+                int16_t mx = (int16_t)(frame_words[i] & 0xffffu), my = (int16_t)(frame_words[i] >> 16);
+                if (misses && mx > -1024 && mx < 1024 && my > -512 && my < 512) {
+                    fprintf(misses, "%u,%d,%d,%s\n", (unsigned)i, mx, my,
+                            at < 0 ? "stored" : Pgxp_Ambiguous(frame_words[i]) ? "ambiguous" : "none");
+                }
                 continue;
             }
             if (vertices) {
@@ -515,6 +524,7 @@ void DrawOTag(u32 *list)
             vertex->index = (uint32_t)i;
             pending_precise++;
         }
+        if (misses) fclose(misses);
         if (vertices) {
             char path[1024];
             unsigned rejected[4];
