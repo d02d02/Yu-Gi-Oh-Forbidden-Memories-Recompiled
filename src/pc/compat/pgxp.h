@@ -74,6 +74,11 @@ static inline int Pgxp_MaybeVertexWord(uint32_t word)
 /* The precise screen position and depth of SXY0-2 (`slot` 0-2) when an
  * RTPS/RTPT put that entry there with PGXP on; 0 when not (gte.c). */
 int Memories_GtePrecise(unsigned slot, float *x, float *y, float *w);
+/* Measuring (MEMORIES_PGXP_MEASURE): projections since the last call that
+ * kept a precise position, and those that did not because the division
+ * saturated, the vertex was not in front, or it fell outside the window
+ * (with the farthest miss, in console pixels); the counts start again. */
+void Memories_GteRejects(unsigned counts[4], float *miss);
 /* Memories_GpuCollect, and each word's physical address into `addresses`
  * (packets.c). */
 MemoriesGpuResult Memories_GpuCollectAt(MemoriesMemory *memory, uint32_t head, uint32_t *words, uint32_t *addresses,

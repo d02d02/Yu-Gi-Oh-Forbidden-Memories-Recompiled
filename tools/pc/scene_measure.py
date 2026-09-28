@@ -42,6 +42,29 @@ SCENE_INPUT = ("910:0008,916:0000,1000:0040,1006:0000,1020:0040,1026:0000,"
 STATE_FRAME = 1700    # the field is filled at 1557; the camera has settled
 CAPTURE_FRAME = 300   # frames into a run from the state (it resumes near 30)
 
+# Camera moves from the state, with the Hand camera mod (mods/hand-camera):
+# held L1 (0400) turns left, 20 units a frame of a 4096 turn; held L3 (0002)
+# brings the camera closer, R3 (0004) takes it away, 6 a frame from 600
+# (200 to 1400). Away is not useful here: past ~900 the duel's fog (black far
+# colour) swallows the field. Frames are this run's; the camera stays where
+# it is left, and the capture is at CAPTURE_FRAME.
+CAMERAS = {
+    "near": "60:0002,110:0000",                   # closer: 600 to 300
+    "near-half": "60:0002,85:0000",               # closer, 600 to 450
+}
+TURN_STEP, TURN = 20, 4096
+
+
+def camera_input(camera):
+    """A CAMERAS name; turn:<degrees> at the duel's own distance (negative
+    left with L1, positive right with R1), which keeps the field's edges in
+    the picture as in play; or MEMORIES_INPUT itself."""
+    if camera.startswith("turn:"):
+        degrees = float(camera[5:])
+        frames = max(1, round(abs(degrees) / 360 * TURN / TURN_STEP))
+        return f"60:{'0400' if degrees < 0 else '0800'},{60 + frames}:0000"
+    return CAMERAS.get(camera, camera)
+
 
 def run_game(options, name, extra):
     """One windowed, deterministic run; returns its log's text."""
@@ -89,7 +112,7 @@ def make_state(options):
           f"saved at {STATE_FRAME}: {state_path(options)}")
 
 
-def capture(options, path, pgxp, scale, frame=CAPTURE_FRAME, trace=None):
+def capture(options, path, pgxp, scale, frame=CAPTURE_FRAME, trace=None, input=""):
     if not os.path.exists(state_path(options)):
         make_state(options)
     name = os.path.splitext(os.path.basename(path))[0]
@@ -103,6 +126,8 @@ def capture(options, path, pgxp, scale, frame=CAPTURE_FRAME, trace=None):
     }
     if trace:
         extra["MEMORIES_PGXP_MEASURE"] = os.path.abspath(trace)
+    if input:
+        extra["MEMORIES_INPUT"] = input
     text = run_game(options, name, extra)
     if "state load failed" in text or not os.path.exists(path):
         sys.exit(f"{name}: the state did not load (a different build made it?); run `state` again")
@@ -199,6 +224,12 @@ def summarize_trace(prefix, width, height):
             < 0.05 * min(width, height)]
     print(f"  M2 mixed triangles: {len(mixed)}, {area(mixed) / frame * 100:.2f}% of the frame; "
           f"{len(edge)} with their centre near the picture's edge")
+    if os.path.exists(prefix + ".rejects.csv"):
+        r = read_csv(prefix + ".rejects.csv")[0]
+        total = sum(int(r[k]) for k in ("kept", "saturated", "behind", "window"))
+        print(f"  projections: {total}; kept precise {r['kept']}, rejected: division saturated {r['saturated']}, "
+              f"not in front {r['behind']}, outside the window {r['window']} (farthest miss {r['farthest_miss']} "
+              f"console px)")
     # A vertex's true position minus the console pixel it was put on. That
     # pixel is floored (and the GTE's division is approximate), so the
     # offsets share a bias, about +0.77 console pixels on each axis: level 2
@@ -221,6 +252,45 @@ def summarize_trace(prefix, width, height):
           f"max {spread[-1]:.2f}; {noticeable} ({noticeable / len(spread) * 100:.1f}%) at 1 px or more")
 
 
+def overlay(prefix, width, height):
+    """<prefix>.overlay.png: the capture darkened, with the triangles that
+    matter painted over it: red a texel shift of 2 px or more, yellow 1 to 2,
+    blue mixed (drawn affine beside perspective neighbours)."""
+    w, h, rgb = read_ppm(prefix + ".ppm")
+    out = bytearray(value // 3 for value in rgb)
+    with open(prefix + ".triangles.csv") as handle:
+        rows = list(csv_rows(handle))
+    for t in rows:
+        shift = float(t["shift"])
+        colour = (b"\x40\x80\xff" if t["kind"] == "m" else b"\xff\x30\x30" if shift >= 2
+                  else b"\xff\xe0\x30" if shift >= 1 else None)
+        if colour is None:
+            continue
+        # Back from the second draw buffer, by the offset of the centre.
+        ox, oy = float(t["x"]) - float(t["x"]) % width, float(t["y"]) - float(t["y"]) % height
+        xs = [float(t[f"x{i}"]) - ox for i in range(3)]
+        ys = [float(t[f"y{i}"]) - oy for i in range(3)]
+        area = (xs[1] - xs[0]) * (ys[2] - ys[0]) - (xs[2] - xs[0]) * (ys[1] - ys[0])
+        if not area:
+            continue
+        for y in range(max(0, int(min(ys))), min(h, int(max(ys)) + 1)):
+            for x in range(max(0, int(min(xs))), min(w, int(max(xs)) + 1)):
+                px, py = x + 0.5, y + 0.5
+                b1 = ((px - xs[0]) * (ys[2] - ys[0]) - (xs[2] - xs[0]) * (py - ys[0])) / area
+                b2 = ((xs[1] - xs[0]) * (py - ys[0]) - (px - xs[0]) * (ys[1] - ys[0])) / area
+                if b1 >= 0 and b2 >= 0 and b1 + b2 <= 1:
+                    at = (y * w + x) * 3
+                    out[at:at + 3] = bytes((rgb[at + c] + colour[c]) // 2 for c in range(3))
+    write_png(prefix + ".overlay.png", w, h, bytes(out))
+
+
+def csv_rows(handle):
+    names = handle.readline().strip().split(",")
+    for line in handle:
+        if line.strip():
+            yield dict(zip(names, line.strip().split(",")))
+
+
 def describe(label, result):
     changed, share, worst = result
     print(f"{label}: {changed} changed pixels ({share * 100:.3f}%), max delta {worst}")
@@ -237,6 +307,7 @@ def main():
     one.add_argument("--pgxp", type=int, default=0)
     one.add_argument("--scale", type=int, default=2)
     one.add_argument("--frame", type=int, default=CAPTURE_FRAME)
+    one.add_argument("--camera", default="", help="a name from CAMERAS, or MEMORIES_INPUT from the state")
     pair = sub.add_parser("diff")
     pair.add_argument("a")
     pair.add_argument("b")
@@ -246,13 +317,16 @@ def main():
     compare.add_argument("--scales", default="2,4")
     traced = sub.add_parser("trace")
     traced.add_argument("--scales", default="2,4")
+    traced.add_argument("--camera", default="", help="a name from CAMERAS, or MEMORIES_INPUT from the state")
+    traced.add_argument("--name", default="", help="names the files: trace_<name>_<scale>x")
     options = parser.parse_args()
     here = lambda name: os.path.join(options.out, name)
 
     if options.command == "state":
         make_state(options)
     elif options.command == "capture":
-        capture(options, options.path, options.pgxp, options.scale, options.frame)
+        capture(options, options.path, options.pgxp, options.scale, options.frame,
+                input=camera_input(options.camera))
     elif options.command == "diff":
         describe("diff", diff(options.a, options.b, options.mask))
     elif options.command == "controls":
@@ -273,11 +347,14 @@ def main():
             tex = capture(options, here(f"tex_{scale}x.ppm"), 1, scale)
             describe(f"{scale}x, Off vs Textures", diff(off, tex, here(f"mask_{scale}x.png")))
     elif options.command == "trace":
+        view = camera_input(options.camera)
         for scale in (int(s) for s in options.scales.split(",")):
-            prefix = here(f"trace_{scale}x")
-            capture(options, prefix + ".ppm", 1, scale, trace=prefix)
+            prefix = here(f"trace_{options.name}_{scale}x" if options.name else f"trace_{scale}x")
+            capture(options, prefix + ".ppm", 1, scale, trace=prefix, input=view)
             print(f"{scale}x, Textures ({320 * scale}x{240 * scale}):")
             summarize_trace(prefix, 320 * scale, 240 * scale)
+            overlay(prefix, 320 * scale, 240 * scale)
+            print(f"  overlay: {prefix}.overlay.png (red: shift >= 2 px, yellow: 1-2 px, blue: mixed)")
 
 
 if __name__ == "__main__":
