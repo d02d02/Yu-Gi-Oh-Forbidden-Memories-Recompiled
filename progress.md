@@ -660,6 +660,34 @@ quad seen close should do. Default view unchanged (7.44%). **Commit this on
 its own: it belongs in the PGXP PR** (clean cherry-pick onto the PR branch;
 the measure lines around it in `gte.c` stay behind).
 
+### The last mixed triangles: 3D duel cards through GsSortPoly (2026-09-28)
+
+The 24 mixed triangles at the duel's distance were **not the zone mats but
+the 3D duel cards** (`func_80015EF4`: the card quad and its ground sprite).
+`<prefix>.misses.csv` (new, measure-only: each vertex-like word that got no
+precise values, and why) showed the missing corner of each of the 12 quads
+was a word the by-value lookup refused as **ambiguous**: another vertex of
+the frame, at another depth (663 vs 488), rounds to the same pixel. Why by
+value at all: the card's corners are stored correctly (`RotColorDpq` and
+`gte_stsxy` go through `Memories_GteStore`), but it is submitted with LIBGS
+`GsSortPoly` (`src/pc/sdk/libgs.c`), which copies the primitive into the
+packet area moved by the LIBGS offset and never called `Pgxp_AddPrim`.
+Fix: `Pgxp_AddPrimMoved(packet, dx, dy)` (Pgxp_AddPrim is the (0, 0) case),
+called by `GsSortPoly`; test in `pgxp_test.c`.
+
+| View (2x) | Mixed before → after |
+|---|---|
+| default | 24 → **0** |
+| turn −90 | 18 → **0** |
+| near | 4 → **0** |
+
+Off vs Textures at default: 8.06% (was 7.44%: the cards are now in
+perspective too). Crops (`c_cards_{off,tex}.png`) look right. The 6 affine
+triangles left have no precise corner at all (not traced; likely 2D). **PR
+candidate**, commit of its own. Lesson: the by-value lookup fails on a busy
+frame (238k ambiguous events over one run); every path that writes vertex
+words should tag by address.
+
 ### Next steps (in order)
 
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
@@ -669,7 +697,8 @@ the measure lines around it in `gte.c` stay behind).
    done (no visible seam breaks; captures made deterministic, above).
    ~~Wider window in `gte.c` rtp~~ done (rejections 0, near mixed 927 → 4).
    Left: the user's eye on it live, close up (Hand camera L3).
-3. **Zone mats' mixed triangles:** which lookup misses them.
+3. ~~**Zone mats' mixed triangles**~~ done: they were the 3D duel cards,
+   fixed in GsSortPoly (above). Mixed = 0 in every view traced.
 4. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
 5. **M4 bias:** decide with level 2 whether precise positions should be
