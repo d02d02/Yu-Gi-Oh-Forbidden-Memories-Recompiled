@@ -77,7 +77,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` researched 2026-09-28, being built** | `feat/test-scenes` | Test scenes mod, scene `field` (real cards, Simon, standard field), started by L1 + Cross on Option |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` done + controls pass 2026-09-28; first M3 numbers** | `feat/test-scenes` | M1 trace in `polygon()`; scene `model`; runner into `tools/pc/` |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -397,15 +397,64 @@ wait for the camera to settle, measure.
 11. Scenes `battle` / `model` (`Main_RunAnimatedBattle`, `D_800EF658`) not
     researched yet.
 
+### Scene `field`: built, tested, committed (2026-09-28, `feat/test-scenes`)
+
+Commits: `8416cca23` 3D Monsters cache 8 → 10 (separate, upstream-worthy: a
+full field of 10 face-up monsters thrashed, `LoadModelDO(n)` printed without
+end; 110 lines = 10 models × 11 load phases once is normal), `3028a7c62` the
+mod (`mods/test-scenes/`: `mod.json`, `field.json`, `test_scenes.c`). Live-tested
+by the user (Q = L1, X = Cross on keyboard) and scripted.
+
+**How to capture it (the working recipe):**
+1. **Build the scene once and save a state** (windowed, deterministic):
+   the options input with `1100:4400` (Cross + L1, SIO layout) instead of
+   `1100:4000`, `MEMORIES_MOD_TEST_SCENES=1 MEMORIES_MOD_3D_MONSTERS=1`,
+   `MEMORIES_SAVE_STATE=1700:<path>`. Log (`MEMORIES_TRACE=mods`): armed at
+   frame 1166, field filled at 1557.
+2. **Capture from the state**, one run per setting: `MEMORIES_LOAD_STATE=<path>
+   MEMORIES_DUMP_FRAME=300 MEMORIES_DETERMINISTIC=1`, plus the settings.
+   Scripts used: `scene_state.ps1` (save/dump) and `ppm_diff.py` (changed
+   pixels, max delta, mask) in the session scratchpad — to move into
+   `tools/pc/` with the runner.
+
+**Gotchas found (cost real time):**
+- **Internal resolution is `MEMORIES_INTERNAL_SCALE`**, not `MEMORIES_SCALE`
+  (that one is the *window* size). `game32dbg-user` is set to internal 4x, so
+  a run that doesn't pin it measures at 4x. Check the dump's size (320×240 ×
+  scale).
+- **A replay from boot is not pixel-deterministic**, even deterministic and
+  windowed: two runs differed by one VBlank by frame 38 (41 vs 42), before
+  any input, intermittently. The field floor's shimmer and the monsters'
+  animations run on VBlanks, so 12.5% of the frame differed. Not chased (the
+  spin guard in `platform_common.c` did not fire in a traced run); **the
+  state reload removes it** — always capture from a state.
+- **Windows PowerShell 5.1 read-modify-write mangles UTF-8** (`Get-Content`
+  reads it as Windows-1252, `Set-Content -Encoding utf8` adds a BOM): it broke
+  every em dash in this file once. Edit files with the Edit tool, or .NET
+  `ReadAllText`/`WriteAllText` with a no-BOM UTF-8 encoding.
+
+**Controls (all pass, 2026-09-28):**
+
+| Control | Result |
+|---|---|
+| Same setting, state reloaded twice (4x) | 0 changed pixels |
+| 1x, Off vs Textures (PGXP disabled below 2x) | 0 changed pixels |
+| 4x Off, rerun vs earlier run | 0 changed pixels |
+
+**First measurement (M3, raw, not yet against the thresholds):** frame 300 after
+the state, Off vs Textures: **2x 18.9%** of pixels changed (640×480, max
+delta 255), **4x 19.8%** (1280×960). The mask: almost the whole field floor
+and most monster bodies; cards, hand, HUD and text unchanged. Changed pixels
+is not the pre-set metric (texture displacement ≥ 1 screen px, M1); many may
+be a colour step. Next is M1 from `polygon()`.
+
 ### Next steps (in order)
 
-1. **Answer the four unknowns above** (read code, no building yet), and settle
-   the menu decision.
-2. **Test scenes mod, first scene `model`** (likely easiest: the game already
-   has the scene), reached by `MEMORIES_TEST_SCENE`. Confirm determinism:
-   same setting twice → 0 changed pixels; software picture hash equal at
-   levels 0 and 1.
-3. **Scene `field`**, then `battle`, `small`, `control`.
+1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
+2. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
+   `control`.
+3. **Move the scripts into `tools/pc/`** as the runner (state build + capture +
+   diff), settings pinned by env.
 4. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
    behind a new trace category. Run on the scenes at 2x and 4x.
 5. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
