@@ -74,6 +74,10 @@ def run_game(options, name, extra):
     env.update({
         "MEMORIES_USER_DIR": os.path.join(out, "user"),
         "MEMORIES_DETERMINISTIC": "1",
+        # Uncapped: virtual time only runs deterministically at speed -1
+        # (platform_common.c); at 100 a slower frame (Textures) gets more
+        # VBlanks and the monsters' animations drift from run to run.
+        "MEMORIES_SPEED": "-1",
         "MEMORIES_MOD_TEST_SCENES": "1",
         "MEMORIES_MOD_3D_MONSTERS": "1",
         "MEMORIES_TRACE": "mods",
