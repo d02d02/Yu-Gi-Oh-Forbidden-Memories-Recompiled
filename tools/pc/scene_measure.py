@@ -29,7 +29,7 @@ the arguments and the machine.
 setting twice, and Off vs Textures at 1x (where Precise geometry is off),
 must both change 0 pixels. Captures go to tmp/pc/measure by default, PNG
 beside each PPM."""
-import argparse, os, re, shutil, struct, subprocess, sys, zlib
+import argparse, hashlib, os, re, shutil, struct, subprocess, sys, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXE = "memories-pc.exe" if os.name == "nt" else "memories-pc"
@@ -53,6 +53,17 @@ CAMERAS = {
     "near-half": "60:0002,85:0000",               # closer, 600 to 450
 }
 TURN_STEP, TURN = 20, 4096
+
+# The benchmark turn, from the state (frames are this run's; checked screen
+# by screen with the user, 2026-09-29): Cross picks the hand's first card
+# (Blue-Eyes White Dragon, where the cursor starts), Right turns it face up,
+# Cross, Right to the second zone, Cross puts it there, Cross takes Sun at
+# the Guardian Star, and Start ends the turn as soon as the field phase
+# takes input. The opponent plays its whole turn (a card, a battle) and the
+# player's next turn is on screen by PLAY_END.
+PLAY_INPUT = ("60:4000,66:0000,120:0020,126:0000,170:4000,176:0000,230:0020,236:0000,270:4000,276:0000,"
+              "460:4000,466:0000,540:0008,546:0000")
+PLAY_END = 2700
 
 
 def camera_input(camera):
@@ -295,6 +306,65 @@ def csv_rows(handle):
             yield dict(zip(names, line.strip().split(",")))
 
 
+def bench(options, pgxp, scale, speed, build, run=0):
+    """One benchmark turn (PLAY_INPUT) from the state: the game's own per-120-
+    frame timing lines, the wall time from the first frame to the dump, and a
+    hash of the state saved at PLAY_END. Uncapped (speed -1) the run is
+    deterministic, so the same work every time and the hash compares settings;
+    at speed 100 the frame rate is the one a player sees."""
+    if not os.path.exists(state_path(options)):
+        make_state(options)
+    mode = "uncapped" if speed < 0 else f"speed{speed}"
+    name = f"bench_{build}_pgxp{pgxp}_{scale}x_{mode}_r{run}"
+    here = lambda suffix: os.path.join(os.path.abspath(options.out), name + suffix)
+    text = run_game(options, name, {
+        "MEMORIES_LOAD_STATE": state_path(options),
+        "MEMORIES_PGXP": str(pgxp),
+        "MEMORIES_INTERNAL_SCALE": str(scale),
+        "MEMORIES_SPEED": str(speed),
+        "MEMORIES_INPUT": PLAY_INPUT,
+        "MEMORIES_TRACE": "mods,frames",
+        "MEMORIES_SAVE_STATE": f"{PLAY_END}:{here('.state')}",
+        "MEMORIES_DUMP_FRAME": str(PLAY_END + 2),
+        "MEMORIES_DUMP_PICTURE": "1",
+        "MEMORIES_DUMP_PATH": here(".ppm"),
+        # Uncapped, audio off: the mixer runs on its own real-time thread, and
+        # the SPU's voices and the sound driver's RAM then end differently
+        # from run to run, so the end states could not be compared.
+        **({"MEMORIES_NO_AUDIO": "1"} if speed < 0 else {}),
+    })
+    if "state load failed" in text or not os.path.exists(here(".ppm")):
+        sys.exit(f"{name}: the state did not load (a different build made it?); run `state` again")
+    write_png(here(".png"), *read_ppm(here(".ppm")))
+    windows = [(int(frame), int(game), int(present), int(game_max), int(present_max)) for frame, game, present, game_max,
+               present_max in re.findall(r"frame (\d+) vb \d+ frames\] game (\d+) us, present (\d+) us per frame "
+                                         r"\(max (\d+), (\d+)\)", text)]
+    rates = [float(rate) for rate in re.findall(r"frames\] clocks: rate -?\d+, ([\d.]+) game frames/s", text)]
+    stamps = [int(t) for t in re.findall(r"^\[t (\d+) us frame (?:3\d|[4-9]\d|\d{3,}) ", text, re.M)]
+    # The first window holds the state's load and the models' (the same with
+    # either setting, and not what is measured); the rest is the turn.
+    turn = windows[1:] or windows
+    mean = lambda values: sum(values) / len(values) if values else 0.0
+    with open(here(".state"), "rb") as handle:
+        digest = hashlib.sha256(handle.read()).hexdigest()[:16]
+    row = {
+        "build": build, "pgxp": pgxp, "scale": scale, "mode": mode,
+        "game_ms": round(mean([w[1] for w in turn]) / 1000, 2),
+        "present_ms": round(mean([w[2] for w in turn]) / 1000, 2),
+        "worst_game_ms": round(max((w[3] for w in turn), default=0) / 1000, 1),
+        "fps_min": min(rates[1:] or rates or [0.0]), "fps_mean": round(mean(rates[1:] or rates), 2),
+        "wall_s": round((stamps[-1] - stamps[0]) / 1e6, 2) if len(stamps) > 1 else 0.0,
+        "state": digest,
+    }
+    path = os.path.join(options.out, "bench.csv")
+    new = not os.path.exists(path)
+    with open(path, "a") as handle:
+        if new:
+            handle.write(",".join(row) + "\n")
+        handle.write(",".join(str(value) for value in row.values()) + "\n")
+    return row
+
+
 def describe(label, result):
     changed, share, worst = result
     print(f"{label}: {changed} changed pixels ({share * 100:.3f}%), max delta {worst}")
@@ -323,6 +393,12 @@ def main():
     traced.add_argument("--scales", default="2,4")
     traced.add_argument("--camera", default="", help="a name from CAMERAS, or MEMORIES_INPUT from the state")
     traced.add_argument("--name", default="", help="names the files: trace_<name>_<scale>x")
+    benched = sub.add_parser("bench", help="time the benchmark turn (PLAY_INPUT) and hash its end state")
+    benched.add_argument("--pgxp", default="0,1")
+    benched.add_argument("--scale", type=int, default=4)
+    benched.add_argument("--speed", default="-1", help="-1 uncapped (deterministic), 100 real speed; a list")
+    benched.add_argument("--repeat", type=int, default=1)
+    benched.add_argument("--build", default="now", help="labels the rows of bench.csv")
     options = parser.parse_args()
     here = lambda name: os.path.join(options.out, name)
 
@@ -359,6 +435,15 @@ def main():
             summarize_trace(prefix, 320 * scale, 240 * scale)
             overlay(prefix, 320 * scale, 240 * scale)
             print(f"  overlay: {prefix}.overlay.png (red: shift >= 2 px, yellow: 1-2 px, blue: mixed)")
+    elif options.command == "bench":
+        print(f"{'build':8} {'pgxp':>4} {'mode':>9} {'game ms':>8} {'draw ms':>8} {'worst':>7} {'fps min':>8} "
+              f"{'fps avg':>8} {'wall s':>7}  end state")
+        for speed in (int(s) for s in options.speed.split(",")):
+            for run in range(options.repeat):
+                for pgxp in (int(p) for p in options.pgxp.split(",")):
+                    r = bench(options, pgxp, options.scale, speed, options.build, run)
+                    print(f"{r['build']:8} {r['pgxp']:>4} {r['mode']:>9} {r['game_ms']:>8} {r['present_ms']:>8} "
+                          f"{r['worst_game_ms']:>7} {r['fps_min']:>8} {r['fps_mean']:>8} {r['wall_s']:>7}  {r['state']}")
 
 
 if __name__ == "__main__":
