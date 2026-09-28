@@ -85,8 +85,8 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 | 5b | Trade: browse cards Up/Down | Done, PR open, needs live test — **not a priority right now** | `feat/card-viewer-browse-trade` | Live session, owned deck, whenever it becomes a priority |
 | 5c | Library: browse cards Up/Down | Not started, assessed (big) | — | Start with "replay retail steps" |
 | 6 | Crash: title jump after cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
-| 7a | PGXP: menu option, Textures only | **Done, tested, PR open** | `feat/pgxp-video-option` | Merge |
-| 7b | PGXP level 2 (positions/wobble) | **Done, committed, pushed, PR open** | `fix/pgxp-snap-seams-identity` | Merge (after 7a) |
+| 7a | PGXP: menu option, Textures only | **Done, clean on Windows + Linux** | `feat/precise-geometry` (commit 1) | — |
+| 7b | PGXP level 2 (positions/wobble) | **Green light, 2026-09-28** — to redo from the 7b design | `feat/precise-geometry` (commit 2) | Implement `Pgxp_DrawId` + `PGXP_VERTEX_WORDS` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver, intermittent | New, not started, confirmed **not** PGXP | — | See 7d below |
 | — | Game > Restart | Parked | — | — |
@@ -571,6 +571,15 @@ of geometry are fighting at that seam.
 
 ## PGXP: Unchiga says distortion on "either setting" — not documented anywhere, needs real cross-OS data
 
+> **GREEN LIGHT FOR LEVEL 2 (2026-09-28).** Commit 1 (level 1, Textures) is
+> confirmed clean by the user on both Windows and native Linux (duel field,
+> battle animation, Library model view). Commit 2 (`Pgxp_DrawId` +
+> `PGXP_VERTEX_WORDS`, level 2, design in 7b) can now go on
+> `feat/precise-geometry`. Still open, not blocking: Unchiga's video shows the
+> distortion on the **edge of the duel field**, not on the models (Nvidia RTX
+> 4090, driver 610.57.04, XWayland on KDE Wayland) — possibly related to 7d;
+> asked Unchiga to retry from a Plasma (X11) session.
+
 **2026-09-28.** Closed PR #139 (level 1 only, no explanation) turned into this message from Unchiga:
 *"it was disabled internally since it doesn't display properly with either setting. There is
 visible distortion when you enable it."* Checked every prior PR in detail (#67, #71, #83) and
@@ -609,16 +618,50 @@ on only after commit 1 is thoroughly tested on both Windows and Linux.
 | Compiler | clang 23.1.2, `i686-w64-mingw32` target (llvm-mingw 20260922 release, ucrt runtime) |
 | Build target | 32-bit Windows binary (`i686`) |
 
-**Linux test environment (fill in once the user reboots):**
+**Linux test environment (native install, recorded 2026-09-28):**
 
 | Component | Version |
 |---|---|
-| Distro | — |
-| Kernel | — |
-| GPU | — |
-| GPU driver (Mesa/proprietary) | — |
-| SDL | — |
-| Compiler | — |
+| Distro | Kali GNU/Linux Rolling |
+| Kernel | 6.12.25-amd64 |
+| Session | X11, XFCE (no Wayland, so no XWayland in the path) |
+| GPU | Intel Iris Xe Graphics (Raptor Lake-P, integrated) — same GPU family as the Windows machine |
+| GPU driver (Mesa/proprietary) | Mesa 26.1.6 (`libgl1-mesa-dri`, amd64 + i386) |
+| SDL | 3.4.16 (built by `build_game32.py` into `tmp/pc/sdl-m32-portable`) |
+| Compiler | clang 19.1.7 / gcc 14.2.0 (host); the game links against Debian 11's i386 sysroot |
+
+Same GPU on both machines, so this comparison isolates the OS and driver stack
+(Intel's Windows driver vs Mesa), not the hardware. A clean result on both does
+not rule out distortion on AMD/Nvidia.
+
+**Linux result, 2026-09-28:** commit 1 rebuilt on this machine, Precise geometry
+set to Textures in a live session: **no distortion seen** (user, by eye). Not
+yet recorded here: the internal resolution used, which screens were checked
+(duel field / battle animation / Library model view), and Off-vs-Textures
+screenshots. **Windows: also checked by the user, no distortion.** Library
+model view checked on Linux too: **level 1 confirmed clean on both machines.**
+
+**Unchiga's setup (where the distortion was seen), 2026-09-28:**
+
+| Component | Unchiga | Ours (Linux) | Ours (Windows) |
+|---|---|---|---|
+| GPU | Nvidia RTX 4090 (discrete) | Intel Iris Xe (integrated) | Intel Iris Xe (integrated) |
+| Driver | Nvidia proprietary 610.57.04, OpenGL 4.6.0 | Mesa 26.1.6 | Intel 32.0.101.7088, OpenGL 4.6.0 |
+| Game's log line (`MEMORIES_TRACE=window`) | — | `OpenGL renderer Mesa Intel(R) Iris(R) Xe Graphics (RPL-U), version 4.6 (Compatibility Profile) Mesa 26.1.6-1, video x11` | — |
+| Display | KDE Plasma on Wayland, game through XWayland | XFCE on native X11 | Windows (no X11) |
+| SDL video driver | x11 | x11 | windows |
+
+Nothing we tested overlaps with the two variables on Unchiga's side: the Nvidia
+driver and XWayland. Both are plausible causes (the per-pixel `uv / w`,
+`1 / w` interpolation of flag 32 depends on the driver's float precision
+and its handling of the shader; XWayland adds a copy and scaling step).
+Next: ask Unchiga for a screenshot (Off vs Textures, same frame) and the internal
+resolution, and test on an Nvidia and/or a Wayland session if one is available.
+
+Setup notes: the 32-bit build needs `dpkg --add-architecture i386` and
+`libgl1:i386 libgl1-mesa-dri:i386 libpulse0:i386` (otherwise `libGL.so.1: cannot
+open shared object file`). The memory card goes to
+`~/.local/share/YFM Re-Decomp/saves/slot01.sav`.
 
 ## Parked
 
