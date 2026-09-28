@@ -1186,6 +1186,18 @@ used upstream: `pgxp`, `pgxp-textures`, `pgxp-native`,
   small monsters) and #139, say how that is fixed and what was tested on, and
   raise Unchiga's field-edge video as the open question.
 
+**Slowdown with a full field, found by the user live (2026-09-28).** With 10
+monsters the game slowed down (their log: 60 ms game frames, 1.5 ms present),
+fine with 6. Reproduced at 4x, real speed: game time 8 ms Off, **20.5 ms
+Textures (30 fps)**. Cause: PGXP's two lookup tables (32768 slots) held ~32000
+live entries (two frames × ~16000), and a miss or a new entry walked all 32
+probes (expired entries can't end a chain). Fix (`a1e143b0a`): per-frame
+tables, this frame's and the last's, 65536 slots each, a slot empty unless
+stamped with its table's frame (probes stop there, no clearing); `DrawOTag`
+skips words outside ±2048 (not a vertex) before any lookup. Now **9.4 ms vs
+7.1 ms Off, 59 fps**; picture unchanged (0 mixed, 8.06%). Ported to the PR
+branch by hand (without `Pgxp_Ambiguous`).
+
 **PR branch built, 2026-09-28 (local only, not pushed, PR not opened):**
 `feat/precise-geometry-menu` off `upstream/master` (`6ad201fbf`), three
 commits cherry-picked, no measure code: the Video option (level 1), rtp's
