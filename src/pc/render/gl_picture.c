@@ -942,7 +942,8 @@ static int drawn_multisampled(void); /* the target of the primitive being read (
  *   shift    p only: the farthest a texel lands from where the affine
  *            mapping would put it, in picture pixels, over 15 points across
  *            the triangle (-1 when its texels are degenerate), else 0
- *   x, y     its centre, in picture pixels */
+ *   x, y     its centre, in picture pixels
+ *   x0 ... y2  its corners, in picture pixels */
 static FILE *measure_triangles;
 
 static void measure_begin(void)
@@ -959,7 +960,7 @@ static void measure_begin(void)
     if (measure_triangles) fclose(measure_triangles);
     snprintf(path, sizeof path, "%s.triangles.csv", prefix);
     measure_triangles = fopen(path, "w");
-    if (measure_triangles) fprintf(measure_triangles, "kind,precise,area,shift,x,y\n");
+    if (measure_triangles) fprintf(measure_triangles, "kind,precise,area,shift,x,y,x0,y0,x1,y1,x2,y2\n");
 }
 
 static void measure_triangle(const Vertex *const *v, int flags)
@@ -1000,8 +1001,9 @@ static void measure_triangle(const Vertex *const *v, int flags)
             }
         }
     }
-    fprintf(measure_triangles, "%c,%d,%.1f,%.3f,%.1f,%.1f\n", (flags & 32) ? 'p' : precise ? 'm' : 'a', precise, area,
-            shift, (px[0] + px[1] + px[2]) / 3, (py[0] + py[1] + py[2]) / 3);
+    fprintf(measure_triangles, "%c,%d,%.1f,%.3f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
+            (flags & 32) ? 'p' : precise ? 'm' : 'a', precise, area, shift, (px[0] + px[1] + px[2]) / 3,
+            (py[0] + py[1] + py[2]) / 3, px[0], py[0], px[1], py[1], px[2], py[2]);
 }
 
 /* A triangle as the software pass rasterizes it: its edges are tested at

@@ -43,6 +43,20 @@ void Memories_GteReset(void)
     gte.lzcr = 32;
 }
 
+/* MEMORIES_PGXP_MEASURE (libgpu.c writes them): of the projections made with
+ * PGXP on since the last read, how many kept a precise position, and why the
+ * others did not. */
+static unsigned rejects[4]; /* kept, the division saturated, not in front, outside the window */
+static float reject_miss;   /* the farthest a rejected one fell from its word, in console pixels */
+
+void Memories_GteRejects(unsigned counts[4], float *miss)
+{
+    memcpy(counts, rejects, sizeof(rejects));
+    *miss = reject_miss;
+    memset(rejects, 0, sizeof(rejects));
+    reject_miss = 0;
+}
+
 int Memories_GtePrecise(unsigned slot, float *x, float *y, float *w)
 {
     if (slot > 2 || !precise[slot].known) return 0;
@@ -344,6 +358,8 @@ static void rtp(unsigned index, unsigned shift, int lm, int last)
     set_mac0(x);
     set_mac0(y);
     push_sxy((int32_t)(x >> 16), (int32_t)(y >> 16));
+    if (Pgxp_Active && !(gte.h < (uint32_t)gte.sz[3] * 2)) rejects[1]++;
+    else if (Pgxp_Active && !(z > 0)) rejects[2]++;
     if (Pgxp_Active && gte.h < (uint32_t)gte.sz[3] * 2 && z > 0) {
         /* Where the vertex really falls, from the view position before the
          * shift and the division in full; kept when it rounds to the word
@@ -365,6 +381,12 @@ static void rtp(unsigned index, unsigned shift, int lm, int last)
             precise[2].w = (float)depth;
             precise[2].known = 1;
             Pgxp_Project((uint32_t)(uint16_t)wx | (uint32_t)(uint16_t)wy << 16, sx, sy, depth);
+            rejects[0]++;
+        } else {
+            double mx = sx < wx ? wx - sx : sx - wx, my = sy < wy ? wy - sy : sy - wy;
+            double m = mx > my ? mx : my;
+            rejects[3]++;
+            if (m > reject_miss) reject_miss = (float)m;
         }
     }
     if (last) {

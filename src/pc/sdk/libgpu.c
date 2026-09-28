@@ -515,7 +515,21 @@ void DrawOTag(u32 *list)
             vertex->index = (uint32_t)i;
             pending_precise++;
         }
-        if (vertices) fclose(vertices);
+        if (vertices) {
+            char path[1024];
+            unsigned rejected[4];
+            float miss;
+            FILE *counts;
+            fclose(vertices);
+            Memories_GteRejects(rejected, &miss);
+            snprintf(path, sizeof path, "%s.rejects.csv", measure);
+            counts = fopen(path, "w");
+            if (counts) {
+                fprintf(counts, "kept,saturated,behind,window,farthest_miss\n%u,%u,%u,%u,%.2f\n", rejected[0],
+                        rejected[1], rejected[2], rejected[3], miss);
+                fclose(counts);
+            }
+        }
         if (positions) snap_seams();
         if (++frames == 120) {
             LOG(LOG_FRAMES, "pgxp: %u precise vertex words per DrawOTag (%u by address, %u by value)",
