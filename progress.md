@@ -1186,6 +1186,15 @@ used upstream: `pgxp`, `pgxp-textures`, `pgxp-native`,
   small monsters) and #139, say how that is fixed and what was tested on, and
   raise Unchiga's field-edge video as the open question.
 
+**PR branch built, 2026-09-28 (local only, not pushed, PR not opened):**
+`feat/precise-geometry-menu` off `upstream/master` (`6ad201fbf`), three
+commits cherry-picked, no measure code: the Video option (level 1), rtp's
+window, GsSortPoly. Builds clean, `pgxp_test` passes, all six smoke
+screenshots unchanged (CTests not run here). Draft description leads with
+#139's distortion and the measured table (mixed triangles 24/18/927 → 0),
+asks Unchiga to retry at Textures. Waiting on the user's visual check, then
+push + open.
+
 PGXP history upstream: #49 `pgxp`, #67 `pgxp-textures`, #71 `pgxp-native`
 (MaChInEgUn3, all merged), #83 `fix/disable-precise-geometry` (Unchiga, rollback),
 #139 `feat/pgxp-video-option` (ours, closed unmerged).
