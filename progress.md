@@ -580,6 +580,28 @@ of geometry are fighting at that seam.
 > 4090, driver 610.57.04, XWayland on KDE Wayland) — possibly related to 7d;
 > asked Unchiga to retry from a Plasma (X11) session.
 
+**PR plan (decided 2026-09-28).** `feat/precise-geometry` is the working branch and
+also carries `progress.md` and `memcards/` — those must **not** go upstream. At PR
+time, make a clean branch off `upstream/master` (remote `upstream` =
+`Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled`) and cherry-pick only the code
+commits (`01e0d82e5` level 1, plus the level 2 commit). Keep code and notes in
+separate commits so this stays possible.
+
+Naming — follow Unchiga's style: `Area: what the player sees`, plain words, no
+jargon (e.g. #157 "3D Monsters: don't overflow the frame packet buffer (Raigeki
+crash)", #147 "3D Monsters: Kaminari Attack 40% smaller"). Avoid names already
+used upstream: `pgxp`, `pgxp-textures`, `pgxp-native`,
+`fix/disable-precise-geometry`, and #139's `feat/pgxp-video-option`.
+- Branch: `feat/precise-geometry-menu`
+- Title: `Video: Precise geometry is back — textures no longer bend, models no longer wobble`
+- Description: open by referencing #83 (the rollback: level 2 opened gaps in
+  small monsters) and #139, say how that is fixed and what was tested on, and
+  raise Unchiga's field-edge video as the open question.
+
+PGXP history upstream: #49 `pgxp`, #67 `pgxp-textures`, #71 `pgxp-native`
+(MaChInEgUn3, all merged), #83 `fix/disable-precise-geometry` (Unchiga, rollback),
+#139 `feat/pgxp-video-option` (ours, closed unmerged).
+
 **2026-09-28.** Closed PR #139 (level 1 only, no explanation) turned into this message from Unchiga:
 *"it was disabled internally since it doesn't display properly with either setting. There is
 visible distortion when you enable it."* Checked every prior PR in detail (#67, #71, #83) and
