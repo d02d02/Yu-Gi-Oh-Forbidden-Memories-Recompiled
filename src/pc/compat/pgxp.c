@@ -86,6 +86,17 @@ int Pgxp_Find(uint32_t word, float *x, float *y, float *w)
     return 1;
 }
 
+/* Measuring (MEMORIES_PGXP_MEASURE): 1 when `word` is two vertices. */
+int Pgxp_Ambiguous(uint32_t word)
+{
+    unsigned at = first(word), n;
+    for (n = 0; n < PROBES; n++, at = (at + 1) & (TABLE_SIZE - 1)) {
+        const Entry *entry = &table[at];
+        if (fresh(entry) && entry->word == word) return entry->ambiguous;
+    }
+    return 0;
+}
+
 /* By address: where the game's own drawing code wrote a vertex word, with
  * the word written, so nothing is guessed. Last write wins. */
 typedef struct {

@@ -79,6 +79,9 @@ int Memories_GtePrecise(unsigned slot, float *x, float *y, float *w);
  * saturated, the vertex was not in front, or it fell outside the window
  * (with the farthest miss, in console pixels); the counts start again. */
 void Memories_GteRejects(unsigned counts[4], float *miss);
+/* Measuring: 1 when Pgxp_Find refused `word` because two vertices of the
+ * frame round to it. */
+int Pgxp_Ambiguous(uint32_t word);
 /* Memories_GpuCollect, and each word's physical address into `addresses`
  * (packets.c). */
 MemoriesGpuResult Memories_GpuCollectAt(MemoriesMemory *memory, uint32_t head, uint32_t *words, uint32_t *addresses,
