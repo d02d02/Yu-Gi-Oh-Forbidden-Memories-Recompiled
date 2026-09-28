@@ -77,7 +77,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Design reviewed and revised 2026-09-28, not started** | — | Test scenes mod: answer its 4 unknowns, then scene `model` + determinism controls |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` researched 2026-09-28, being built** | `feat/test-scenes` | Test scenes mod, scene `field` (real cards, Simon, standard field), started by L1 + Cross on Option |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -308,22 +308,94 @@ scripted camera input. The menu is how a *person* gets there; the runner uses
   a mod can redirect a menu choice into its own scene.
 - `MEMORIES_MODE_AT` already forces a main mode from a given frame.
 
-**Menu entry — open decision.** The user asked for an entry on the title
-screen (with New Game, Load...). That menu is the game's own graphics, so a
-new visible item is the costly part. The port's overlay menu (`menu.c`, e.g.
-Debug > Jump to > Title Screen) is much cheaper and works on every screen.
-Proposal: env var first, then a "Debug > Test scenes" overlay entry, the
-title-screen item as a follow-up if still wanted. **To confirm with the user.**
+**Menu entry — decided 2026-09-28 (final): hold L1 + Cross on Option.** With the
+mod applied, confirming **Option** on the title menu while **L1** is held starts
+the test duel; plain Cross still opens Options. No new menu item, no label, no
+layout change. The mod wraps `MainMenu_UpdateFrontendMenu` (both title paths,
+`Main_RunFrontendLoop` at boot and `Main_RunMenu` after, call it; overlay
+functions are hookable, `yamyi-mods/menu_back_confirm.c` does it): when it
+returns 4 (Option) with `PAD_BUTTON_L1` (0x4, the game's pad word
+`gInput_wPad1Held`, not the SIO layout) held, the mod remembers it; the `SCENE`
+event (selection 4) then arms the duel and is marked handled. The game's own
+`Main_RunMenu` fades out and destroys the menu *before* applying the selection,
+so leaving the title needs nothing extra. No `MEMORIES_TEST_SCENE` needed: the
+runner replays the known Option input (see "How to test things") with L1 held.
 
-**Unknowns to check before building:**
-1. How `DebugMenu_EnterDuel` / `func_80024DC8(-1, 1, 0x8000, 0x8000)` picks the
-   decks and opponent, and whether its arguments can be set.
-2. Whether a mod can put specific cards on the field before the duel's first
-   frame (`notes/duel-card-record.md`, `card-placement-controller.md`) and keep
-   the duel frozen on the first turn.
-3. Whether the RNG can be seeded from the mod for a repeatable duel.
-4. Whether `Main_RunAnimatedBattle` / the `3D` debug mode can be entered from a
-   mod with model IDs set (`D_800EF658`), no debug-menu navigation.
+Superseded — the earlier plan, kept for the reasoning: an entry in the **first
+title menu** as a sixth item. The costliest part:
+- The five entries are prebuilt label *pictures* from the menu package
+  (`gMain_apMenuEntries`, 11 display objects, `src/overlays/main_menu/README.md`
+  "What the menu shows"), not text: "TEST SCENES" needs a label made (port text
+  rendering, or composed from the game's font).
+- Layout is fixed for five: y = `i * 32 + 50`, group centred at 114; cursor wraps
+  at 5. A sixth means redoing both in `MainMenu_InitFrontendMenu` /
+  `MainMenu_UpdateFrontendMenu` (hookable from a mod, API 4).
+- Choosing it is easy: the selection goes through `Main_ApplyMenuSelection`,
+  i.e. the `SCENE` mod event; the mod handles it and arms the duel.
+
+**Scene `field` — decided with the user 2026-09-28.** A normal duel against
+**Simon Muran** on the **standard field**; at the moment it is waiting for the
+player's first move, zones 1-5 on both sides already hold chosen monsters,
+**real cards** (face-up, attack), whose 3D models then appear because the 3D
+Monsters mod is on. Card lists in the mod's JSON, editable. No input needed:
+wait for the camera to settle, measure.
+
+**Research answers (read, not built), 2026-09-28:**
+1. **Arming the duel.** `func_80024DC8(a0, a1, a2, a3)`: `a0` → `D_8009B360`
+   (side 0 controller, `-1` = human), `a1` → `gDuel_bOpponentID` (**Simon Muran =
+   1**, `tables.c:35`), `a2`/`a3` → `D_8009B370/72` = campaign scene to continue
+   to after a win/loss (only used when the return mode is 2; irrelevant here).
+   It sets `gDuel_bTerrain = 0` (standard field, no boost) and main mode 3
+   (duel). `D_8009B368` = mode to return to after the duel. Debug entry:
+   `func_80024DC8(-1, 1, 0x8000, 0x8000)`; Free Duel: `(-1, id, 0x6000,
+   0x6000)` + `D_8009B368 = 6`.
+2. **The chest screen in between.** `Main_RunDuel` sub-state 0 (opponent >= 0,
+   `D_8009B369 == 0`) opens the pre-duel deck chest; the mod must skip it
+   (set `D_8009B26E = 1`). Sub-state 0 also does `Fade_WaitIn/Out`,
+   `SD_BGMFadeOut`, `Main_ResetFrontendRuntime` when it leaves. **Answered:**
+   the skip needs none of them. 2P Duel (`main_run_two_player_duel_setup.c`)
+   arms with opponent -1, which goes straight to sub-state 1 after only its
+   own fade-out; from the title, `Main_RunMenu` has already faded out. So:
+   wrap `Main_RunDuel`, let its first call run, then `D_8009B26E = 1`.
+   After the duel: `D_8009B368 = MAIN_MODE_MENU` (8), like 2P Duel.
+3. **A field card comes from the deck, not an ID.** `Duel_SetupCardRecord(zone,
+   deck_index)` copies stats and the card's picture from the combined deck
+   (80 = 40 + 40), whose pictures are fetched in startup (`Duel_RequestCombined
+   DeckData`, first startup frame) and unpacked in startup sub-state 4
+   (`Duel_PopulateCombinedDeckData`). So the chosen IDs must be in the shuffled
+   lists (`gDuel_awPlayerShuffledDeck`, player 0-39, opponent 40-79) **after**
+   `Duel_ShuffleBothDecks` (end of `Duel_InitScene`) and before startup's
+   first frame. **Overwrite all 80:** with no save loaded the player's deck is
+   zeros, and ID 0 makes the picture fetch read sector -1. Filling all 80
+   also removes the shuffle's randomness from the field and the hand.
+4. **Deck positions.** The draw takes from `deck_draw_cursor`, 0 upward
+   (`duel_draw_resolution.c:106`), so put the field cards at 35-39 / 75-79.
+5. **Records.** 15 per side: 0-4 hand, **5-9 monster zones**, 10-14 magic/trap;
+   opponent +15 (zones 20-24; `SIDE_ZONE` in `field_models.c`). Place with
+   `func_80024D34(zone, deck_index)`: fills the record (flags =
+   `DUEL_CARD_FLAG_OCCUPIED` only = face-up attack), uploads the card art and
+   name strip, creates the field display object. The 3D Monsters mod reads
+   only `card_id` + flags (`field_models.c:1303`): models follow for free.
+6. **When to place.** Scene states (`duel_scene_callbacks.c`): 1 startup → 3
+   draw resolution (deals 5 to side 0) → 4 hand actions (player's turn,
+   waiting). The first turn skips state 2 (turn reset). Place on the **first
+   call of `DuelScene_UpdateHandActions`**. The deal touches hand records only.
+7. **Nobody moves.** `Duel_InitScene` sets `D_8009B1D5 = 0`: the player starts;
+   the opponent never acts until the player ends the turn.
+8. **Hooks exist (API 4).** `host->hook` wraps any `src/game` function: wrap
+   `Duel_ShuffleBothDecks` (`srand`, original, overwrite 80 IDs) and
+   `DuelScene_UpdateHandActions` (place once, then original). No new event
+   needed. `Main_ApplyMenuSelection` = `SCENE` event for the title entry.
+9. **Placing, exactly as the game does:** `DuelScene_UpdateResume`
+   (`duel_phase_entry.c:60-84`) rebuilds field cards with
+   `func_80024D34(zone, deck_index)` then
+   `Duel_ApplyCardObjectFlags(DUEL_CARD_DISPLAY_OBJECT_VIEW(rec->object))`.
+   Deck index is the combined one (player 35-39, opponent 75-79).
+10. **Seeding:** the mod SDK's `srand` is the *host* C library's
+    (`src/pc/mods/sdk/stdlib.h`), not the game's; write the game's
+    `gRand_dwSeed` (`src/pc/rng.h`) directly.
+11. Scenes `battle` / `model` (`Main_RunAnimatedBattle`, `D_800EF658`) not
+    researched yet.
 
 ### Next steps (in order)
 
