@@ -23,6 +23,7 @@ the arguments and the machine.
     scene_measure.py diff a.ppm b.ppm [--mask mask.png]
     scene_measure.py controls                 the determinism controls
     scene_measure.py compare                  Off vs Textures at each scale
+    scene_measure.py trace                    M1, M2, M4 per triangle and vertex
 
 `controls` must pass before any `compare` number means anything: the same
 setting twice, and Off vs Textures at 1x (where Precise geometry is off),
@@ -88,18 +89,21 @@ def make_state(options):
           f"saved at {STATE_FRAME}: {state_path(options)}")
 
 
-def capture(options, path, pgxp, scale, frame=CAPTURE_FRAME):
+def capture(options, path, pgxp, scale, frame=CAPTURE_FRAME, trace=None):
     if not os.path.exists(state_path(options)):
         make_state(options)
     name = os.path.splitext(os.path.basename(path))[0]
-    text = run_game(options, name, {
+    extra = {
         "MEMORIES_LOAD_STATE": state_path(options),
         "MEMORIES_PGXP": str(pgxp),
         "MEMORIES_INTERNAL_SCALE": str(scale),
         "MEMORIES_DUMP_FRAME": str(frame),
         "MEMORIES_DUMP_PICTURE": "1",
         "MEMORIES_DUMP_PATH": os.path.abspath(path),
-    })
+    }
+    if trace:
+        extra["MEMORIES_PGXP_MEASURE"] = os.path.abspath(trace)
+    text = run_game(options, name, extra)
     if "state load failed" in text or not os.path.exists(path):
         sys.exit(f"{name}: the state did not load (a different build made it?); run `state` again")
     width, height, _ = read_ppm(path)
@@ -155,6 +159,68 @@ def diff(a_path, b_path, mask=None):
     return changed, changed / (wa * ha), worst
 
 
+def read_csv(path):
+    with open(path) as handle:
+        names = handle.readline().strip().split(",")
+        return [dict(zip(names, line.strip().split(","))) for line in handle if line.strip()]
+
+
+def percentile(values, share):
+    return values[min(len(values) - 1, int(share * len(values)))] if values else 0.0
+
+
+def summarize_trace(prefix, width, height):
+    """M1, M2 and M4 of one traced frame, against the thresholds fixed in
+    progress.md before measuring: a texel shift of 1 picture pixel is
+    visibly changed, 2 clearly; a vertex rounding of 1 pixel is noticeable in
+    motion. Areas are summed over triangles, which overlap, so a share of the
+    frame is an upper bound."""
+    frame = width * height
+    triangles = read_csv(prefix + ".triangles.csv")
+    # Positions are in VRAM's picture units: the game draws into two buffers
+    # side by side, so a frame can sit a whole picture width to the right.
+    for t in triangles:
+        t["x"], t["y"] = str(float(t["x"]) % width), str(float(t["y"]) % height)
+    kinds = {kind: [t for t in triangles if t["kind"] == kind] for kind in "pma"}
+    perspective = kinds["p"]
+    shifts = sorted(float(t["shift"]) for t in perspective if float(t["shift"]) >= 0)
+    area = lambda rows: sum(float(t["area"]) for t in rows)
+    print(f"  textured triangles: {len(triangles)}: {len(perspective)} perspective, "
+          f"{len(kinds['m'])} mixed, {len(kinds['a'])} affine")
+    print(f"  M1 texel shift (perspective): max {shifts[-1] if shifts else 0:.2f} px, "
+          f"median {percentile(shifts, 0.5):.2f}, 95th {percentile(shifts, 0.95):.2f}")
+    for limit, word in ((0.5, "under 0.5 px (invisible)"), (1, "0.5 to 1 px"), (2, "1 to 2 px (visibly changed)"),
+                        (float("inf"), "2 px or more (clearly visible)")):
+        low = {0.5: 0, 1: 0.5, 2: 1, float("inf"): 2}[limit]
+        rows = [t for t in perspective if low <= float(t["shift"]) < limit]
+        print(f"    {word}: {len(rows)} triangles, {area(rows) / frame * 100:.2f}% of the frame")
+    mixed = kinds["m"]
+    edge = [t for t in mixed if min(float(t["x"]), width - float(t["x"]), float(t["y"]), height - float(t["y"]))
+            < 0.05 * min(width, height)]
+    print(f"  M2 mixed triangles: {len(mixed)}, {area(mixed) / frame * 100:.2f}% of the frame; "
+          f"{len(edge)} with their centre near the picture's edge")
+    # A vertex's true position minus the console pixel it was put on. That
+    # pixel is floored (and the GTE's division is approximate), so the
+    # offsets share a bias, about +0.77 console pixels on each axis: level 2
+    # moves the models by it as a whole. What wobbles in motion is the
+    # spread around it, reported apart.
+    vertices = read_csv(prefix + ".vertices.csv")
+    if not vertices:
+        print("  M4: no precise vertices")
+        return
+    dx = [float(v["dx"]) for v in vertices]
+    dy = [float(v["dy"]) for v in vertices]
+    bias_x, bias_y = sum(dx) / len(dx), sum(dy) / len(dy)
+    spread = sorted(((x - bias_x) ** 2 + (y - bias_y) ** 2) ** 0.5 for x, y in zip(dx, dy))
+    width_x = percentile(sorted(dx), 0.95) - percentile(sorted(dx), 0.05)
+    width_y = percentile(sorted(dy), 0.95) - percentile(sorted(dy), 0.05)
+    noticeable = sum(1 for r in spread if r >= 1)
+    print(f"  M4 vertex offset from its console pixel: {len(vertices)} vertices; bias {bias_x:+.2f}, {bias_y:+.2f} px; "
+          f"5th-95th width {width_x:.2f} x {width_y:.2f} px")
+    print(f"    around the bias: median {percentile(spread, 0.5):.2f} px, 95th {percentile(spread, 0.95):.2f}, "
+          f"max {spread[-1]:.2f}; {noticeable} ({noticeable / len(spread) * 100:.1f}%) at 1 px or more")
+
+
 def describe(label, result):
     changed, share, worst = result
     print(f"{label}: {changed} changed pixels ({share * 100:.3f}%), max delta {worst}")
@@ -178,6 +244,8 @@ def main():
     sub.add_parser("controls")
     compare = sub.add_parser("compare")
     compare.add_argument("--scales", default="2,4")
+    traced = sub.add_parser("trace")
+    traced.add_argument("--scales", default="2,4")
     options = parser.parse_args()
     here = lambda name: os.path.join(options.out, name)
 
@@ -204,6 +272,12 @@ def main():
             off = capture(options, here(f"off_{scale}x.ppm"), 0, scale)
             tex = capture(options, here(f"tex_{scale}x.ppm"), 1, scale)
             describe(f"{scale}x, Off vs Textures", diff(off, tex, here(f"mask_{scale}x.png")))
+    elif options.command == "trace":
+        for scale in (int(s) for s in options.scales.split(",")):
+            prefix = here(f"trace_{scale}x")
+            capture(options, prefix + ".ppm", 1, scale, trace=prefix)
+            print(f"{scale}x, Textures ({320 * scale}x{240 * scale}):")
+            summarize_trace(prefix, 320 * scale, 240 * scale)
 
 
 if __name__ == "__main__":
