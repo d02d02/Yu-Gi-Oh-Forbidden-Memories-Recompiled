@@ -107,7 +107,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` + runner + M1/M2/M4 trace done 2026-09-28: level 1 visible on the field floor** | `feat/test-scenes` | Field-edge camera for M2 (Unchiga's case); scene `model` |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field`, runner, M1/M2/M4 trace, camera sweep, rejection counts done 2026-09-28** — level 1 strongest on the floor and at the field's edges; up close, `gte.c`'s window rejects vertices → mixed triangles (Unchiga candidate) | `feat/test-scenes` | Off vs Textures at `--camera near`, look at seams; then widen/depth-scale the window in `gte.c` rtp and re-trace |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
