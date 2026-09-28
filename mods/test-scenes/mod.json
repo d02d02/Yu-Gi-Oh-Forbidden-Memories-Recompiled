@@ -1,0 +1,9 @@
+{
+    "id": "test-scenes",
+    "name": "Test scenes",
+    "version": "1.0",
+    "author": "DecompRecomp",
+    "description": "Hold L1 and confirm Option on the title menu: a duel with Simon Muran on the standard field opens with ten chosen monsters already face up, five a side (field.json). The same scene on every build and machine, for measuring the renderer.",
+    "library": "test-scenes",
+    "enabled": false
+}
