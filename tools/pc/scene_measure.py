@@ -59,11 +59,11 @@ TURN_STEP, TURN = 20, 4096
 # (Blue-Eyes White Dragon, where the cursor starts), Right turns it face up,
 # Cross, Right to the second zone, Cross puts it there, Cross takes Sun at
 # the Guardian Star, and Start ends the turn as soon as the field phase
-# takes input. The opponent plays its whole turn (a card, a battle) and the
-# player's next turn is on screen by PLAY_END.
+# takes input. The opponent plays its whole turn (a card, a battle), and
+# PLAY_END is just as the player's next turn comes up.
 PLAY_INPUT = ("60:4000,66:0000,120:0020,126:0000,170:4000,176:0000,230:0020,236:0000,270:4000,276:0000,"
               "460:4000,466:0000,540:0008,546:0000")
-PLAY_END = 2700
+PLAY_END = 2520
 
 
 def camera_input(camera):
