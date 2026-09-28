@@ -1198,6 +1198,33 @@ skips words outside ±2048 (not a vertex) before any lookup. Now **9.4 ms vs
 7.1 ms Off, 59 fps**; picture unchanged (0 mixed, 8.06%). Ported to the PR
 branch by hand (without `Pgxp_Ambiguous`).
 
+**Benchmark turn (2026-09-29): `scene_measure.py bench`.** From the field
+state: Blue-Eyes from the hand, face up, to the second zone, Sun, Start as
+soon as the field phase takes input, the opponent's whole turn, end at 2520
+as the player's turn returns (sequence checked with the user live).
+Uncapped, 4x, internal; laptop on mains, windows closed, output **outside
+OneDrive** (it syncs the 7.5 MB states otherwise, and on battery the numbers
+were twice as noisy: never measure that way). 5 alternating repeats each,
+medians:
+
+| Build | Setting | Game ms/frame | Draw ms/frame | Wall s (2520 frames) |
+|---|---|---|---|---|
+| before the fix | Off | 2.59 | 1.04 | 9.4 |
+| before the fix | Textures | **5.40** (+2.81, +108%) | 1.29 | 17.2 |
+| with the fix | Off | 2.76 | 1.09 | 10.0 |
+| with the fix | Textures | **3.38** (+0.62, +22%) | 1.28 | 12.1 |
+
+The fix removes ~78% of the overhead. What is left, +0.6 ms game and +0.2 ms
+draw per frame, is the per-vertex precise projection and bookkeeping.
+
+**Behaviour: precise geometry changes nothing in the game.** The state saved
+at the end of each uncapped run: across all 10 runs of a build (both
+settings), **0 bytes differ outside two sound regions**: the sound driver's
+RAM (around `0x801E1650`, `SD_InitState`, `sound_transfer_lifecycle.h`) and
+the SPU's voices, which also differ between two runs of the *same* setting
+(the mixer runs on a real-time thread; `MEMORIES_NO_AUDIO` does not stop the
+emulation). Same for the build before the fix.
+
 **PR branch built, 2026-09-28 (local only, not pushed, PR not opened):**
 `feat/precise-geometry-menu` off `upstream/master` (`6ad201fbf`), three
 commits cherry-picked, no measure code: the Video option (level 1), rtp's
