@@ -7,6 +7,36 @@ Replaces `TODO.md`. Committed (was git-ignored through `.git/info/exclude` until
 what's done, and what's left — update in place as work continues instead of
 re-deriving it next session.
 
+## Start of every session: sync first (Windows or Linux)
+
+The user works on two machines (Windows, native Linux) through the fork
+(`origin` = `d02d02/...`), and upstream (`upstream` = `Unchiga/...`) moves daily.
+**At the start of every session, before any work, Claude checks and *asks*;
+nothing is pulled, reset or rebased without the user's yes:**
+
+1. `git status` — uncommitted work here? Say so first; never overwrite it.
+2. `git fetch origin` and `git fetch upstream` (read-only, safe to just do).
+3. Report, per working branch (`feat/precise-geometry`, `feat/test-scenes`,
+   ...): behind/ahead of `origin/<branch>` (the other machine pushed?), and how
+   many commits `upstream/master` has that the branch lacks.
+4. **Ask** before each change:
+   - behind `origin` only → fast-forward (`git merge --ff-only origin/<branch>`);
+   - `origin` was force-pushed (a rebase from the other machine: local and
+     `origin` both "ahead") → `git reset --hard origin/<branch>`, only if
+     nothing local is unpushed;
+   - upstream moved → rebase the branches onto `upstream/master`, rebuild,
+     rerun `tools/pc/scene_measure.py state` + `controls`, force-push with
+     `--force-with-lease`, fast-forward the fork's `master`.
+5. After any rebuild: a save state from the old build may not load (or crash
+   on the title jump, item 6); `scene_measure.py state` must be redone.
+
+**Before preparing any PR:** fetch upstream and `git log upstream/master --
+<files touched>` — on 2026-09-28 a 3D Monsters fix we made was already
+upstream the same day.
+
+`play.bat` / `play.sh` rebuild the checked-out branch on every launch, so the
+user's play build follows whatever branch is checked out.
+
 ## Switching machines
 
 **2026-09-28.** Moving from this Windows machine to a native Linux install to
