@@ -107,7 +107,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` done + controls pass 2026-09-28; first M3 numbers** | `feat/test-scenes` | M1 trace in `polygon()`; scene `model`; runner into `tools/pc/` |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Scene `field` + runner + M1/M2/M4 trace done 2026-09-28: level 1 visible on the field floor** | `feat/test-scenes` | Field-edge camera for M2 (Unchiga's case); scene `model` |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -498,24 +498,76 @@ field floor and most monster bodies; cards, hand, HUD and text unchanged. Change
 is not the pre-set metric (texture displacement ≥ 1 screen px, M1); many may
 be a colour step. Next is M1 from `polygon()`.
 
+### M1 / M2 / M4 trace: built, first results (2026-09-28)
+
+`MEMORIES_PGXP_MEASURE=<prefix>` (fork-only code, commit "Measure precise
+geometry per triangle and vertex"): `gl_picture.c` writes
+`<prefix>.triangles.csv` (each textured triangle of the replayed frame),
+`libgpu.c` writes `<prefix>.vertices.csv` (each precise vertex's offset from
+its console pixel, before level 1 discards it). `scene_measure.py trace
+[--scales 2,4]` captures at Textures and summarizes. **Must never go into a
+PGXP PR** (cherry-pick only the PGXP commits).
+
+Method, M1: at 15 barycentric points per perspective triangle, the texel the
+perspective mapping puts at P is put by the affine one at
+P + S T⁻¹ (persp(P) − affine(P)) (S screen edges, T texel edges); the
+largest such distance, in picture pixels. Areas are summed over triangles
+(which overlap, and include hidden ones): **a share of the frame is an upper
+bound.** Coordinates are VRAM's: the second draw buffer sits one picture
+width right (taken modulo the picture size).
+
+**Scene `field`, frame 300 after the state, Textures:**
+
+| | 2x (640×480) | 4x (1280×960) |
+|---|---|---|
+| Textured triangles | 2905: 2883 perspective, 16 mixed, 6 affine | same |
+| M1 texel shift: max / median / 95th | 4.62 / 0.01 / 0.40 px | 9.24 / 0.02 / 0.80 px |
+| M1 ≥ 2 px (clearly visible) | 42 triangles, ≤ 17.2% of frame | 107 triangles, ≤ 29.6% |
+| M1 1–2 px (visibly changed) | 65 triangles, ≤ 12.4% | 24 triangles, ≤ 1.3% |
+| M2 mixed triangles | 16, ≤ 2.65%, none at the picture's edge | same |
+| M4 bias (mean offset) | +1.52, +1.57 px | +3.04, +3.14 px |
+| M4 around the bias: median / 95th | 0.85 / 1.52 px; 37% ≥ 1 px | 1.70 / 3.04 px; 81% ≥ 1 px |
+
+**Reading, against the thresholds fixed before measuring:**
+- **Level 1 is visible in this scene, on the field floor.** The biggest
+  shifts are few, large triangles near the camera (areas 8000-9400 px at 4x,
+  shift 5.8-9.2 px, centres mid-low picture): the floor is *not*
+  subdivided (item 13 of the draft review), so affine warp there is large.
+  "Clearly visible ≥ 1% of the frame" holds by far, even as an upper bound.
+  Models: median shift ~0.01 px, invisible; still 33 model-sized triangles
+  (< 2000 px) at ≥ 2 px at 4x (max 6 px).
+- **M2, Unchiga's suspect, not reproduced here:** the 16 mixed triangles
+  (quads with a corner lacking a precise position, drawn affine beside
+  perspective neighbours; 5 have 3 precise corners, their quad's 4th has
+  none) are mid-picture, and this camera does not frame the field's edge.
+  Needs a camera that does (hand-camera L1/R1/L3/R3 input from the state).
+- **M4 has a bias, which matters for level 2:** the console pixel is
+  *floored* from an approximate division (`gte.c` rtp: UNR table, IR
+  truncation, `x >> 16`), the precise value is exact, so offsets average
+  +0.76 / +0.78 console px. Level 2 draws at the precise positions, so it
+  would move every model ~0.77 console px right and down relative to what
+  the console draws and to the 2D elements (cards, HUD) that stay on whole
+  pixels. **Check at level 2 (M5 stage) whether that misaligns anything,
+  or whether level 2 should subtract the floor's half pixel.** The wobble
+  amplitude is the spread around the bias: median 0.43 console px, 95th 0.76.
+
 ### Next steps (in order)
 
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
-2. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
+   ~~`scene_measure.py`~~ done. ~~M1/M2/M4 trace~~ done (above).
+2. **Field-edge camera** for M2 (Unchiga's case): hand-camera input from the
+   state (L1/R1 turn, L3/R3 zoom), trace again; and an overlay image marking
+   M1 ≥ 2 px and M2 triangles on the capture, to see where they are.
+3. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
-3. ~~Move the scripts into `tools/pc/`~~ done: `scene_measure.py`. Extend it
-   per scene (`model`, ...) and with the M1 trace.
-4. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
-   behind a new trace category. Run on the scenes at 2x and 4x.
-5. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
-   level 1 visible, where, and what does level 2 have to fix".
-6. **Frame-range dump**, then M3 and the blind A/B (M6).
-7. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
+4. **M4 bias:** decide with level 2 whether precise positions should be
+   compared against the floored pixel + 0.5.
+5. **Frame-range dump**, then M3 and the blind A/B (M6).
+6. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
    after.
-8. **Package the runner** (mod + script) for Unchiga (M7), with a note on what
+7. **Package the runner** (mod + script) for Unchiga (M7), with a note on what
    to send back.
-9. Menu entry for people (overlay, then title screen if still wanted).
-10. Reuse for the model work (7c).
+8. Reuse for the model work (7c).
 
 ---
 
