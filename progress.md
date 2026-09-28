@@ -77,6 +77,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Not started, design below** | — | Per-triangle instrumentation for level 1, then the scene pipeline |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -123,6 +124,103 @@ including 7a's changes.
    concern above first.**
 4. **`feat/card-viewer-browse-trade`** (5b) → base `master`. Open whenever, low priority;
    works but its live test is deprioritized, not a blocker to opening the PR itself.
+
+---
+
+## 0. URGENT: measure what PGXP (and later, model work) actually changes
+
+**Why, 2026-09-28.** Level 1 and level 2 are justified by theory (affine texture
+warp, whole-pixel vertex snapping), but nobody has measured how much of either is
+*visible*, where, and under what conditions. "No distortion seen" on both machines
+is a by-eye result and says nothing about the benefit either. The user will not
+write the PR, or start the model work, on claims that aren't measured. The
+framework is meant to outlive PGXP: the model work (7c, HD textures) needs the
+same "same frame, two settings, a number" comparison.
+
+### What each level does, stated as testable claims
+
+**Level 1 (Textures).** On console, a textured triangle's UVs are interpolated
+linearly in screen space (affine). Level 1 interpolates `uv / w` and `1 / w`
+instead (perspective-correct). The error of affine vs perspective inside one
+triangle grows with (a) how different the three vertices' depths are, and
+(b) how large the triangle is on screen, in texels. So the claim to check:
+- visible on **large, steeply tilted, textured** polygons near the camera: the
+  duel field floor, a monster close-up in the battle animation, the Library's
+  model view zoomed in;
+- **invisible** on small on-screen triangles (the 3D Monsters field figures, 32 px
+  tall): the affine error there is expected to be under half a texel;
+- only changes texel *placement*, never vertex positions (below level 2 the
+  vertex stays on its whole console pixel).
+
+**Level 2 (Textures and positions).** The GTE rounds each projected vertex to a
+whole console pixel. At internal Nx, that rounding is up to N/2 screen pixels.
+Claim to check:
+- the effect is **temporal**: a still frame looks almost the same; it shows
+  when the camera or the model moves **slowly**, as vertices step between
+  whole pixels instead of gliding (the "wobble");
+- stronger at higher internal resolution (the step is a larger fraction of
+  detail), and on small models (a pixel is a larger fraction of the model);
+- known risk: gaps between a model's parts (the #83 rollback), which the
+  `draw_id` design (7b) is meant to remove.
+
+### What to measure
+
+1. **Level 1, geometric (no images needed).** In `gl_picture.c`'s `polygon()`,
+   for each textured triangle with all three depths: its screen area, its UV
+   extent, and the predicted maximum affine-vs-perspective error in texels
+   (from the three `1 / w` values and UV spans). Log per frame, script the
+   histogram: how many triangles, and how many pixels, have an error above
+   0.5 texel (a visible texel shift) and above 1 texel. This answers "where is
+   level 1 visible" per scene, independent of anyone's eyes, monitor or GPU.
+2. **Level 1, image.** The same frame at `pgxp=0` and `pgxp=1`: count changed
+   pixels and their mean/max difference, and crop the regions that changed.
+   Confirms that (1) predicts what the picture shows.
+3. **Level 2, geometric.** Per vertex: `|precise - rounded|` in screen pixels
+   (distribution per frame), and across consecutive frames of a slow camera move,
+   how smooth each vertex's path is (rounded path steps, precise path glides:
+   compare the second differences). This is the wobble as a number.
+4. **Level 2, gaps.** Coverage of a model's silhouette at `pgxp=0` vs `pgxp=2`
+   against a flat background: pixels inside the level-0 silhouette that show
+   background at level 2 are holes. This is the #83 regression as a number.
+5. **Unchiga's field-edge distortion.** Same pipeline on a frame with the field
+   edge crossing the screen: triangles partly off screen (vertices clamped off
+   screen get no precise value, so corners can mix precise and rounded) are the
+   first suspect. Measure whether any triangle there has a precise/rounded mix.
+
+### Pipeline (built from what exists)
+
+- **Scenes, deterministic:** a save state per scene, made inside the debug build
+  (states don't load across builds, see "How to test things"), plus scripted
+  `MEMORIES_INPUT` for camera motion (hand-camera mod: L1/R1 rotate, L3/R3 zoom).
+  Starting set: duel field (camera sweep across the edge), battle animation
+  close-up, Library model view, field figures (small models), and the
+  ten-monster stress case.
+- **Capture:** `MEMORIES_DETERMINISTIC=1` with a real window (GL-only effects are
+  not in headless dumps), `MEMORIES_DUMP_FRAME`/`MEMORIES_DUMP_PICTURE` for
+  frame ranges, once per PGXP level via `MEMORIES_PGXP`, same internal resolution.
+- **Logs:** the per-triangle/per-vertex measurements above behind one trace
+  category (off by default, as `MEMORIES_TRACE=frames` is), written with
+  `MEMORIES_LOG`.
+- **Analysis:** a Python script (`tools/pc/`) that reads the logs and PPMs,
+  produces the numbers per scene and level, and side-by-side crops of the
+  largest differences (and a short frame sequence for level 2).
+- **Report:** one table per scene: triangles and pixels affected, max error,
+  jitter before/after, holes. The PR's claims and title come from it.
+
+### Order
+
+1. Level 1 geometric measurement (1) on the duel field and battle animation —
+   smallest change, answers the most pressing question (is level 1 visible,
+   and where).
+2. Scene states and the capture script.
+3. Image diff (2), then level 2 (3, 4) once commit 2 exists.
+4. Reuse for the model work (7c): the same scenes and diff, before/after an HD
+   texture or model change.
+
+**Open questions:** can the deterministic run hold a camera motion without a
+real window's timing affecting it; does `MEMORIES_DUMP_PICTURE` capture at the
+internal resolution (needed for sub-pixel effects); whether measurement code
+should ship upstream (as a trace category) or stay on our branch.
 
 ---
 
@@ -593,7 +691,9 @@ crash)", #147 "3D Monsters: Kaminari Attack 40% smaller"). Avoid names already
 used upstream: `pgxp`, `pgxp-textures`, `pgxp-native`,
 `fix/disable-precise-geometry`, and #139's `feat/pgxp-video-option`.
 - Branch: `feat/precise-geometry-menu`
-- Title: `Video: Precise geometry is back — textures no longer bend, models no longer wobble`
+- Title: **not decided.** The draft "textures no longer bend, models no longer
+  wobble" states the theory, not anything observed; don't claim an effect the
+  measurements (item 0) haven't shown. Write the title from the numbers.
 - Description: open by referencing #83 (the rollback: level 2 opened gaps in
   small monsters) and #139, say how that is fixed and what was tested on, and
   raise Unchiga's field-edge video as the open question.
