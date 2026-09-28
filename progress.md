@@ -1225,6 +1225,55 @@ the SPU's voices, which also differ between two runs of the *same* setting
 (the mixer runs on a real-time thread; `MEMORIES_NO_AUDIO` does not stop the
 emulation). Same for the build before the fix.
 
+**Where the +0.8 ms goes (profile, 2026-09-29).** `MEMORIES_PROFILE` (the
+sampling profiler; it takes the interrupt clock) over the benchmark turn, 3
+runs each, Textures minus Off, ~1690 extra samples a run (waiting excluded),
+shares scaled to the measured +0.8 ms (game + draw). `polygon` is
+`gl_picture.c`'s (by address, next to `bind_attributes`); `triangle#2` etc.
+are `soft_gpu.c`'s.
+
+| Part | Where | Share | ≈ ms/frame |
+|---|---|---|---|
+| Precise position per projection (doubles, a divide, the window) | `rtp` (gte.c) | 18% | 0.14 |
+| Every projection into the by-value table | `Pgxp_Project` | 16% | 0.13 |
+| Precise values onto packet words, by address | `Pgxp_StoreAt`, `AddPrim` | 25% | 0.20 |
+| The frame's vertex words looked up | `Pgxp_FindAt`, `DrawOTag` | 9% | 0.07 |
+| OpenGL: binary search per vertex, perspective setup | `polygon` (gl_picture.c) | 19% | 0.15 |
+| Indirect (cache pressure from the tables, likely) | `multiply`, soft `triangle`, … | 13% | 0.11 |
+
+**A/B: the two mixed-triangle fixes cost ~0.05 ms.** Same session, 5
+alternating runs, medians: without them Off 2.62 / Textures 3.24 ms game;
+with them 2.68 / 3.35 (Off runs identical code, so 0.06 of that is drift).
+The overhead is precise geometry itself, not the fixes.
+
+**Optimisations, weighed against level 2 and HD models (decided with the
+user):** by-value lookups serve ~10 of ~8737 vertex words a frame, and are
+what glues unrelated vertices (#83) and dropped the card corners: **drop the
+by-value table** (0.13 ms) as part of level 2, after giving those ~10 words an
+address path. **Direct index for the OpenGL lookup** (most of 0.15 ms): level
+2 needs it too. **Not `rtp`'s math in floats:** level 2 draws those positions,
+and float rounding is the wobble it removes. HD meshes drawn natively would
+not go through PGXP at all; pushed through the GTE path, per-vertex cost
+would scale with them. HD textures make level 1 matter more (warping shows).
+
+**Next: the same benchmark on Linux** (level 1 Off vs Textures, the fixed
+build; not the A/B). On the Linux machine, in the repo:
+
+```
+git fetch origin && git checkout feat/test-scenes && git reset --hard origin/feat/test-scenes
+python3 tools/pc/build_game32.py --build tmp/pc/game32dbg
+python3 tools/pc/scene_measure.py state
+python3 tools/pc/scene_measure.py controls        # must print "controls: pass"
+python3 tools/pc/scene_measure.py bench --pgxp 0,1 --scale 4 --speed -1 --repeat 5 --build linux
+python3 tools/pc/scene_measure.py bench --pgxp 0,1 --scale 4 --speed 100 --build linux
+```
+
+Mains power, nothing else running; a window opens for each run (it needs
+X11). Results go to `tmp/pc/measure/bench.csv`; check one end frame
+(`bench_linux_pgxp1_4x_uncapped_r0.png`: the player's turn back, two
+Blue-Eyes on the field). Compare with Windows: Off 2.68, Textures 3.35 ms
+game; 1.09 / 1.26 ms draw.
+
 **PR branch built, 2026-09-28 (local only, not pushed, PR not opened):**
 `feat/precise-geometry-menu` off `upstream/master` (`6ad201fbf`), three
 commits cherry-picked, no measure code: the Video option (level 1), rtp's
