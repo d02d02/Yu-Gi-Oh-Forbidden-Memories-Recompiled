@@ -470,6 +470,25 @@ void DrawOTag(u32 *list)
         static unsigned frames, placed, matched;
         int positions = Settings_Get(SET_PGXP) >= 2;
         size_t i;
+        /* MEMORIES_PGXP_MEASURE=<prefix> (gl_picture.c has the triangles):
+         * each precise vertex of this frame in <prefix>.vertices.csv, how far
+         * its true position is from the whole console pixel it was rounded
+         * to, in picture pixels, before level 1 puts it back on that pixel.
+         * Rewritten each frame: the file holds the last one. */
+        static const char *measure;
+        static int looked;
+        FILE *vertices = NULL;
+        if (!looked) {
+            looked = 1;
+            measure = getenv("MEMORIES_PGXP_MEASURE");
+            if (measure && !*measure) measure = NULL;
+        }
+        if (measure) {
+            char path[1024];
+            snprintf(path, sizeof path, "%s.vertices.csv", measure);
+            vertices = fopen(path, "w");
+            if (vertices) fprintf(vertices, "dx,dy,w\n");
+        }
         for (i = 0; i < count && pending_precise < MAX_FRAME_PRECISE; i++) {
             PgxpVertex *vertex = &frame_precise[pending_precise];
             int at;
@@ -484,6 +503,11 @@ void DrawOTag(u32 *list)
             } else {
                 continue;
             }
+            if (vertices) {
+                fprintf(vertices, "%.3f,%.3f,%.1f\n",
+                        (vertex->x - (float)(int16_t)(frame_words[i] & 0xffffu)) * SoftGpu_Scale(),
+                        (vertex->y - (float)(int16_t)(frame_words[i] >> 16)) * SoftGpu_Scale(), vertex->w);
+            }
             if (!positions) {
                 vertex->x = (float)(int16_t)(frame_words[i] & 0xffffu);
                 vertex->y = (float)(int16_t)(frame_words[i] >> 16);
@@ -491,6 +515,7 @@ void DrawOTag(u32 *list)
             vertex->index = (uint32_t)i;
             pending_precise++;
         }
+        if (vertices) fclose(vertices);
         if (positions) snap_seams();
         if (++frames == 120) {
             LOG(LOG_FRAMES, "pgxp: %u precise vertex words per DrawOTag (%u by address, %u by value)",

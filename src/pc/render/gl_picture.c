@@ -34,6 +34,7 @@
 #include "pc/debug/log.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -929,6 +930,80 @@ static void set_vertex(GlVertex *out, float x, float y, float u, float v, const 
 
 static int drawn_multisampled(void); /* the target of the primitive being read (below) */
 
+/* MEMORIES_PGXP_MEASURE=<prefix>: every textured triangle of the frame being
+ * replayed, one line each in <prefix>.triangles.csv, rewritten at each replay
+ * so the file holds the last frame drawn (the dumped one, with
+ * MEMORIES_DUMP_FRAME). For measuring what precise geometry changes
+ * (progress.md, item 0; tools/pc/scene_measure.py reads it):
+ *   kind     p perspective (flag 32), m mixed (1 or 2 of its corners
+ *            precise, so drawn affine), a affine (none precise)
+ *   precise  how many corners are precise
+ *   area     in picture pixels
+ *   shift    p only: the farthest a texel lands from where the affine
+ *            mapping would put it, in picture pixels, over 15 points across
+ *            the triangle (-1 when its texels are degenerate), else 0
+ *   x, y     its centre, in picture pixels */
+static FILE *measure_triangles;
+
+static void measure_begin(void)
+{
+    static const char *prefix;
+    static int looked;
+    char path[1024];
+    if (!looked) {
+        looked = 1;
+        prefix = getenv("MEMORIES_PGXP_MEASURE");
+        if (prefix && !*prefix) prefix = NULL;
+    }
+    if (!prefix) return;
+    if (measure_triangles) fclose(measure_triangles);
+    snprintf(path, sizeof path, "%s.triangles.csv", prefix);
+    measure_triangles = fopen(path, "w");
+    if (measure_triangles) fprintf(measure_triangles, "kind,precise,area,shift,x,y\n");
+}
+
+static void measure_triangle(const Vertex *const *v, int flags)
+{
+    double px[3], py[3], area, shift = 0;
+    int precise = 0, i, j;
+    for (i = 0; i < 3; i++) {
+        precise += v[i]->precise;
+        px[i] = v[i]->precise ? v[i]->fx * scale : (double)(v[i]->x * scale);
+        py[i] = v[i]->precise ? v[i]->fy * scale : (double)(v[i]->y * scale);
+    }
+    area = 0.5 * fabs((px[1] - px[0]) * (py[2] - py[0]) - (px[2] - px[0]) * (py[1] - py[0]));
+    if (flags & 32) {
+        /* A texel the perspective mapping puts at P, the affine one puts at
+         * P + S T^-1 (persp(P) - affine(P)): S the triangle's screen edges,
+         * T its texel edges. */
+        double dx1 = px[1] - px[0], dy1 = py[1] - py[0], dx2 = px[2] - px[0], dy2 = py[2] - py[0];
+        double du1 = v[1]->u - v[0]->u, dv1 = v[1]->v - v[0]->v, du2 = v[2]->u - v[0]->u, dv2 = v[2]->v - v[0]->v;
+        double texels = du1 * dv2 - du2 * dv1;
+        if (texels == 0) {
+            shift = -1;
+        } else {
+            for (i = 0; i <= 4; i++) {
+                for (j = 0; i + j <= 4; j++) {
+                    double b1 = i / 4.0, b2 = j / 4.0, b0 = 1.0 - b1 - b2;
+                    double w0 = b0 * v[0]->q, w1 = b1 * v[1]->q, w2 = b2 * v[2]->q, sum = w0 + w1 + w2;
+                    double eu, ev, t1, t2, sx, sy, d;
+                    if (sum <= 0) continue;
+                    eu = (w0 * v[0]->u + w1 * v[1]->u + w2 * v[2]->u) / sum - (b0 * v[0]->u + b1 * v[1]->u + b2 * v[2]->u);
+                    ev = (w0 * v[0]->v + w1 * v[1]->v + w2 * v[2]->v) / sum - (b0 * v[0]->v + b1 * v[1]->v + b2 * v[2]->v);
+                    t1 = (dv2 * eu - du2 * ev) / texels;
+                    t2 = (du1 * ev - dv1 * eu) / texels;
+                    sx = dx1 * t1 + dx2 * t2;
+                    sy = dy1 * t1 + dy2 * t2;
+                    d = sqrt(sx * sx + sy * sy);
+                    if (d > shift) shift = d;
+                }
+            }
+        }
+    }
+    fprintf(measure_triangles, "%c,%d,%.1f,%.3f,%.1f,%.1f\n", (flags & 32) ? 'p' : precise ? 'm' : 'a', precise, area,
+            shift, (px[0] + px[1] + px[2]) / 3, (py[0] + py[1] + py[2]) / 3);
+}
+
 /* A triangle as the software pass rasterizes it: its edges are tested at
  * the picture pixels' integer corners, GL tests at their centres, so the
  * vertices move by half a pixel. Attributes move with them.
@@ -961,6 +1036,7 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
         shift = 0.0f;
         flags |= 64;
     }
+    if (measure_triangles && (flags & 4)) measure_triangle(v, flags);
     for (i = 0; i < 3; i++) {
         float x = v[i]->precise ? v[i]->fx * (float)scale + shift : (float)(v[i]->x * scale) + shift;
         float y = v[i]->precise ? v[i]->fy * (float)scale + shift : (float)(v[i]->y * scale) + shift;
@@ -2197,6 +2273,7 @@ int GlPicture_Replay(void)
         count = 0;
     }
     batch_precise_count = 0; /* a list left from a record cut short */
+    measure_begin();
     for (at = 0; at + 1 < count;) {
         const uint32_t *op = taken + at;
         size_t used = 1;
