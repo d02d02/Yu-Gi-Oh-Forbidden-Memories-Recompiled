@@ -77,7 +77,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Not started, design below** | — | Per-triangle instrumentation for level 1, then the scene pipeline |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Design reviewed and revised 2026-09-28, not started** | — | Scene states + determinism controls, then the `polygon()` trace (M1/M2/M4) |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -141,86 +141,148 @@ same "same frame, two settings, a number" comparison.
 
 **Level 1 (Textures).** On console, a textured triangle's UVs are interpolated
 linearly in screen space (affine). Level 1 interpolates `uv / w` and `1 / w`
-instead (perspective-correct). The error of affine vs perspective inside one
-triangle grows with (a) how different the three vertices' depths are, and
-(b) how large the triangle is on screen, in texels. So the claim to check:
-- visible on **large, steeply tilted, textured** polygons near the camera: the
-  duel field floor, a monster close-up in the battle animation, the Library's
-  model view zoomed in;
-- **invisible** on small on-screen triangles (the 3D Monsters field figures, 32 px
-  tall): the affine error there is expected to be under half a texel;
-- only changes texel *placement*, never vertex positions (below level 2 the
-  vertex stays on its whole console pixel).
+instead (perspective-correct, `gl_picture.c`, flag 32). The vertex stays on its
+whole console pixel; only where texels land *inside* the triangle changes.
+The affine error grows with the spread of the three depths and the triangle's
+size. Claims to check:
+- visible on **large, steeply tilted, textured** polygons near the camera (duel
+  field floor, battle-animation close-up, Library model view zoomed in);
+- **invisible** on small on-screen triangles (3D Monsters field figures);
+- no change at 1x and on 2D screens (menus, Options).
 
 **Level 2 (Textures and positions).** The GTE rounds each projected vertex to a
-whole console pixel. At internal Nx, that rounding is up to N/2 screen pixels.
-Claim to check:
-- the effect is **temporal**: a still frame looks almost the same; it shows
-  when the camera or the model moves **slowly**, as vertices step between
-  whole pixels instead of gliding (the "wobble");
-- stronger at higher internal resolution (the step is a larger fraction of
-  detail), and on small models (a pixel is a larger fraction of the model);
+whole console pixel; at internal Nx that is up to N/2 screen pixels. Claims:
+- the effect is **temporal**: a still frame looks almost the same; it shows as
+  stepping ("wobble") when the camera or model moves **slowly**;
+- stronger at higher internal resolution and on small models;
 - known risk: gaps between a model's parts (the #83 rollback), which the
   `draw_id` design (7b) is meant to remove.
 
-### What to measure
+### Evaluation of the first draft (2026-09-28) — what was wrong with it
 
-1. **Level 1, geometric (no images needed).** In `gl_picture.c`'s `polygon()`,
-   for each textured triangle with all three depths: its screen area, its UV
-   extent, and the predicted maximum affine-vs-perspective error in texels
-   (from the three `1 / w` values and UV spans). Log per frame, script the
-   histogram: how many triangles, and how many pixels, have an error above
-   0.5 texel (a visible texel shift) and above 1 texel. This answers "where is
-   level 1 visible" per scene, independent of anyone's eyes, monitor or GPU.
-2. **Level 1, image.** The same frame at `pgxp=0` and `pgxp=1`: count changed
-   pixels and their mean/max difference, and crop the regions that changed.
-   Confirms that (1) predicts what the picture shows.
-3. **Level 2, geometric.** Per vertex: `|precise - rounded|` in screen pixels
-   (distribution per frame), and across consecutive frames of a slow camera move,
-   how smooth each vertex's path is (rounded path steps, precise path glides:
-   compare the second differences). This is the wobble as a number.
-4. **Level 2, gaps.** Coverage of a model's silhouette at `pgxp=0` vs `pgxp=2`
-   against a flat background: pixels inside the level-0 silhouette that show
-   background at level 2 are holes. This is the #83 regression as a number.
-5. **Unchiga's field-edge distortion.** Same pipeline on a frame with the field
-   edge crossing the screen: triangles partly off screen (vertices clamped off
-   screen get no precise value, so corners can mix precise and rounded) are the
-   first suspect. Measure whether any triangle there has a precise/rounded mix.
+Checked against the code (`libgpu.c`, `platform_common.c`, `gl_picture.c`,
+`settings.c`) before building anything:
 
-### Pipeline (built from what exists)
+1. **It had no controls, so no noise floor.** An image diff between two runs
+   shows *a* difference, not that PGXP caused it. Needed: the same setting
+   twice (must be 0 changed pixels, or determinism is broken), 1x and a 2D
+   screen (must be 0: PGXP does nothing there), and the software picture's hash
+   identical across levels (the notes say the game and VRAM never see PGXP;
+   that makes frames line up across levels, and must be checked, not assumed).
+2. **Thresholds were not fixed before looking.** "Visible" must be defined up
+   front (below), or the numbers get read to fit whichever claim is wanted.
+   That is exactly the "selling" to avoid.
+3. **Texel error is the wrong unit on its own.** What the eye sees is how far
+   the texture moves *on screen*: texel error × screen pixels per texel. A
+   1-texel error on a minified texture is sub-pixel; on a magnified one at 4x
+   it is several pixels. Report screen pixels as the main number.
+4. **The analytic "max error" formula was hand-waved.** Replace it with direct
+   sampling: at a fixed set of barycentric points per triangle (vertices' edge
+   midpoints, centroid, a 4x4 grid), compute the affine UV and the perspective
+   UV from the same `u, v, q` that `polygon()` already has, and take the max
+   distance. Exact enough, simple, no derivation to get wrong.
+5. **Level 2 "second differences of a vertex's path" is not doable as written:**
+   vertices have no identity across frames. Two measurable things instead:
+   (a) per frame, `|precise - rounded|` in screen pixels for every precise
+   vertex, which is the wobble's *amplitude* upper bound; (b) the perceptual
+   question (does it look smoother?) as a **blind A/B**: the same slow camera
+   pan rendered at both levels, shown side by side in random order, the user
+   picks without knowing which is which. Some things are not a single number;
+   a blind test keeps them honest.
+6. **The level-2 amplitude can be measured now, without commit 2.** Precise
+   positions are computed at level 1 too (`find_precise` sets `fx, fy`); only
+   their *use* is gated. So (a) above runs on today's branch.
+7. **The #83 gaps can be measured before fixing them.** Level 2's code
+   (`snap_seams`, `libgpu.c:386`) is still in the tree; only the `pgxp` clamp
+   (`settings.c:117`, max 1) hides it. A measurement-only build with the clamp
+   at 2 gives the *before* number for gaps; commit 2 then has to bring it to
+   zero. The first draft had no baseline for the fix it wants to ship.
+8. **Gaps "against a flat background" do not exist in real scenes.** Measure
+   them geometrically instead: within one draw, vertices that share a rounded
+   screen word (the same model point drawn by two parts) must land on the same
+   final position; log the spread. A spread above 0 at level 2 is a crack of
+   that width. No image mask needed.
+9. **It could not find a driver bug.** Geometric metrics are the same on every
+   GPU; Unchiga's distortion may be Nvidia/XWayland-only. So the capture must be
+   a **single script anyone can run** (Unchiga included) that outputs the
+   report and the images, so his machine produces comparable data.
+10. **Unchiga's field edge has a concrete suspect the draft missed.** Flag 32
+    needs all three depths; a vertex clamped off screen gets none, so its
+    triangle falls back to affine while its neighbour is perspective. Along
+    their shared edge the texture no longer lines up: a visible break near the
+    screen edge, which is where the video shows it. Measure: count triangles
+    with 1 or 2 precise vertices (mixed), their area, and whether they touch a
+    fully precise triangle.
+11. **Multi-frame capture does not exist.** `MEMORIES_DUMP_FRAME` writes one
+    frame and calls `exit(0)` (`libgpu.c`), and deterministic timing is only on
+    when it is set (`platform_common.c:216`). A pan of 60 frames would be 60
+    runs. Add a frame *range* (dump every frame from A to B, then exit), kept in
+    the measurement code.
+12. **Answered open question:** dumps are at internal resolution
+    (`MEMORIES_DUMP_PICTURE` reads the GL picture back at `SoftGpu_Scale()`), so
+    sub-pixel effects are captured. `MEMORIES_SCALE_AT=<frame>:<scale>` scripts
+    the resolution.
+13. **Missing factor:** PS1 games often subdivide large polygons, which shrinks
+    affine error on its own. This game has at least one subdivided model effect
+    (`notes/model-subdivided-effect.md`); whether the field floor is subdivided
+    is unknown.
+    If the field floor is subdivided, level 1 may do little there. Check which
+    scenes' big polygons are subdivided before predicting.
 
-- **Scenes, deterministic:** a save state per scene, made inside the debug build
-  (states don't load across builds, see "How to test things"), plus scripted
-  `MEMORIES_INPUT` for camera motion (hand-camera mod: L1/R1 rotate, L3/R3 zoom).
-  Starting set: duel field (camera sweep across the edge), battle animation
-  close-up, Library model view, field figures (small models), and the
-  ten-monster stress case.
-- **Capture:** `MEMORIES_DETERMINISTIC=1` with a real window (GL-only effects are
-  not in headless dumps), `MEMORIES_DUMP_FRAME`/`MEMORIES_DUMP_PICTURE` for
-  frame ranges, once per PGXP level via `MEMORIES_PGXP`, same internal resolution.
-- **Logs:** the per-triangle/per-vertex measurements above behind one trace
-  category (off by default, as `MEMORIES_TRACE=frames` is), written with
-  `MEMORIES_LOG`.
-- **Analysis:** a Python script (`tools/pc/`) that reads the logs and PPMs,
-  produces the numbers per scene and level, and side-by-side crops of the
-  largest differences (and a short frame sequence for level 2).
-- **Report:** one table per scene: triangles and pixels affected, max error,
-  jitter before/after, holes. The PR's claims and title come from it.
+### Thresholds, fixed before measuring
 
-### Order
+- Level 1, a triangle is **visibly changed** if its max texture displacement is
+  **≥ 1 screen pixel**; **clearly visible** at **≥ 2 px**. Below 0.5 px:
+  invisible.
+- Level 2, a vertex's rounding is **noticeable in motion** at **≥ 1 screen
+  pixel** of `|precise - rounded|`.
+- A crack is any seam spread **> 0** at level 2 (should be 0 after commit 2).
+- A scene "shows level 1" only if clearly visible pixels are **≥ 1% of the
+  frame** or form a region the blind A/B picks reliably (≥ 8 of 10).
+Changing a threshold after seeing data must be written down here with the reason.
 
-1. Level 1 geometric measurement (1) on the duel field and battle animation —
-   smallest change, answers the most pressing question (is level 1 visible,
-   and where).
-2. Scene states and the capture script.
-3. Image diff (2), then level 2 (3, 4) once commit 2 exists.
-4. Reuse for the model work (7c): the same scenes and diff, before/after an HD
-   texture or model change.
+### Measurements
 
-**Open questions:** can the deterministic run hold a camera motion without a
-real window's timing affecting it; does `MEMORIES_DUMP_PICTURE` capture at the
-internal resolution (needed for sub-pixel effects); whether measurement code
-should ship upstream (as a trace category) or stay on our branch.
+| # | What | Level | Needs | Output |
+|---|---|---|---|---|
+| M1 | Texture displacement per textured triangle (sampling, screen px) | 1 | trace in `polygon()` | histogram, % of frame ≥ 1 / 2 px |
+| M2 | Mixed-precision triangles (1-2 precise vertices) and neighbours | 1 | same trace | count, area, location |
+| M3 | Image diff Off vs level 1, with controls | 1 | dumps | changed px, max, crops |
+| M4 | `|precise - rounded|` per vertex, screen px | 2 | same trace, works today | distribution per frame |
+| M5 | Seam spread within a draw (cracks) | 2 | measurement build, clamp 2 | before (old code) / after (commit 2) |
+| M6 | Blind A/B of a slow pan | 1, 2 | frame-range dump, video | picks out of 10 |
+| M7 | Same script on Unchiga's machine | all | the one-command runner | his report next to ours |
+
+### Pipeline
+
+- **Scenes:** save states made inside the debug build, plus scripted
+  `MEMORIES_INPUT` camera moves (hand-camera mod: L1/R1 rotate, L3/R3 zoom).
+  Set: duel field (sweep across the edge), battle-animation close-up, Library
+  model view, field figures (small), the ten-monster stress case; **controls:**
+  main menu and Options (expect zero change).
+- **Runner** (`tools/pc/`, one command): for each scene × level (0, 1, and 2 in
+  the measurement build) × scale (1x, 2x, 4x): run deterministic with a window,
+  dump the frame range, write the trace log. Checks the controls first and
+  stops if they fail.
+- **Analysis:** reads logs and PPMs, applies the thresholds above, writes one
+  table per scene plus crops of the largest changes and the A/B clips.
+- **Branch:** measurement code on its own branch; decide later what (if
+  anything) ships upstream as a trace category.
+
+### Next steps (in order)
+
+1. **Scene states:** make the duel-field and battle-animation states in the
+   debug build; confirm reload determinism (same setting twice → 0 changed
+   pixels) and that the software picture hash is equal at levels 0 and 1.
+2. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
+   behind a new trace category. Run on the two scenes at 2x and 4x.
+3. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
+   level 1 visible, where, and what does level 2 have to fix".
+4. **Frame-range dump**, then M3 and the blind A/B (M6).
+5. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
+   after.
+6. **Package the runner** for Unchiga (M7), with a note on what to send back.
+7. Reuse for the model work (7c).
 
 ---
 
