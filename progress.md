@@ -399,11 +399,19 @@ wait for the camera to settle, measure.
 
 ### Scene `field`: built, tested, committed (2026-09-28, `feat/test-scenes`)
 
-Commits: `8416cca23` 3D Monsters cache 8 → 10 (separate, upstream-worthy: a
-full field of 10 face-up monsters thrashed, `LoadModelDO(n)` printed without
-end; 110 lines = 10 models × 11 load phases once is normal), `3028a7c62` the
-mod (`mods/test-scenes/`: `mod.json`, `field.json`, `test_scenes.c`). Live-tested
-by the user (Q = L1, X = Cross on keyboard) and scripted.
+The mod (`mods/test-scenes/`: `mod.json`, `field.json`, `test_scenes.c`).
+Live-tested by the user (Q = L1, X = Cross on keyboard) and scripted.
+
+**3D Monsters cache — fixed upstream, our commit dropped (2026-09-28).** The
+scene exposed that 3D Monsters kept 8 models for 10 zones: with 9-10 face-up
+monsters it reloaded models every frame (`LoadModelDO(n)` without end; 110
+lines = 10 models × 11 load phases once is normal), and 3 froze at their first
+pose (the user saw it; a simulation of the lookup order gives the same 3, and
+zones drawing another zone's model). We had a fix (cache 10), but Unchiga fixed
+it the same day upstream: `59c8a065b` "3D Monsters: keep twelve models loaded,
+not eight" (same diagnosis, 12 for headroom, 19.9 → 119.5 frames/s). Branches
+rebased onto that `upstream/master`, our commit dropped. **Fetch upstream
+before preparing a PR**: this one was already done.
 
 **How to capture it: `tools/pc/scene_measure.py`** (committed, Windows and
 Linux, Python only, no PIL):
