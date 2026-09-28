@@ -107,7 +107,7 @@ unpushed there).
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **P** | **Precise geometry, level 1 (Textures)** | Three fixes done and measured; PR branch pushed to the fork, **PR not opened** | `feat/precise-geometry-menu` (PR), `feat/test-scenes` (work + tools) | Benchmark on Linux; user's visual check; then open the PR |
+| **P** | **Precise geometry, level 1 (Textures)** | Three fixes done and measured, cross-OS confirmed on Linux; PR branch pushed to the fork, **PR not opened** | `feat/precise-geometry-menu` (PR), `feat/test-scenes` (work + tools) | User's visual check; then open the PR |
 | P2 | Precise geometry, level 2 (positions) | Designed (`draw_id`), an early version was built and tested on since-deleted branches | — | After the PR: see "Level 2" below |
 | 1 | Name entry: slots guard | Main work merged upstream (#110); follow-up left | — | Identify the cells by checksum, not position |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
@@ -237,6 +237,15 @@ camera, before or after the fixes.
 The mixed-triangle fixes cost ~0.05 ms; the rest is precise geometry itself. At real
 speed both settings hold 60 fps (user's live session with a full field too).
 
+**Confirmed on Linux, 2026-09-29** (native X11, Mesa, same laptop/GPU as the Windows
+numbers above, mains power, `feat/test-scenes` at `aa6653172`): Off 3.17 / 1.31,
+Textures 3.83 / 1.49, extra **+0.66 / +0.18** — matches Windows' +0.67 / +0.17 almost
+exactly. Baseline is higher on Linux (driver/CPU overhead, not precise geometry); the
+*added* cost of the setting is what was being checked, and it holds across OS and
+driver. At real speed (capped, `--speed 100`): both settings 59.94 fps avg, matching
+Windows. `bench_linux_pgxp1_4x_uncapped_r0.png` checked: expected end-of-turn scene
+(two Blue-Eyes among the ten monsters). Raw rows: `tmp/pc/measure/bench.csv`.
+
 **Where the +0.8 ms goes** (sampling profiler, 3 runs each, shares of the extra):
 `rtp`'s precise math 18% (0.14 ms), every projection into the by-value table
 `Pgxp_Project` 16% (0.13), `Pgxp_StoreAt`/`AddPrim` 25% (0.20), `Pgxp_FindAt`/
@@ -310,22 +319,10 @@ with the reason.
 
 ### Next steps (in order)
 
-1. **Benchmark on Linux** (level 1 Off vs Textures, current build; not the A/B):
-   ```
-   git fetch origin && git checkout feat/test-scenes && git reset --hard origin/feat/test-scenes
-   python3 tools/pc/build_game32.py --build tmp/pc/game32dbg
-   python3 tools/pc/scene_measure.py state
-   python3 tools/pc/scene_measure.py controls        # must print "controls: pass"
-   python3 tools/pc/scene_measure.py bench --pgxp 0,1 --scale 4 --speed -1 --repeat 5 --build linux
-   python3 tools/pc/scene_measure.py bench --pgxp 0,1 --scale 4 --speed 100 --build linux
-   ```
-   Mains power, nothing else running; a window opens for each run (needs X11).
-   Results in `tmp/pc/measure/bench.csv`; check `bench_linux_pgxp1_4x_uncapped_r0.png`
-   (the player's turn back, two Blue-Eyes on the field). Compare with Windows above.
-2. The user's visual check on the PR branch; rediscuss the description; open the PR.
-3. Scenes `model` (a monster filling the screen), `battle`, `small`, `control`.
-4. Level 2 (above), then the runner packaged for Unchiga (M7).
-5. Reuse the tools for the model work (7c).
+1. The user's visual check on the PR branch; rediscuss the description; open the PR.
+2. Scenes `model` (a monster filling the screen), `battle`, `small`, `control`.
+3. Level 2 (above), then the runner packaged for Unchiga (M7).
+4. Reuse the tools for the model work (7c).
 
 ---
 
