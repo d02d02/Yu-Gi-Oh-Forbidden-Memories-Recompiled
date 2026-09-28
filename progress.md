@@ -77,7 +77,7 @@ README for why). Current branch: `feat/precise-geometry`, commit 1 only
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Design reviewed and revised 2026-09-28, not started** | — | Scene states + determinism controls, then the `polygon()` trace (M1/M2/M4) |
+| **0** | **URGENT: measurement framework for 3D rendering (PGXP and models)** | **Design reviewed and revised 2026-09-28, not started** | — | Test scenes mod: answer its 4 unknowns, then scene `model` + determinism controls |
 | 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
 | 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
@@ -255,12 +255,11 @@ Changing a threshold after seeing data must be written down here with the reason
 
 ### Pipeline
 
-- **Scenes:** save states made inside the debug build, plus scripted
-  `MEMORIES_INPUT` camera moves (hand-camera mod: L1/R1 rotate, L3/R3 zoom).
-  Set: duel field (sweep across the edge), battle-animation close-up, Library
-  model view, field figures (small), the ten-monster stress case; **controls:**
-  main menu and Options (expect zero change).
-- **Runner** (`tools/pc/`, one command): for each scene × level (0, 1, and 2 in
+- **Scenes:** built by the test-scenes mod below (not save states), plus
+  scripted `MEMORIES_INPUT` camera moves (hand-camera mod: L1/R1 rotate, L3/R3
+  zoom). **Controls:** main menu and Options (expect zero change).
+- **Runner** (`tools/pc/`, one command, reaches scenes through
+  `MEMORIES_TEST_SCENE`, never through menus): for each scene × level (0, 1, and 2 in
   the measurement build) × scale (1x, 2x, 4x): run deterministic with a window,
   dump the frame range, write the trace log. Checks the controls first and
   stops if they fail.
@@ -269,20 +268,83 @@ Changing a threshold after seeing data must be written down here with the reason
 - **Branch:** measurement code on its own branch; decide later what (if
   anything) ships upstream as a trace category.
 
+### Test scenes mod (decided 2026-09-28, the user's idea)
+
+**Idea.** A mod that, when enabled, offers a menu entry that drops straight into
+a prepared scene: a duel with chosen monsters already on the field, a battle
+close-up, a model view. This replaces save states as the source of scenes.
+
+**Why it beats save states.** States are tied to one build: the debug build
+cannot load the release build's states, and Unchiga's build could not load ours.
+A scene built by a mod from fixed data is the same on every build and machine,
+so Unchiga can open the exact scene we measured, on his Nvidia PC (M7).
+
+**What makes it deterministic — not the menu.** Fixed scene contents, a fixed
+RNG seed (`notes/rng.md`), fixed settings, a frozen duel (the player's first
+turn, the opponent never moves, so the AI cannot change the field) and
+scripted camera input. The menu is how a *person* gets there; the runner uses
+`MEMORIES_TEST_SCENE=<name>` and the same code path.
+
+**Scenes, each for a measurement case:**
+
+| Scene | Contents | Serves |
+|---|---|---|
+| `field` | Chosen monsters on both sides (a small, a medium, a large model), player's first turn; camera path sweeping the field's edge across the screen | M1-M5, Unchiga's field-edge video |
+| `battle` | Two chosen monsters in the battle animation, close-up | M1, M3, M6 (large polygons in motion) |
+| `model` | One monster filling the screen | M1 (largest triangles), level 1 at its most visible |
+| `small` | Many small field figures (the 3D Monsters `test` case, bounded to the model cache) | M4, M5 (level 2 gaps on small models, #83) |
+| `control` | A 2D screen | Must show zero change at every level |
+
+**What already exists to build on:**
+- The game's own debug menu (`notes/debug-menu-entry-map.md`): `DUEL`
+  (`DebugMenu_EnterDuel`, `src/game/frontend_scene_states.c:157`) arms a duel
+  directly; `3D` enters `Main_RunAnimatedBattle` with the game's model-ID
+  editor and stage picker (`notes/model-debug-controller.md`) — a ready
+  "any monster, close-up" scene.
+- 3D Monsters mod test tunables: `test` (every field zone a chosen monster,
+  `field_models.c:1301`) and `battle_test` (the battle's two monsters,
+  `field_models.c:1119`). Models only, not real duel cards.
+- The `SCENE` hook (`notes/mod-api-3.md`) wraps `Main_ApplyMenuSelection`:
+  a mod can redirect a menu choice into its own scene.
+- `MEMORIES_MODE_AT` already forces a main mode from a given frame.
+
+**Menu entry — open decision.** The user asked for an entry on the title
+screen (with New Game, Load...). That menu is the game's own graphics, so a
+new visible item is the costly part. The port's overlay menu (`menu.c`, e.g.
+Debug > Jump to > Title Screen) is much cheaper and works on every screen.
+Proposal: env var first, then a "Debug > Test scenes" overlay entry, the
+title-screen item as a follow-up if still wanted. **To confirm with the user.**
+
+**Unknowns to check before building:**
+1. How `DebugMenu_EnterDuel` / `func_80024DC8(-1, 1, 0x8000, 0x8000)` picks the
+   decks and opponent, and whether its arguments can be set.
+2. Whether a mod can put specific cards on the field before the duel's first
+   frame (`notes/duel-card-record.md`, `card-placement-controller.md`) and keep
+   the duel frozen on the first turn.
+3. Whether the RNG can be seeded from the mod for a repeatable duel.
+4. Whether `Main_RunAnimatedBattle` / the `3D` debug mode can be entered from a
+   mod with model IDs set (`D_800EF658`), no debug-menu navigation.
+
 ### Next steps (in order)
 
-1. **Scene states:** make the duel-field and battle-animation states in the
-   debug build; confirm reload determinism (same setting twice → 0 changed
-   pixels) and that the software picture hash is equal at levels 0 and 1.
-2. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
-   behind a new trace category. Run on the two scenes at 2x and 4x.
-3. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
+1. **Answer the four unknowns above** (read code, no building yet), and settle
+   the menu decision.
+2. **Test scenes mod, first scene `model`** (likely easiest: the game already
+   has the scene), reached by `MEMORIES_TEST_SCENE`. Confirm determinism:
+   same setting twice → 0 changed pixels; software picture hash equal at
+   levels 0 and 1.
+3. **Scene `field`**, then `battle`, `small`, `control`.
+4. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
+   behind a new trace category. Run on the scenes at 2x and 4x.
+5. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
    level 1 visible, where, and what does level 2 have to fix".
-4. **Frame-range dump**, then M3 and the blind A/B (M6).
-5. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
+6. **Frame-range dump**, then M3 and the blind A/B (M6).
+7. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
    after.
-6. **Package the runner** for Unchiga (M7), with a note on what to send back.
-7. Reuse for the model work (7c).
+8. **Package the runner** (mod + script) for Unchiga (M7), with a note on what
+   to send back.
+9. Menu entry for people (overlay, then title screen if still wanted).
+10. Reuse for the model work (7c).
 
 ---
 
