@@ -1,0 +1,628 @@
+# Progress
+
+Replaces `TODO.md`. Committed (was git-ignored through `.git/info/exclude` until
+2026-09-28, when it started being tracked so it travels across machines — see
+"Switching machines" below). Research files live in `tmp/pc/todo-research/`
+(not committed, `/tmp/` is gitignored). Each item below tracks what's decided,
+what's done, and what's left — update in place as work continues instead of
+re-deriving it next session.
+
+## Switching machines
+
+**2026-09-28.** Moving from this Windows machine to a native Linux install to
+continue [PGXP cross-OS testing](#pgxp-unchiga-says-distortion-on-either-setting--not-documented-anywhere-needs-real-cross-os-data).
+Everything needed to resume is committed and pushed to `origin` (the fork),
+except the disc image (`game/*.bin`, gitignored, copyrighted, re-supply it
+locally): this file, `notes/*.md`, and a copy of the real memory card
+(`memcards/slot01.sav`, `memcards/README.md` — not a save state; see that
+README for why). Current branch: `feat/precise-geometry`, commit 1 only
+(Video menu option, Textures) — see the PGXP section below for what's next.
+
+## How to test things
+
+- My debug build: `tmp/pc/game32dbg`, with its own user folder `tmp/pc/game32dbg-user`
+  (saves, states and settings kept apart from the real game).
+- Run it (PowerShell, repo root):
+  `$env:MEMORIES_USER_DIR = "tmp\pc\game32dbg-user"; tmp\pc\game32dbg\memories-pc.exe`
+  (add `$env:MEMORIES_LOAD_STATE = "N"` to start from state slot N).
+- Reach a screen with no save needed: the options smoke input plus `MEMORIES_MODE_AT=1000:<mode>`
+  (modes in `src/game/main_modes.h`: 4 Library, 7 Build Deck, 9 Name entry, 10 Password, ...):
+  `MEMORIES_INPUT="910:0008,916:0000,1000:0040,1006:0000,1020:0040,1026:0000,1040:0040,1046:0000,1060:0040,1066:0000,1100:4000,1106:0000" MEMORIES_MODE_AT=1000:9`
+- Dump a frame: `MEMORIES_DUMP_FRAME=1500 MEMORIES_DUMP_PICTURE=1 MEMORIES_DUMP_PATH=out.ppm`
+  (add `MEMORIES_DUMP_VRAM=1` for VRAM; it drops bit 15 of each word).
+  **Needs a real window to show anything GL-only (PGXP, HD text): with `MEMORIES_HEADLESS=1`,
+  `Platform_Open` never creates a GL context at all, so the dump is the software GPU's picture
+  and is byte-identical regardless of any GL-only setting.** Drop `MEMORIES_HEADLESS` (a real,
+  visible window pops up) or add `MEMORIES_DETERMINISTIC=1` alongside it (same fast
+  frame-stepping as headless, but a real window/GL context still gets created) to actually
+  see a GL-pass effect in a dump. `MEMORIES_DUMP_FRAME`'s frame count is *this run's own*,
+  starting from 0 at boot — after `MEMORIES_LOAD_STATE`, it does **not** jump to the frame
+  number the state was originally saved at; the state resumes around frame 30 and the count
+  keeps going from there.
+- PPM to PNG, or a zoomed crop: `python tmp/pc/hd-text-split/crop.py in.ppm out.png [x y w h zoom]`.
+- **`MEMORIES_INPUT`'s hex bits are the raw PSX controller (SIO) layout, *not*
+  `src/game/input.h`'s `PAD_BUTTON_*` enum** — those are two different encodings in this
+  codebase and it's easy to grab the wrong one (cost real time this session):
+  `0001` Select, `0002` L3, `0004` R3, `0008` **Start**, `0010` Up, `0020` Right, `0040` Down,
+  `0080` Left, `0100` L2, `0200` R2, `0400` L1, `0800` R1, `1000` Triangle, `2000` Circle,
+  `4000` **Cross**, `8000` Square. Confirmed against `mods/hand-camera`'s own hard-coded
+  defaults (`turn_right`=R1=`0x0800`, `turn_left`=L1=`0x0400`, `zoom_in`=L3=`0x0002`,
+  `zoom_out`=R3=`0x0004`). A known-good deterministic path from cold boot into a real
+  campaign duel with a 3D-Monsters model on the field: replay
+  `tests/pc/smoke/duel-3d-monsters.json`'s own `input` field verbatim (reaches frame 6760,
+  a card-placement reticle screen) with `mod.3d-monsters`/`mod.hand-camera` on; from there,
+  `<frame>:4000,<frame+6>:0000` (Cross) places the highlighted card face-up in its default
+  (Attack) position, `<frame>:0008,<frame+6>:0000` (Start) ends the turn.
+- **A save state made by the user's real `game32` build will not load in the debug
+  `game32dbg` build**, even when both report the identical `buildid` — cross-build state
+  loading fails outright (`state load failed`, likely the mods' own compiled checksums
+  differing between a release and a debug build). Don't try to copy the user's states over.
+  Instead, **build a state from inside `game32dbg` itself**: script the input above (or drive
+  it live, windowed, no `MEMORIES_DUMP_FRAME`/`MEMORIES_HEADLESS`, and press F5 by hand) with
+  `MEMORIES_SAVE_STATE="<frame>:<path>"`, then reload that state as many times as needed with
+  `MEMORIES_LOAD_STATE=<same path or slot>` — each reload only needs ~60 frames to resume and
+  is fast, so do the slow scripted/live part once, then iterate cheaply from the saved state.
+- `MEMORIES_MOD_3D_MONSTERS_TEST=<card id>` (undeclared, not in the Mods window) fills *every*
+  field zone with a different monster at once (`id + zone*2 + side`), bypassing the
+  face-up/occupied check entirely — good for a forced-visible stress test, bad for realism:
+  with only `CACHE 8` model slots in `mods/3d-monsters/field_models.c` but up to 10 zones
+  requested, it thrashes reloading models every frame and runs very slowly. Fine for a single
+  frame dump; don't run it live/windowed for long, and don't read anything into the slowdown
+  itself — it's a separate, pre-existing, unrelated limitation of this test tool, not of
+  whatever is actually being tested.
+
+---
+
+## Status board
+
+| # | Item | Status | Branch | Next step |
+|---|---|---|---|---|
+| 1 | Name entry: END/arrows HD | Mostly done | `feat/hd-text-name-entry` | Guard against other slot uses (small) |
+| 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
+| 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
+| 4 | Tests for HD text | Not started | — | One smoke case, name entry at 4x |
+| 5a | Build Deck: browse cards Up/Down | Done, tested — **check upstream first, see below** | `feat/card-viewer-browse` | Confirm not a duplicate, then open PR |
+| 5b | Trade: browse cards Up/Down | Done, PR open, needs live test — **not a priority right now** | `feat/card-viewer-browse-trade` | Live session, owned deck, whenever it becomes a priority |
+| 5c | Library: browse cards Up/Down | Not started, assessed (big) | — | Start with "replay retail steps" |
+| 6 | Crash: title jump after cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
+| 7a | PGXP: menu option, Textures only | **Done, tested, PR open** | `feat/pgxp-video-option` | Merge |
+| 7b | PGXP level 2 (positions/wobble) | **Done, committed, pushed, PR open** | `fix/pgxp-snap-seams-identity` | Merge (after 7a) |
+| 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
+| 7d | Duel field tile: bright diagonal sliver, intermittent | New, not started, confirmed **not** PGXP | — | See 7d below |
+| — | Game > Restart | Parked | — | — |
+
+**Superseded, 2026-09-27: the messy history.** `feat/pgxp-reenable-textures` and
+`fix/pgxp-seam-identity` (the branches 7a/7b were on earlier this session) are **abandoned** —
+the user asked for a clean rewrite from scratch, off `upstream/master` rather than the stale
+`origin/master`, without the false starts (a menu.c mistake reverted, a signal-blocking dead
+end, diagnostic logging added then removed, a self-introduced bug found and fixed same-day).
+`feat/pgxp-video-option` and `fix/pgxp-snap-seams-identity` (below) are the real, current
+branches — same fixes, correct from the start, no debug-logging noise, no `Claude-Session`
+trailers (the user does not want those in this repo, [[no-session-trailer]]). The detailed
+methodology write-ups under 7a/7b further down are still worth reading — how the bugs were
+found doesn't change — just mentally substitute the new branch names.
+
+**Also found while rewriting: `origin` (this fork) is stale relative to `upstream` (Unchiga's
+real master, ~40 commits behind at the time) — always fetch and check `upstream/master`
+before starting new work, not just `origin/master`.** One of those upstream commits,
+`e69248c23` "Build Deck: Up and Down in the card viewer show the list's next card", looks like
+it may duplicate item 5a's own feature — **check this before opening that PR**, not yet done.
+
+### PR plan (branches ready to open, in order)
+
+Dependency: `fix/pgxp-snap-seams-identity` is stacked on `feat/pgxp-video-option` (needs it as
+a base, not `master`) — open 7a before 7b, or GitHub will show 7b's diff against master
+including 7a's changes.
+
+1. **`feat/pgxp-video-option`** (7a) → base `master` (really `upstream/master`). Tested live
+   by the user. **PR open.**
+2. **`fix/pgxp-snap-seams-identity`** (7b) → base `feat/pgxp-video-option`. Verified by both
+   the user (live) and a deterministic stress repro (10 monsters, level 2, no gaps).
+   **PR open.**
+3. **`feat/card-viewer-browse`** (5a) → base `master`, but **check the e69248c23 duplicate
+   concern above first.**
+4. **`feat/card-viewer-browse-trade`** (5b) → base `master`. Open whenever, low priority;
+   works but its live test is deprioritized, not a blocker to opening the PR itself.
+
+---
+
+## 1. Name entry: END and the arrows are not HD
+
+**Seen:** new game, "Input your NAME!": the letters and digits are HD, but the orange
+**<-** **->** and **END** are still retail pixels. Screenshot: `tmp/pc/todo-research/name.png`.
+
+**Cause (verified):** they are not characters. The game draws its own pictures in unused
+Shift-JIS slots of the large (16x16) font, page 640,0:
+
+| Cell (u, v) | Shift-JIS slot | Picture |
+|---|---|---|
+| 176,120 / 192,120 | `0x827B` / `0x827C` | <- and -> |
+| 224,120 + 240,120 | `0x827E` + `0x827F` | END, one word across two cells ("E" + "ND") |
+| 144,88 / 224,88 | `0x8259` / `0x825E` | a `:` and a `?` of the keyboard's own (bottom row, cut off) |
+
+HD text only redraws a cell `Glyphs_CellCharacter` (`src/pc/text/glyphs.c`) maps to a
+character, and that only tries `'!'..'~'` at their usual slots, so these cells return 0 and
+`HdText_Cell` (`src/pc/text/hd_text.c`) leaves them as they are ("a glyph no font can set
+(an icon) stays as it was", `hd_text.h`).
+
+**Decisions / done (branch `feat/hd-text-name-entry`, not committed):**
+- `:` and `?` were not pictures: a typo in `retail_cell` (`glyphs.c`) put the large font's
+  `: ; < = > ?` at a negative column (`i * 16 - 0x160`; the small font's `i * 8 - 0x30`
+  shows it should be `- 0x60`). The game's 8-bit u wraps it, the port's int did not, so
+  those six were pixelated in the large font everywhere. Fixed.
+- <- and -> now HD: `Glyphs_CellCharacter` maps the large font's cells 176,120 and 192,120
+  to U+2190 / U+2192. Checked on the name entry screen.
+- END done: `render_at` generalised to `render_span` (a word across a strip of cells, each
+  cell keeps its slice), `Glyphs_CellWord` names END. Committed `f315bd7`, not pushed.
+  Checked: name screen changes only inside END; slot 1 dialogue and slot 3 card view
+  pixel-identical to before.
+
+**Left to do:**
+- **Guard against other uses of those slots:** the same Shift-JIS slots may hold other
+  pictures on other screens or fonts. Identify the cells by their pixels (a checksum of the
+  retail cell, as the card view's panel does with `PANEL_SUM`), not just by position.
+
+**Check after:** the name entry screen (mode 9 above), and screens that type text:
+Password (mode 10), save names, the campaign dialogue.
+
+---
+
+## 2. Duel results: "You" and "Simon" are not HD
+
+**Seen:** duel results screen, the "You" / "Simon" headers (and probably "VICTORY
+CONDITIONS", "OFFENSE STATISTICS", ...) are blocky retail pixels; the bars cut their feet,
+as in retail. A save state was in `tmp/pc/game32dbg-user/states/slot2.state` (may have been
+overwritten since).
+
+**Cause (verified):** not the text font. `{f8 04 01}` in the results strings (0x40-0x45)
+draws a separate tiny 8x8 alphabet from the menus' sheet, page 704,0, palette 656,250, as
+plain 8x8 sprites (no glyph mark):
+
+| v | row |
+|---|---|
+| 80 | A-P (u 128, 136, ... 248) |
+| 88 | Q-Z |
+| 96 | a-p |
+| 104 | q-z |
+| 112 | 0-9 (already HD: `sheets[1]` in `hd_text.c`) |
+
+"You" / "Simon" are the port's own swap for YOU / COM (`translation.c`, with Video >
+Opponent's name for COM), set in that alphabet; "OFFENSE / DEFENSE STATISTICS" too. HD
+numbers and labels redraws that sheet's digits but not its letters, so the letters stay
+blocky and uneven.
+
+**Decided, not started:** extend the digit `Sheet` (`hd_text.c`) to that sheet's letters:
+measure the alphabet's lines together (baseline, capitals, x-height, as `measure_retail` does
+for the font pages: the `Lettering` principle) and set each letter with `render_at` in the
+sheet's ramp, as the digits are. Only where the retail sheet is (checksum), like the digits.
+Check: results pages (all three), and wherever else the menus use that alphabet.
+
+---
+
+## 3. Lettering follow-ups (from the review of PR #107)
+
+Not bugs today, latent:
+1. **Word width can overflow:** a label in a lettering is set in the font's proportions
+   (`sx = sv` in `set_text`) with no check against its sprite's width. ATK/DFD fit; a longer
+   word (a translation) would be clipped. Fix: `sx = min(sv, what fits)`.
+2. **Siblings are not redrawn:** a label is only remade when its own texels change; if one
+   member of a lettering changes and another does not, the other keeps the old ink/height.
+   Fix: each label remembers the lettering measurement it was drawn from and is redrawn when
+   that changes.
+
+---
+
+## 4. Tests for HD text
+
+No automated check covers HD text; everything was checked by eye from save states. A smoke
+case (`tests/pc/smoke/*.json`: input, frame, SHA-256) with HD text on at 4x on the name
+entry screen (reachable with `MEMORIES_MODE_AT`, no save needed) would catch regressions.
+
+---
+
+## 5. Build Deck: browse cards from the card view (Up / Down)
+
+**Wish:** in Build Deck, triangle shows a card's details; to see the next one you must close
+the view, move down, and press triangle again. Up / Down inside the view should show the
+previous / next card of the list.
+
+**How it works today (read, not yet traced further):**
+- `BuildDeck_UpdateChestPaneInput` / `BuildDeck_UpdateDeckPaneInput`
+  (`src/game/build_deck_pane_input.c`): triangle takes `BuildDeck_GetActiveCardID(list)`
+  (the card at `first + cursor`), writes it to `gDuel_wViewerCardID`, sets
+  `gDuel_bCardViewerYOffset = 0x14` and `gDuel_bEffectState = DUEL_EFFECT_STATE_CARD_VIEWER`.
+- The viewer is `DuelEffect_UpdateCardViewerState` (`src/game/func_800283F4.c`), shared with
+  the duel, the Library and Trade: it loads the card with `func_80029164(3, id)`, shows it,
+  and closes on button `0x20`. Nothing links it back to the list.
+- `src/game` must stay byte-identical to retail, so the change lives in `src/pc`
+  (an override or a mod hook, `src/pc/mods/hooks.c`), not in the decompiled code.
+
+**Decided:**
+- **Swap the card in place** (not replay-and-reopen) for Build Deck and Trade. An option
+  under the Game menu (like "Use deck slots"), off by default, so retail behaviour is
+  unchanged unless turned on.
+- **Library and Trade too**, as they use the same viewer.
+- ~~Wrap around~~ changed after testing: **stops at the ends** (the user did not like the
+  looping). Empty rows skipped.
+
+**Done:**
+- **Build Deck: done, tested by the user, PR open** (branch `feat/card-viewer-browse`,
+  pushed; not yet merged upstream). **Re-confirmed working by the user, 2026-09-27**, as
+  part of testing everything shipped so far before starting new PRs. `src/pc/cards/card_browse.c`, a `MEMORIES_PC` hook in
+  `func_800283F4.c`, setting `card_browse` (off by default), Game > Browse cards with
+  Up/Down. A `screens[]` table maps main mode to a `move(pad, step)` function, so a screen
+  is added without touching `CardBrowse_Poll`.
+- **Trade: done, PR open, not yet live-tested** (branch `feat/card-viewer-browse-trade`,
+  stacked on top of the Build Deck branch, pushed). `move_trade_cursor` in the same file:
+  each side has its own list and pad (`trade_helpers.h`'s `D_80185C8C`/`D_80185CCA`/
+  `gTrade_aInventory`/`D_801845EC`), a pad only browses the list its own cursor opened the
+  viewer from, guarded the same way Build Deck's pane is
+  (`DuelEffect_UpdateState() == 0`, confirmed in `main_mode_runners.c`). Checked: builds
+  clean, the smoke suite still passes (no Trade fixture exists), and reached Trade mode
+  headless with no crash — but that's the empty-list case.
+
+**Left to do:**
+- **Trade needs a live session with an owned deck** (ideally two pads) to confirm Up/Down
+  actually works, same as Build Deck needed. **Deprioritized by the user, 2026-09-27** — not
+  worth a test session right now. Manual route to a save with cards, whenever it does become
+  a priority: after escaping Simon's duel to the shop, save, Circle back to the title, then
+  into Trade.
+- **Library: not started, assessed.** Its own card display (`library_runtime.c`,
+  `func_8002ACA4`, opened with Cross from `library_grid_cursor.c`), not the shared viewer.
+  Its own state machine, much more involved than Build Deck's:
+  1. loads the card into slot 0 and sets up a 3D camera;
+  2. the card flies out of its grid cell to the centre while spinning, the description
+     panel slides in;
+  3. the grid fades out, the card fades in;
+  4. in parallel, once the card has loaded, and if it's a monster: loads its 3D model
+     (`Model_LoadMonsterMerge`), then shows a "view model" icon;
+  5. **showing**: Circle closes; Triangle/Cross on a monster goes to stage 4's 3D model
+     view (camera, lights, animation) — a still bigger state, not investigated;
+  6. the grid fades back, the card **flies back into its grid cell**, then everything is
+     released.
+  Extra problems past Build Deck's: releasing/loading a 3D model mid-swap without a crash
+  or leak; the card's fly-back animation targets *the cell it came from*, so browsing to
+  another card must retarget it; the grid scrolls, so the next card may be off-page; locked
+  ("?") cards must be skipped like Build Deck's empty rows.
+
+  **Two approaches, recommendation: start with 1:**
+  1. **Replay the retail steps (safe, slower):** Up/Down triggers the normal close (card
+     flies back), then, once the grid is back, moves the grid cursor and opens the next
+     card automatically (flies out again). Every animation, the model load and the grid
+     scroll are the game's own code — the same principle that already worked for Build Deck
+     and Trade. Cost: ~1-2s of fly-back/fly-out animation per card.
+  2. **Swap in place (nicer, much more work):** stay in stage 5, release/reload the card and
+     its model, retarget the fly-back cell, keep the panel. Needs the 3D model loading and
+     stage-4 view understood first. Move to this only if approach 1's animation feels too
+     slow once tried.
+
+**Check after (once live-tested):** chest pane and deck pane, empty rows, sorted lists, the
+last and first card, Trade with an owned deck, and that the duel's card view (same viewer)
+is unchanged.
+
+---
+
+## 6. Crash: jump to title after loading a state from another build
+
+**Seen:** crash reports `tmp/pc/crash-26952.txt`, `crash-26680.txt` (and reproduced):
+load a save state made by a different build ("state from build X carried over to Y: N code
+addresses moved"), then Debug > Jump to > Title Screen: access violation in `Main_Init`
+(+0x144 / +0x166).
+
+**Verified (2026-09-27):** not caused by our branches. No state, or a state made by the same
+build: fine, in every build. A state converted from another build, then the title jump:
+crashes in the `play.bat` build too, which has no card browsing. Upstream master built fresh
+passed the one test tried, but its conversion moved only 7 addresses (vs ~190).
+
+**Likely cause, not yet verified:** the title jump longjmps to the resume point `Main_Init`
+saves at boot (`D_800E9DC0`, `TitleJump_Execute` in `src/pc/overrides/title_jump.c`). The
+state carries that buffer; the carry-over (`src/pc/guest/state_remap.c`) seems not to remap
+the native addresses in it, so the jump lands on a stale address.
+
+**Left to do:** confirm `state_remap.c` doesn't touch `D_800E9DC0`'s buffer, then remap it
+like the ~190 other addresses the conversion already moves.
+
+**Repro:** `MEMORIES_LOAD_STATE=<state from another build> MEMORIES_TITLE_AT=120` with the
+other build's symbol table in `symbols/`.
+
+---
+
+## 7. 3D models look bad: three separate causes, one fixed, one designed, one blocked
+
+The user's goal: better-looking 3D monster models (the duel field, the battle animation,
+the Library's model view). Three independent causes found so far.
+
+### 7a. Warped textures (PGXP, level 1) — done, PR open
+
+**Now on `feat/pgxp-video-option`** (rewritten clean off `upstream/master`; the branch name
+below, `feat/pgxp-reenable-textures`, is the abandoned original — see the status board note).
+The bug, the fix, and the testing story described here are unchanged; only the branch is new.
+
+**Cause:** the GTE rounds a 3D vertex to a whole console pixel and keeps no depth with it,
+which bends a model's textures on tilted surfaces. A fix was already implemented
+(`src/pc/compat/pgxp.c`, the HMD polygon drivers in `src/pc/overrides/model_polygon_drivers.c`)
+but had **no way to turn it on**: `SET_PGXP` was clamped to 0 in every direction (saved
+preferences, `MEMORIES_PGXP`, runtime writes) with no Video menu entry.
+
+**First pass got this wrong — read below before touching this again.** Initially unclamped
+the setting to 0-2 and offered both PGXP levels, having only grepped the *current* text of
+`notes/pc-build.md` for context, not its *history*. Checking `git log` on that file turned up
+`fix/disable-precise-geometry` (Unchiga, PR #83, the commit this branch's first attempt
+silently undid) and its removed comment: *"positions too are experimental, they open gaps
+in the small monster models."* Level 2 ("textures and positions", the one that also closes
+the seams between a model's parts as they move) uses `snap_seams` (`libgpu.c`), which finds
+a seam only by **two vertices rounding to the same screen word this frame** — it has no idea
+which model or which part a vertex belongs to. On a model small enough that its whole
+footprint is a handful of pixels (the 3d-monsters mod's field figures, 32 tall by default),
+vertices from unrelated, non-adjacent parts coincide by chance, and forcing them together
+distorts a triangle that was otherwise rendering correctly: a new gap where there was none.
+
+**Fix (corrected):** unclamped the setting to 0-1 only (not 0-2) and added **Video > Precise
+geometry** with two choices, Off and Textures — not the "positions" level. Gated the same
+way as HD text (greyed out below Internal 2x or without OpenGL 3). No game-side change.
+`notes/pc-build.md` and `settings.c` both record the `snap_seams` problem.
+
+**Applies to both the field-floating models (3d-monsters mod) and the classic animated-battle
+cutscene, and the Library's model view** — all three go through the same call
+(`func_800540B4` → `GsSortUnit` → the HMD polygon drivers), so one fix reaches all of them.
+
+**Checked:**
+- The deterministic smoke suite (`tools/pc/smoke.py`) passes byte-exact on this branch,
+  including `options` (the screen the new menu item lives on).
+- `MEMORIES_TRACE=frames` (headless, deterministic): with `pgxp=1`, the 3D Monsters duel
+  shows ~300 precise vertex words per frame, matching `notes/pc-build.md`.
+- Live, windowed, Internal 2x, duel with a 3D monster: Off vs Textures on the same paused
+  frame — no artifacts on the field. Screenshots in `tmp/pc/hd-text-compare/`.
+- `tests/pc/settings_test.c` updated to the new 0-1 range, **not run locally** (this Windows
+  environment lacks zlib/libpng for a full CMake configure); `pc-build.yml` runs it in CI.
+
+**Left to do:** rename done (branch was `feat/pgxp-textures`, collided with the already-merged
+upstream `pgxp-textures`/PR #67 branch name; now `feat/pgxp-reenable-textures`). **Open the
+PR** — description should lead with the level-2 finding, not bury it, and link screenshots.
+
+### 7b. PGXP level 2 (positions, closes seams, fixes wobble) — done, PR open
+
+**Now on `fix/pgxp-snap-seams-identity`** (rewritten clean off `feat/pgxp-video-option`; the
+branch name below, `fix/pgxp-seam-identity`, is the abandoned original — see the status board
+note). The `draw_id` design and the arena-corruption bug it caused (7b-bug) are unchanged and
+still worth reading; the rewrite folded the `PGXP_VERTEX_WORDS` fix into the *same* commit
+that grows `PgxpVertex`, so that specific bug never existed on the new branch at all — nothing
+to find there this time. No debug-logging diagnostics were added or needed.
+
+**Why level 2 is off:** `snap_seams` (`src/pc/sdk/libgpu.c:386`) hashes each projected vertex
+purely by its rounded screen word and treats any two colliding vertices — anywhere in the
+whole frame — as a seam to close. It has no concept of which model, or even which draw call,
+either vertex came from, so on a small model (or two unrelated small models near each other)
+coincidence looks identical to a real seam.
+
+**Design for the fix (from a walkthrough on 2026-09-27, not yet coded):**
+1. **One shared choke point exists.** Duel monsters, the 3D-Monsters mod's field figures, and
+   the Library's card viewer all draw through `func_800540B4` → `GsSortUnit`
+   (`src/game/func_800540B4.c:365`, `src/pc/sdk/libgs_unit.c:154`) → the polygon drivers in
+   `model_polygon_drivers.c`. Tagging at that one point covers all three screens at once.
+2. **Add a `draw_id` counter**, bumped once per `GsSortUnit` call (once per model instance).
+3. **Thread `draw_id` through `pgxp.c`'s tables**: `PgxpVertex`, the `Entry` table in
+   `Pgxp_Project`, and the `Placed` table in `Pgxp_StoreAt` each grow a `draw_id` field,
+   recorded alongside `x, y, w` exactly like `frame`/`stamp` staleness already is.
+4. **Change `snap_seams`'s ambiguity check** (`libgpu.c:412`): only ever compare two vertices
+   that share a `draw_id`. Cross-model / cross-draw pixel coincidences become structurally
+   impossible to snap — they're never even compared. Same-model seam-closing (what
+   `snap_seams` was built for, commit `79eff0378`) keeps working.
+5. **Optional refinement:** also tag a part/primitive-block index and require it differs
+   too, so a model's own coincidental self-overlaps (rare) aren't snapped either. Not needed
+   to fix the reported bug (the small-model case), so treat as a later refinement.
+
+**Expected result once done:** level 2 becomes safely re-enablable everywhere a model is
+drawn — the wobble-fix (the actual original goal of PGXP, commit `80d4dc369`) ships fully,
+not just the texture half. Below level 2, nothing changes; the smoke suite should still pass
+byte-exact.
+
+**Implemented** (commit `7e82cafce`, branch `fix/pgxp-seam-identity`, stacked on
+`feat/pgxp-reenable-textures`): `Pgxp_DrawId`, threaded through `PgxpVertex`/`Entry`/`Placed`,
+bumped once per `GsSortUnit` call; `snap_seams` keyed on `(word, draw_id)`. Video > Precise
+geometry offers "Textures and positions" again; `SET_PGXP` range is 0-2.
+
+**Checked, 2026-09-27:** builds clean. Live, from a state built off the
+`tests/pc/smoke/duel-3d-monsters.json` fixture: level 2 on the field's own model (several
+camera angles, no gaps) and, the real stress case, the field forced full of ten different
+monsters at once (`mods/3d-monsters`'s own `test` tunable), several under 32px — the original
+repro shape — no gaps or torn triangles on any of them.
+
+**Left to do:**
+- Re-run the deterministic smoke suite locally once a full CMake configure is possible here
+  (this machine lacks zlib/libpng for it); CI covers it per PR in the meantime.
+- The ten-monster stress case exposed a separate, **pre-existing, unrelated** performance bug
+  while testing this: `mods/3d-monsters`'s own model cache (`CACHE 8` in `field_models.c`) is
+  smaller than what its `test` tunable asks for (10), so it thrashes reloading models every
+  frame. Real duels stay well under 8 monsters and never hit this — not a blocker for this PR,
+  but worth its own item if `test` stays useful for future stress-testing.
+- Open the PR (stacked on 7a's).
+
+### 7b-bug. Arena corruption the seam-identity fix introduced — found live, fixed, done
+
+**Symptom, from the user's own live testing (not caught by any of my own earlier checks):**
+thin lines, flickering in and out rapidly, always originating from the screen's left/top edge
+(not always the same exact point), on a real duel. Present at both "Textures" and "Textures
+and positions"; gone with Precise geometry Off entirely.
+
+**The debugging path — what was tried, what each attempt actually showed, in order:**
+
+1. **First guess: a vertex's looked-up position far from its own word.** Added a diagnostic
+   to `libgpu.c`'s `DrawOTag` (where `PgxpVertex` entries get built from `pgxp.c`'s lookups):
+   log if `fabsf(precise_x - word_x) > 2px` (or same for y). Built, the user played with
+   `MEMORIES_TRACE=frames MEMORIES_LOG=<path>` set so the log went to a file. **Zero hits**
+   despite the artifact being visible in that exact session. Wrong guess.
+2. **Second guess: a bad (near-zero/non-finite) depth**, added to the same check (the OpenGL
+   pass divides by depth for perspective-correct texturing, so a bad one could stretch a
+   texture without any vertex position moving, and level 1 never overwrites depth the way it
+   overwrites position). Also **zero hits**, same live session, artifact still visible.
+3. **Tried fixing the signal-reentrancy gap** in `DrawOTag` (see 7b's commit `14e34a1fd`
+   description) as an actual fix, not just a diagnostic, reasoning it could explain
+   intermittent, timing-dependent corruption. Built, the user tested: **issue still there.**
+   Wrong primary cause (kept anyway as real, separate hardening — see below).
+4. **Widened the net: log every precise vertex near the screen edge, unconditionally**, no
+   "looks wrong" filter at all. This flooded the log (tens of thousands of lines) with
+   *legitimate* off-screen geometry (a field/skybox boundary quad, `draw_id 0`, depth exactly
+   `150.0` every time, precise value exactly equal to its own word) — a good reminder that
+   off-screen vertices are normal in PS1 rendering and a screen-position filter alone is too
+   broad. Grepping this data for `abs(precise - word) > 20px` (rather than eyeballing it)
+   found **zero** genuinely large position errors anywhere in the whole log — a strong,
+   *exhaustive* negative result: no individual vertex's looked-up position was ever
+   meaningfully wrong. That ruled out `pgxp.c`'s lookup tables as the source, definitively,
+   for the first time (attempts 1-2 only sampled one session; this scanned everything).
+5. **Moved the check downstream, to where a precise position actually gets used**: added a
+   log to `gl_picture.c`'s `polygon()`, right after `find_precise()` assigns `v[i].fx/fy`,
+   comparing it against the vertex's own base (whole-pixel) position with an 8px threshold.
+   This is a *different* comparison than attempt 1 — not "is the cached value sane" but "does
+   what got handed to this specific triangle corner match where that corner actually is".
+   **This found it immediately**: dozens of hits, and critically the values were not just
+   "wrong" but **garbage** — `q` (`1/depth`) of `inf`, `6164539`, and
+   `97222777161852910548681223518707253248` (a raw integer bit pattern read as a float, not a
+   real number that ever came from any depth calculation). Garbage, not merely incorrect data,
+   is the signature of reading the wrong *memory*, not the wrong *vertex*.
+6. That pointed at the arena buffer `gl_picture.c` records draw commands into and replays
+   them from. Checked whether replay runs on a separate thread (it would explain a memory
+   race) — confirmed no (`grep`, no thread creation calls; `GlPicture_Replay` is called
+   in-line from `sdl.c`'s present path). So not a cross-thread race. Re-read `record_precise`
+   and the `OP_PRECISE` replay case side by side and found the actual bug (see 7b's commit):
+   both hardcoded "4 words per `PgxpVertex`", stale since `draw_id` grew the struct to 5.
+
+**Lesson for next time:** when a diagnostic at the *collection/lookup* point finds nothing
+despite a live, visible bug, don't add more guesses at the same layer — move the check to
+where the data is actually *consumed*. And prefer an exhaustive/unconditional log filtered
+by a script over an inline "does this look wrong" condition; two hand-picked wrongness
+conditions (position, depth) both missed this, while a plain "log everything here, then grep
+for the real threshold afterward" approach found the true negative result that redirected
+the search, and a differently-placed unconditional log then caught the bug on the first try.
+
+**Fixed** (commit `14e34a1fd`, this branch — superseded by the from-scratch rewrite, see the
+top of this item): `PGXP_VERTEX_WORDS` macro (`sizeof(PgxpVertex) / sizeof(uint32_t)`)
+replaces both hardcoded `4`s.
+
+**Checked:** builds clean. Live, over a 227k-line trace log spanning a long play session in
+the user's own duel: zero "replay mismatch" fires (the diagnostic below), artifact confirmed
+gone by the user.
+
+**Decided, 2026-09-27: the attempt-5 diagnostic does not ship.** `MEMORIES_TRACE=frames`
+already logs a lot in ordinary play (routine per-120-frame stats: `draws:`, `pgxp: N precise
+vertex words...`, `OpenGL picture:` — all pre-existing, not from this bug hunt), and the user
+doesn't want a permanent extra source added on top as part of this fix. Kept here instead, to
+paste back in by hand if this class of bug ever needs hunting again (it found the actual bug
+on the first try; attempts 1-2, the collection-time checks, did not):
+
+```c
+/* In gl_picture.c's polygon(), right after find_precise(&v[i], words + at); */
+if (v[i].precise && (fabsf(v[i].fx - (float)v[i].x) > 8.0f || fabsf(v[i].fy - (float)v[i].y) > 8.0f)) {
+    LOG(LOG_FRAMES, "pgxp: replay mismatch: base (%d,%d) got precise (%.2f,%.2f) q %.4f at %p batch %p",
+        v[i].x, v[i].y, v[i].fx, v[i].fy, v[i].q, (void *)(words + at), (void *)batch_words);
+}
+/* needs #include <math.h> added alongside the other includes */
+```
+
+### 7c. Low-res, blurry model textures (the HD pack) — blocked, no path yet
+
+**Cause (traced, not fixed):** the HD texture pack mechanism (`texture_pack.c`) replaces
+disc pixels by *provenance*: every VRAM upload is tagged with the disc byte offset it came
+from (`texture_dump.c`), and a pack image is matched to that tag plus the palette. Tested
+directly: ran the `duel-3d-monsters` smoke case with `MEMORIES_DUMP_TEXTURES` on — **zero**
+of the model's own textures were tagged (623 tagged from `WA_MRG.MRG`, 32 from `SU.MRG`, 0
+from `MODEL.MRG`, out of the archive's 351 MB). `notes/image-remaster.md` lists `MODEL.MRG`
+under "Not done" for the same reason. So an HD pack **cannot** replace model textures today,
+even with redrawn art in hand — this is a separate, independent axis from PGXP (7a/7b): PGXP
+never touches pixel content, only how existing textures get mapped and where vertices land.
+
+**Leads for why the tags are lost** (not yet followed): `model_texture_transfer.c` copies
+textures through work buffers (`D_801DD000` etc.) rather than a straight disc-read-to-VRAM
+copy, which may be where the tag drops; `model_apply_texture_tint.c` recomputes palette
+entries for a model's tint/lighting, and the pack also requires the *palette* to match the
+one the image was captured through, which a computed tint palette never will.
+
+**Once textures are taggable**, the existing pipeline (`tools/pc/extract_images.py`,
+`upscale_pack.py`) applies unchanged: extract, redraw or upscale, pack. A sensible next step
+after 7a/7b: pick a handful of common monsters as a pilot before committing to all ~700+.
+Worth doing 7b (perspective-correct mapping) first or alongside — upscaled detail makes
+affine texture warp *more* visible, not less, so shipping HD model textures without it would
+look worse in places than the low-res original.
+
+**Manual test routes the user gave me, for later sessions (not yet used):**
+- After escaping Simon's duel to the shop: save, Circle back to the title, Library, click a
+  card, press Right — a quick way back into a state with cards and a model to inspect.
+- L1/R1 during the battle animation rotates the camera around the model (see 7b above).
+
+### 7d. Duel field tile: a thin bright diagonal sliver, intermittent — new, not started
+
+**Seen, 2026-09-27** (three screenshots from the user, same duel, same camera area, a few
+seconds apart): a tile just past the field-card slot is clean in two of the three shots, but
+in the third a thin bright yellow-white diagonal sliver cuts across its corner — a small chunk
+of the tile's normal shading replaced by this streak. Comes and goes with small camera moves.
+
+**Confirmed NOT PGXP**: the user toggled Precise geometry Textures/Off at the same spot —
+"did not change much". This is on `fix/pgxp-snap-seams-identity` before any of this session's
+`draw_id`/arena changes exist in the tree (only commit 1, the menu option, was applied), so it
+can't be the arena-corruption class of bug either. Likely a pre-existing seam/z-fighting
+artifact between the tile and the card-slot decal, or something in the base (non-PGXP)
+rendering — not yet traced.
+
+**Left to do:** get a few more repro screenshots (ideally with Precise geometry Off, to rule
+out PGXP definitively rather than "did not change much"), and find what two overlapping pieces
+of geometry are fighting at that seam.
+
+---
+
+## PGXP: Unchiga says distortion on "either setting" — not documented anywhere, needs real cross-OS data
+
+**2026-09-28.** Closed PR #139 (level 1 only, no explanation) turned into this message from Unchiga:
+*"it was disabled internally since it doesn't display properly with either setting. There is
+visible distortion when you enable it."* Checked every prior PR in detail (#67, #71, #83) and
+one issue search — **none of them document level 1 (Textures) ever showing distortion**; every
+written record is specifically about level 2's seam gaps on small models (the bug already
+fixed this session). #71 explicitly notes testing on Windows found no issues at either level,
+and no OS-specific concern was ever written down anywhere. So either Unchiga is recalling this
+imprecisely, or has private/undocumented information we don't have. Can't resolve this without
+either (a) more detail from them (screenshot, OS/GPU, scene) or (b) reproducing it ourselves
+cross-platform.
+
+**Plan:** test commit 1 (Textures only) in isolation, thoroughly, on this Windows machine, then
+the user reboots into a real (non-WSL) Linux install and repeats the exact same test. WSL was
+considered and rejected as a stand-in for (b): WSLg routes OpenGL through a Windows-driver
+translation layer (not a native Linux Mesa/Nvidia driver), so a clean WSL result wouldn't rule
+out a native-Linux-driver-specific issue, though a *distorted* WSL result would still be a real
+finding.
+
+**Status.** Old branches deleted (`feat/pgxp-reenable-textures`, `fix/pgxp-seam-identity`,
+`feat/pgxp-video-option`, `fix/pgxp-snap-seams-identity`, local + `origin`), fork fast-forwarded
+to `upstream/master` (was 136 commits behind), fresh branch `feat/precise-geometry` created off
+it. Commit 1 only (Video menu option, Off/Textures, `pgxp` clamp raised to 1) is now on that
+branch and builds clean (`tmp/pc/game32dbg`) — ready to test with `play.bat` on this Windows
+machine. Commit 2 (`Pgxp_DrawId`/`PGXP_VERTEX_WORDS`, level 2) is not on the branch yet; it goes
+on only after commit 1 is thoroughly tested on both Windows and Linux.
+
+**Windows test environment (this machine), for the record:**
+
+| Component | Version |
+|---|---|
+| OS | Windows 11 Pro 24H2, build 10.0.26100 |
+| CPU | 13th Gen Intel Core i5-1345U |
+| GPU | Intel Iris Xe Graphics (integrated) |
+| GPU driver | Intel, OpenGL 4.6.0 — Build 32.0.101.7088 |
+| SDL | 3.4.16 |
+| Compiler | clang 23.1.2, `i686-w64-mingw32` target (llvm-mingw 20260922 release, ucrt runtime) |
+| Build target | 32-bit Windows binary (`i686`) |
+
+**Linux test environment (fill in once the user reboots):**
+
+| Component | Version |
+|---|---|
+| Distro | — |
+| Kernel | — |
+| GPU | — |
+| GPU driver (Mesa/proprietary) | — |
+| SDL | — |
+| Compiler | — |
+
+## Parked
+
+- **Game > Restart** (dropped for now): `Platform_RestartGame()` already relaunches the
+  game (used by the Mods window); a menu item would need to wait for a safe point like
+  `TitleJump_Poll` (not while the memory card is written or the save menu is open).
+  "Return to title" exists under Debug > Jump to > Title Screen.
