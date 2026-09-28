@@ -405,17 +405,26 @@ end; 110 lines = 10 models × 11 load phases once is normal), `3028a7c62` the
 mod (`mods/test-scenes/`: `mod.json`, `field.json`, `test_scenes.c`). Live-tested
 by the user (Q = L1, X = Cross on keyboard) and scripted.
 
-**How to capture it (the working recipe):**
-1. **Build the scene once and save a state** (windowed, deterministic):
-   the options input with `1100:4400` (Cross + L1, SIO layout) instead of
-   `1100:4000`, `MEMORIES_MOD_TEST_SCENES=1 MEMORIES_MOD_3D_MONSTERS=1`,
-   `MEMORIES_SAVE_STATE=1700:<path>`. Log (`MEMORIES_TRACE=mods`): armed at
-   frame 1166, field filled at 1557.
-2. **Capture from the state**, one run per setting: `MEMORIES_LOAD_STATE=<path>
-   MEMORIES_DUMP_FRAME=300 MEMORIES_DETERMINISTIC=1`, plus the settings.
-   Scripts used: `scene_state.ps1` (save/dump) and `ppm_diff.py` (changed
-   pixels, max delta, mask) in the session scratchpad — to move into
-   `tools/pc/` with the runner.
+**How to capture it: `tools/pc/scene_measure.py`** (committed, Windows and
+Linux, Python only, no PIL):
+
+```
+python tools/pc/scene_measure.py state      # boot → scene → save state (redo after a rebuild)
+python tools/pc/scene_measure.py controls   # must print "controls: pass"
+python tools/pc/scene_measure.py compare [--scales 2,4]
+python tools/pc/scene_measure.py capture --pgxp 1 --scale 2 out.ppm
+python tools/pc/scene_measure.py diff a.ppm b.ppm --mask mask.png
+```
+
+Defaults: `--game tmp/pc/game32dbg`, `--out tmp/pc/measure` (captures, PNGs,
+logs, the state, and a clean user folder `user/`: default settings, no saves,
+no texture packs, update check off). What it does underneath:
+1. **State:** the options input with `1100:4400` (Cross + L1, SIO layout),
+   both mods on, internal 2x, `MEMORIES_SAVE_STATE=1700:<state>`; checks the
+   log for "field filled" (frame ~1556).
+2. **Capture:** `MEMORIES_LOAD_STATE`, `MEMORIES_DUMP_FRAME=300`, windowed and
+   `MEMORIES_DETERMINISTIC=1`, `MEMORIES_PGXP` / `MEMORIES_INTERNAL_SCALE`
+   pinned; rejects a dump whose size is not 320×240 × scale.
 
 **Gotchas found (cost real time):**
 - **Internal resolution is `MEMORIES_INTERNAL_SCALE`**, not `MEMORIES_SCALE`
@@ -442,9 +451,12 @@ by the user (Q = L1, X = Cross on keyboard) and scripted.
 | 4x Off, rerun vs earlier run | 0 changed pixels |
 
 **First measurement (M3, raw, not yet against the thresholds):** frame 300 after
-the state, Off vs Textures: **2x 18.9%** of pixels changed (640×480, max
-delta 255), **4x 19.8%** (1280×960). The mask: almost the whole field floor
-and most monster bodies; cards, hand, HUD and text unchanged. Changed pixels
+the state, Off vs Textures, with `scene_measure.py compare` (clean user
+folder): **2x 15.30%** of pixels changed (640×480, max delta 255), **4x
+15.31%** (1280×960); `controls` pass. (With `game32dbg-user`'s settings and
+HD texture pack it was 18.9% / 19.8%: the numbers depend on the user
+folder, which is why the tool uses a clean one.) The mask: almost the whole
+field floor and most monster bodies; cards, hand, HUD and text unchanged. Changed pixels
 is not the pre-set metric (texture displacement ≥ 1 screen px, M1); many may
 be a colour step. Next is M1 from `polygon()`.
 
@@ -453,8 +465,8 @@ be a colour step. Next is M1 from `polygon()`.
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
 2. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
-3. **Move the scripts into `tools/pc/`** as the runner (state build + capture +
-   diff), settings pinned by env.
+3. ~~Move the scripts into `tools/pc/`~~ done: `scene_measure.py`. Extend it
+   per scene (`model`, ...) and with the M1 trace.
 4. **Trace in `polygon()`:** M1, M2 and M4 in one log line per triangle,
    behind a new trace category. Run on the scenes at 2x and 4x.
 5. **Read M1/M2/M4 against the thresholds** — the first real answer to "is
