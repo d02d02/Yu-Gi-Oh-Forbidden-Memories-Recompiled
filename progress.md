@@ -551,23 +551,63 @@ width right (taken modulo the picture size).
   or whether level 2 should subtract the floor's half pixel.** The wobble
   amplitude is the spread around the bias: median 0.43 console px, 95th 0.76.
 
+### Camera sweep and why vertices lose precision (2026-09-28)
+
+`scene_measure.py trace --camera turn:<degrees>` (Hand camera L1/R1 from the
+state, **at the duel's own distance**: the user's guidance — moving the camera
+away sends the field into the duel's black fog past ~900, and moving in loses
+the field's edges); `--camera near|near-half` moves in (L3). Each trace also
+writes `<prefix>.overlay.png` (red: shift ≥ 2 px, yellow 1-2, blue mixed) and
+`<prefix>.rejects.csv` (from `gte.c`: projections that kept a precise
+position, and why the others did not).
+
+| View (2x) | Max shift | ≥ 2 px (≤ % frame) | Mixed | Rejected projections |
+|---|---|---|---|---|
+| default | 4.6 px | 42 (17%) | 16 | 0 |
+| turn −22 / −45 / −90 | 6.5 / 8.9 / 7.0 | 53 / 46 / 48 (29 / 29 / 33%) | 18 / 12 / 18 | 0 |
+| turn +22 / +45 / +90 | 6.5 / 8.8 / 6.1 | 41 / 45 / 50 (24 / 28 / 34%) | 16 / 20 / 22 | 0 |
+| near-half (450) | 13.1 | 88 (51%) | 38 | 25 outside the window (miss ≤ 2.2 console px) |
+| near (300) | 15.7 | 88 (76%) | **1021** | 2466 outside the window (miss ≤ 3.5), 120 saturated |
+
+**Reading:**
+- **Level 1 is strongest at the field's edges and near the camera.** Turned a
+  quarter (edge-on view of the field's side, `trace_turn-90_2x.overlay.png`),
+  the floor along the edge and the mat's side face are red. Off vs Textures
+  of that view for the eye: `tmp/pc/measure/edge_off_2x.png`,
+  `edge_tex_2x.png`, `edge_mask_2x.png` (16.0% of pixels change).
+- **At the duel's distance nothing is rejected** at any angle: the 12-22
+  mixed triangles there are mostly the **monster-zone mats**, which get no
+  precise corners from rtp's window test — they come from the by-value lookup
+  (`Pgxp_Find`: a word two vertices of the frame round to is left alone) or a
+  path that is not tagged. Not yet traced which.
+- **Closer in, the window test rejects vertices** (`gte.c` rtp keeps a precise
+  value only within (−1, +2) of the console's floored pixel; the GTE's
+  approximate division drifts up to 3.5 console px close up), and whole
+  monsters become mixed: drawn affine next to perspective neighbours, their
+  textures break at shared edges. **This is the best candidate so far for
+  Unchiga's distortion**, if his camera was close (or his scene has close
+  geometry: the battle animation's close-ups). Next: capture Off vs Textures
+  at `near` and look at the monsters' seams, and try widening the window.
+
 ### Next steps (in order)
 
 1. ~~Answer the unknowns~~ done. ~~Scene `field`~~ done (above).
    ~~`scene_measure.py`~~ done. ~~M1/M2/M4 trace~~ done (above).
-2. **Field-edge camera** for M2 (Unchiga's case): hand-camera input from the
-   state (L1/R1 turn, L3/R3 zoom), trace again; and an overlay image marking
-   M1 ≥ 2 px and M2 triangles on the capture, to see where they are.
-3. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
+   ~~Field-edge camera~~ done (sweep above).
+2. **Close-up rejections:** Off vs Textures at `near`, look at the seams;
+   then a wider (or depth-scaled) window in `gte.c` rtp, measured with the
+   same trace (rejections → 0, mixed → few).
+3. **Zone mats' mixed triangles:** which lookup misses them.
+4. **Scene `model`** (a monster filling the screen), then `battle`, `small`,
    `control`.
-4. **M4 bias:** decide with level 2 whether precise positions should be
+5. **M4 bias:** decide with level 2 whether precise positions should be
    compared against the floored pixel + 0.5.
-5. **Frame-range dump**, then M3 and the blind A/B (M6).
-6. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
+6. **Frame-range dump**, then M3 and the blind A/B (M6).
+7. **Measurement build with the clamp at 2:** M5 before; then commit 2 and M5
    after.
-7. **Package the runner** (mod + script) for Unchiga (M7), with a note on what
+8. **Package the runner** (mod + script) for Unchiga (M7), with a note on what
    to send back.
-8. Reuse for the model work (7c).
+9. Reuse for the model work (7c).
 
 ---
 
