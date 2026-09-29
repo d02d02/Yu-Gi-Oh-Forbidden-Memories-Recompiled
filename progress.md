@@ -146,7 +146,7 @@ unpushed there).
 
 | # | Item | Status | Branch | Next step |
 |---|---|---|---|---|
-| **P** | **Precise geometry, level 1 (Textures)** | Three fixes done and measured, cross-OS confirmed on Linux; PR branch pushed to the fork, **PR not opened** | `feat/precise-geometry-menu` (PR), `feat/test-scenes` (work + tools) | User's visual check; then open the PR |
+| **P** | **Precise geometry, level 1 (Textures)** | Three fixes done and measured, cross-OS confirmed on Linux; PR branch **rebased onto current upstream/master and pushed**, **PR not opened** | `feat/precise-geometry-menu` (PR), `feat/test-scenes` (work + tools) | User's visual check of the rebased branch; then open the PR |
 | P2 | Precise geometry, level 2 (positions) | Designed (`draw_id`), an early version was built and tested on since-deleted branches | — | After the PR: see "Level 2" below |
 | 1 | Name entry: slots guard | Main work merged upstream (#110); follow-up left | — | Identify the cells by checksum, not position |
 | 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
@@ -157,7 +157,7 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs); HD-pack attempt broke live state, **reverted** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live**; HD pack support parked (mechanism found, not built); PR branch **rebased onto current upstream/master and pushed**, **PR not opened** | `feat/2d-monsters-mod` (PR) | User tests Windows then Linux; then open the PR |
 | 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
 | — | Game > Restart | Parked | — | — |
 | — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
@@ -178,11 +178,19 @@ by Unchiga: *"visible distortion when you enable it"*; his video shows it on the
 **edge of the duel field**, on Nvidia RTX 4090 + XWayland). Our Intel machines
 (Windows, Linux) never showed distortion by eye. Full story: `history.md`.
 
-### The PR: `feat/precise-geometry-menu` (pushed to the fork, not opened)
+### The PR: `feat/precise-geometry-menu` (rebased and pushed to the fork, not opened)
 
-Off `upstream/master` `6ad201fbf`, code only (no `progress.md`, `memcards/`, tools,
-test scenes or measure code; keep it that way: cherry-pick, never PR a working
-branch). Four commits:
+**Rebased onto current `upstream/master`, 2026-09-29** (was `6ad201fbf`, 77 merged
+PRs stale; now `5a269da67`) — clean, no conflicts, checked with a dedicated agent:
+no upstream commit since the old base touched the PGXP core files (`pgxp.c/h`,
+`gte.c`, `libgpu.c`, `libgs.c`); only `menu.c`/`settings.c` saw unrelated upstream
+churn, which merged without incident. `upstream/fix/disable-precise-geometry`
+(PR #83, Unchiga's own "level 2 opened gaps, disabled everything") is already an
+ancestor of the `upstream/master` this rebases onto — not parallel work, already
+accounted for. `feat/precise-geometry` (the older, shorter-named branch also on
+`origin`) is an ancestor of `feat/test-scenes`, fully superseded; not the PR base.
+Code only (no `progress.md`, `memcards/`, tools, test scenes or measure code;
+keep it that way: cherry-pick, never PR a working branch). Same four commits:
 
 1. **Video: re-enable precise geometry (Textures).** Video > Precise geometry,
    Off / Textures; `SET_PGXP` max 1 (level 2 not offered); greyed below 2x or
@@ -215,10 +223,9 @@ measured). Naming: Unchiga's style, `Area: what the player sees`; avoid used nam
 `feat/pgxp-video-option`). Ask Unchiga to retry at Textures and, if it still shows,
 send Off vs Textures of the same frame and his internal resolution.
 
-**Upstream branches that may conflict** (checked 2026-09-29, none merged, none
-touch the PGXP code): `feat/copy-system-info`, `hd-options-dimmed`,
-`debug-title-jump`, `windows-mods-3d` (menu.c, settings.c, libgpu.c); many touch
-`notes/pc-build.md`.
+**Left to do:** user's visual check of this exact rebased 4-commit branch (not
+yet done — earlier live confirmation was on an older, since-rewritten single
+commit); then open the PR against `upstream:master`.
 
 ### Measuring: `tools/pc/scene_measure.py` (on `feat/test-scenes`)
 
@@ -577,13 +584,37 @@ behind: `history.md`. The regression this drove led to a headless
 build-and-capture recipe, now in "How to test things" above, for checking any
 future shared-engine-state change before it ever reaches the user live.
 
-**Left to do:**
-1. HD pack support: parked. Needs a VRAM region verified safe by something
-   stronger than reading another mod's comments, or a different mechanism
-   entirely — not a fresh guess at a different address range.
-2. Record `duel-2d-monsters.json`'s `sha256` (`python3 tools/pc/smoke.py
-   --record`), then commit and cherry-pick the current fix onto
-   `feat/2d-monsters-mod` for the eventual upstream PR.
+**HD pack support: a validated mechanism found, not yet built.** Combining the
+texture-pack system's own query API with the 3D Monsters mod's transient-touch
+discipline: on a cache miss, `LoadImage` a card's art to scratch VRAM (as
+before), but instead of drawing from it directly, wait one frame (the pack's
+own match only resolves on its next per-frame service tick, confirmed live —
+`TexturePack_EntryFor` returns 0 the same frame as the write, a real entry the
+frame after), then call `TexturePack_EntryImage` to pull the actual
+replacement (confirmed live: the real HD pack's own 408x384 `card-001.png`,
+correct crop info included), bake it into the mod's private bank at that
+resolution, and only then restore the scratch VRAM — the entry stops resolving
+the instant that VRAM is overwritten, but the image data is already copied out
+by then. Exposure is ~1 frame, on a cache miss only, not persistent — a much
+smaller and more defensible bet than the reverted attempt. Not yet implemented
+(needs the two-frame pending-state machine per cache slot and RGBA-to-bank
+resampling); the two experimental probes that found this are not on any
+branch (built and discarded in the debug build only).
+
+**PR prepared and pushed, 2026-09-29:** `feat/2d-monsters-mod` (on `origin`)
+rebased onto current `upstream/master` (was 25 merged PRs stale) and updated
+with the confirmed fix, as a clean 4-commit branch: the original add, its
+smoke fixture, the size/depth-sort fix (code only — the fixture's `sha256` is
+now recorded), all with no `progress.md`/`history.md` changes mixed in (those
+files don't exist upstream). Diff against `upstream/master` is exactly
+`mods/2d-monsters/` and the one smoke fixture, nothing else. Decided (with the
+user): ship this now without HD support rather than hold it — the 3D Monsters
+mod has the same limitation today (item 7c), so this isn't a step backward,
+and HD support is a novel-enough mechanism to deserve its own PR and review
+later rather than riding in on this one.
+
+**Left to do:** user tests the pushed `feat/2d-monsters-mod` on Windows, then
+Linux; only then open the PR against `upstream:master`.
 
 ---
 
