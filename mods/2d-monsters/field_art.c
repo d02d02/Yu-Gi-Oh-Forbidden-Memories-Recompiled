@@ -19,12 +19,16 @@
  * that position lifted by the fitted height) run through RotTransPers under
  * the frame's own world-screen matrix (D_800FE148, GsSetRefView2's own),
  * exactly as func_80015EF4 projects a field card's ground sprite. The same
- * call's returned depth, already scaled the way this table's other content
- * is (a model's "quarter of its distance"; func_80015EF4's own comment),
- * sorts the cutout into D_800E9D90[0] -- the table the battle presentation
- * draws its two duellists into, and the one the 3D Monsters mod borrows for
- * the same reason: unused while the field is seen from above, and drawn
- * over the field, under the hand and the rest of the interface. */
+ * call's returned depth is at RotTransPers' own native resolution, a quarter
+ * as fine as the card scale func_80015EF4 sorts a field card's own upright
+ * quad at (its own comment on a model's primitives); draw_one() divides it
+ * down the same single step the 3D Monsters mod's sort_monster does
+ * (`nearest / 4`) before it sorts the cutout into D_800E9D90[2] -- the same
+ * table func_80015EF4 sorts that upright quad into, and the one the 3D
+ * Monsters mod's own field-standing draw_monster() uses too (as
+ * D_800E9D98[0], its own comment's name for the same table): shared with the
+ * field's own card geometry, not borrowed for being unused, so a cutout
+ * sorts correctly against the card it stands on and against other cutouts. */
 #include "types.h"
 #include "psyq/libgte.h"
 #include "psyq/libgpu.h"
@@ -208,19 +212,32 @@ static int lift(void)
 /* The world-space height that projects to `pixels` game pixels tall at the
  * middle of the field: found the way the 3D Monsters mod's fit() finds a
  * model's scale, by projecting instead of measuring drawn packets, because
- * every card's cutout is the same 102x96 record and needs the same height. */
+ * every card's cutout is the same 102x96 record and needs the same height.
+ * DEFAULT_PIXELS matches the 3D Monsters mod's own TALL_PIXELS: the same
+ * "about this tall in the middle of the field" target its models are fit to,
+ * so a cutout should read at the same scale a battle model would. */
 #define MIDDLE_X 0
 #define MIDDLE_Z 0
 #define HEIGHT_DEFAULT 700
-#define HEIGHT_SMALLEST 128
+/* A floor only against a degenerate `got` (a near-zero or negative pixel
+ * delta), not a realistic lower bound on the answer: live logging under the
+ * field's actual camera (target 40, DEFAULT_PIXELS's old value) found 128
+ * world units already project to 66 px, well past the target, with the loop
+ * wanting to settle around 77. A HEIGHT_SMALLEST of 128 -- copied by analogy
+ * from the 3D Monsters mod's SCALE_SMALLEST, a fixed-point scale *fraction*
+ * (of MODEL_FIXED_ONE), not a raw world-unit height, so the same number
+ * means something else entirely here -- clamped every attempt back up to
+ * itself, so the loop could never reach the smaller height it kept computing
+ * and every cutout was stuck oversized. */
+#define HEIGHT_SMALLEST 16
 #define HEIGHT_LARGEST 8192
-#define DEFAULT_PIXELS 40
+#define DEFAULT_PIXELS 32
 
 static int fit_height(void)
 {
-    int target = tunable("pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt;
+    int target = tunable("pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt, got = 0;
     for (attempt = 0; attempt < 5; attempt++) {
-        int sx, base_sy, top_sy, got, wanted;
+        int sx, base_sy, top_sy, wanted;
         project(MIDDLE_X, -lift(), MIDDLE_Z, &sx, &base_sy);
         project(MIDDLE_X, -lift() - height, MIDDLE_Z, &sx, &top_sy);
         got = base_sy - top_sy;
@@ -233,12 +250,14 @@ static int fit_height(void)
         }
         height = wanted < HEIGHT_SMALLEST ? HEIGHT_SMALLEST : wanted > HEIGHT_LARGEST ? HEIGHT_LARGEST : wanted;
     }
+    /* Left in deliberately, gated on the same mods log the rest of this file
+     * uses: cheap to check against next time the size looks off. */
+    say("fit_height: target %d px, got %d px, height %d after %d attempt(s)\n", target, got, height, attempt + 1);
     return height;
 }
 
 /* The duel field seen from above is the one place this draws (field_models.c's
- * own duel_field_up() explains why: the overview camera, table 0 otherwise
- * unused). */
+ * own duel_field_up() explains why: the overview camera). */
 #define FIELD_PITCH 512
 
 static int duel_field_up(void)
@@ -303,8 +322,22 @@ static void draw_one(int index, int world_height)
     prim.u3 = CARD_ART_WIDTH - 1;
     prim.v3 = CARD_ART_HEIGHT - 1;
 
-    table = D_800E9D90[0];
-    depth -= tunable("depth", DEPTH_STEPS);
+    /* D_800E9D90[0] (what this used to target) is a real, but tiny, table in
+     * this state -- 4 depth slots, confirmed live (table_length 2) -- meant
+     * for something else entirely; every cutout's depth saturated at its
+     * ceiling regardless of position, so draw order came down to insertion
+     * order, not depth, against anything sharing that slot. D_800E9D90[2] is
+     * what func_80015EF4 actually sorts a field card's own upright quad into,
+     * and what the 3D Monsters mod's field-standing draw_monster() uses too
+     * (its own D_800E9D98[0]) -- a real-sized table shared with the field's
+     * own geometry, so a cutout sorts correctly against the card under it. */
+    table = D_800E9D90[2];
+    /* RotTransPers's raw depth is at a model's own native resolution, a
+     * quarter as fine as this table's card scale (func_80015EF4's own
+     * comment on a model's primitives); the 3D Monsters mod's sort_monster
+     * divides its own raw "nearest" the same single step, `nearest / 4`,
+     * before using it here. */
+    depth = depth / 4 - tunable("depth", DEPTH_STEPS);
     depth = depth < 0 ? 0 : depth >= (1 << table->length) ? (1 << table->length) - 1 : depth;
     GsSortPoly(&prim, table, (unsigned short)depth);
 }
