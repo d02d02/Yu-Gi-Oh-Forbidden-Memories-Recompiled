@@ -83,6 +83,10 @@ unpushed there).
   a card-placement reticle screen) with `mod.3d-monsters`/`mod.hand-camera` on; from there,
   `<frame>:4000,<frame+6>:0000` (Cross) places the highlighted card face-up in its default
   (Attack) position, `<frame>:0008,<frame+6>:0000` (Start) ends the turn.
+- The same path with **2D Monsters** instead (item 8 below): replay
+  `tests/pc/smoke/duel-2d-monsters.json`'s own `input` field verbatim (same
+  recording, same frame 6760) with `mod.2d-monsters` on and `mod.3d-monsters`
+  **off** — they conflict, same software-GPU texture-bank range.
 - **A save state made by the user's real `game32` build will not load in the debug
   `game32dbg` build**, even when both report the identical `buildid` — cross-build state
   loading fails outright (`state load failed`, likely the mods' own compiled checksums
@@ -118,6 +122,7 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Built, compiles clean, **not yet visually verified** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Live look with the disc; `smoke.py --record`; tune `pixels`/`lift`/`depth` if needed |
 | — | Game > Restart | Parked | — | — |
 
 ---
@@ -515,6 +520,53 @@ rendering — not yet traced.
 **Left to do:** get a few more repro screenshots (ideally with Precise geometry Off, to rule
 out PGXP definitively rather than "did not change much"), and find what two overlapping pieces
 of geometry are fighting at that seam.
+
+---
+
+## 8. 2D Monsters mod
+
+**What it is:** `mods/2d-monsters/` (`field_art.c`, `mod.json`) — an alternative to
+the 3D Monsters mod: instead of a loaded battle model standing on a face-up field
+card, an enlarged, camera-facing cutout of the card's own art (`WA_MRG.MRG`'s
+102x96 record) floats over it. Disabled by default, `"conflicts": ["3d-monsters"]`
+(same software-GPU texture-bank range, `SOFT_GPU_BANKS`). Not built on this
+branch — cherry-picked here (code + `tests/pc/smoke/duel-2d-monsters.json`) from
+`claude/2d-art-replace-3d-models-bbpme7`, which also has a clean copy pushed off
+`origin/master` as `feat/2d-monsters-mod`, for whenever this is ready to PR
+upstream. This branch's own `progress.md`/`history.md` were left alone by that
+cherry-pick (same paths, unrelated content); this section is the bridge.
+
+**How it's built, briefly** (reuses 3D Monsters' own patterns: the LRU
+texture-bank cache, `duel_field_up()`'s gating, borrowing `D_800E9D90[0]`); no
+model load, no arena, since there's no model: the card's art is read straight
+from disc into a private bank, and both screen placement and the
+ordering-table depth come from one `RotTransPers` call per corner-pair, the
+same projection `func_80015EF4` uses for a field card's own ground sprite —
+so it needs only the GTE/projection state the field's own draw pass already
+sets up, nothing extra.
+
+**Verified so far:** compiles clean (`build_mod.py`, the full `build_game32.py`,
+no `-Wall` warnings traced to `field_art.c` itself). **Not verified: how it
+actually looks.** No session that built it has had this project's disc image.
+
+**Left to do, here specifically — this is why the commit is on this branch:**
+1. Build (`tools/pc/build_game32.py`, or the `game32dbg` debug build above),
+   enable `mod.2d-monsters` and disable `mod.3d-monsters` (they conflict) —
+   a settings-file line each, or `MEMORIES_MOD_2D_MONSTERS=1
+   MEMORIES_MOD_3D_MONSTERS=0`.
+2. Reach the deterministic scene ("How to test things" above) or the Test
+   scenes mod (hold L1 + Cross on Option) and look: card art should float
+   above each face-up field monster, sized and positioned plausibly relative
+   to its card, correctly layered against nearer/farther field cards.
+3. If the size is off, `pixels`/`lift`/`depth` (`mods/2d-monsters/mod.json`)
+   are read live, no rebuild — adjust and re-dump rather than editing the code.
+4. Once it looks right: `python3 tools/pc/smoke.py --record` fills in
+   `duel-2d-monsters.json`'s `sha256`; commit it here, and cherry-pick that one
+   commit onto `feat/2d-monsters-mod` too, since that's the branch meant to
+   eventually carry a PR.
+
+Once verified and the baseline is recorded, this item is done and moves to
+`history.md`.
 
 ---
 
