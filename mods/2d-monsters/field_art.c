@@ -317,13 +317,18 @@ static void draw_frame(void)
         return;
     }
     frame++;
-    world_height = fit_height();
 
     /* The projection the duel draws its own field with, exactly as
-     * Duel_DrawFieldCards and the 3D Monsters mod's draw_frame set it up. */
+     * Duel_DrawFieldCards and the 3D Monsters mod's draw_frame set it up.
+     * fit_height()'s own project() calls need this in place first: it
+     * calibrates world_height by measuring screen pixels under this same
+     * matrix/scale, so it has to run under the field's camera, not whatever
+     * was left over from the previous draw call this frame. */
     GsSetRefView2(&D_800F2848.view);
     SetGeomScreen(D_800F2848.projection);
     SetGeomOffset(0xA0, 0x6C);
+
+    world_height = fit_height();
 
     for (side = 0; side < 2; side++) {
         for (zone = 0; zone < MONSTER_ZONES; zone++) {
