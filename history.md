@@ -1110,3 +1110,216 @@ previous / next card of the list.
 **Check after (once live-tested):** chest pane and deck pane, empty rows, sorted lists, the
 last and first card, Trade with an owned deck, and that the duel's card view (same viewer)
 is unchanged.
+
+## 2D Monsters mod
+
+### Live debugging session, three bugs found and fixed (2026-09-29)
+
+**What it is:** `mods/2d-monsters/` (`field_art.c`, `mod.json`) — an alternative to
+the 3D Monsters mod: instead of a loaded battle model standing on a face-up field
+card, an enlarged, camera-facing cutout of the card's own art (`WA_MRG.MRG`'s
+102x96 record) floats over it. Disabled by default, `"conflicts": ["3d-monsters"]`
+(same software-GPU texture-bank range, `SOFT_GPU_BANKS`). Not built on this
+branch — cherry-picked here (code + `tests/pc/smoke/duel-2d-monsters.json`) from
+`claude/2d-art-replace-3d-models-bbpme7`, which also has a clean copy pushed off
+`origin/master` as `feat/2d-monsters-mod`, for whenever this is ready to PR
+upstream. This branch's own `progress.md`/`history.md` were left alone by that
+cherry-pick (same paths, unrelated content); this section is the bridge.
+
+**How it's built, briefly** (reuses 3D Monsters' own patterns: the LRU
+texture-bank cache, `duel_field_up()`'s gating, borrowing `D_800E9D90[0]`); no
+model load, no arena, since there's no model: the card's art is read straight
+from disc into a private bank, and both screen placement and the
+ordering-table depth come from one `RotTransPers` call per corner-pair, the
+same projection `func_80015EF4` uses for a field card's own ground sprite —
+so it needs only the GTE/projection state the field's own draw pass already
+sets up, nothing extra.
+
+**Live-tested, 2026-09-29** (user's Windows build, real disc, a real duel reaching the
+card-flip reveal / face-up field): compiles and loads clean, no crash, the card art
+texture reads correctly (`WA_MRG.MRG` sectors load, log confirms). **But the cutouts
+were wrong:** way too big on both sides, and the opponent's-side cutouts were getting
+truncated (clipped at the screen edge) while the player's-side ones stayed fully
+visible — screenshots: `2026-09-29-105213-2062.bmp` (hand-select filmstrip, not the
+mod — a red herring), `2026-09-29-105353-8057.bmp` (the actual bug, behind the
+card-flip animation: oversized silhouettes, one clipped by the right edge).
+
+**Root cause found and fixed:** `draw_frame()` called `fit_height()` — which
+calibrates the world-space cutout height by projecting two points and measuring the
+resulting screen-pixel delta — *before* `GsSetRefView2`/`SetGeomScreen`/
+`SetGeomOffset` set up the duel field's actual camera and projection scale for the
+frame. So the calibration ran under whatever GTE state was left over from the
+previous draw call, not the field's own camera; the resulting `world_height` was then
+used to draw every cutout under the *correct* (different-scale) camera in
+`draw_one()`, producing a systematic size error on every card. The opponent-side
+clipping looks like a consequence of that, not a separate bug: those zones sit
+higher/farther on screen, so an oversized cutout there is far more likely to run off
+the top edge, while the player-side ones just spill into empty space below and stay
+on-screen. Fix: moved the three camera/projection calls before the `fit_height()`
+call in `draw_frame()` (`mods/2d-monsters/field_art.c`).
+
+**Still wrong after the camera-timing fix, live-tested again 2026-09-29:** cutouts
+are still way too big, and the user's description of the shape is the more useful
+clue than "too big" alone — the cutout doesn't read as a card floating over its own
+zone; it reads as one thing standing straight up out of the *near edge of the
+field itself*, perpendicular to it, rather than starting at each card's own
+position and floating just above it. That shape (a correctly-anchored bottom edge
+with a wildly wrong top edge) is exactly what suspect #2 below predicts: if
+`fit_height()`'s `world_height` blows out to `HEIGHT_LARGEST` (8192 — many times
+the 70-166 unit spacing between field zones), `draw_one()`'s "top" point
+(`wx, -lift()-world_height, wz`) is so far above the card that its projection stops
+tracking the card's own screen position the way the correctly-scaled "base" point
+(plain `wx, -lift(), wz`) still does — the base stays put (on the card, at the
+field's near edge for the front zones), the top goes wherever a wildly-out-of-range
+point happens to project, which does not vary sanely card to card. One shared-looking
+"wall" rising from the field's base, rather than five distinct floating cutouts,
+is what that produces.
+
+**Root cause confirmed live, 2026-09-29** (diagnostic log added, user reproduced
+the same scene on the *pre-fix* build, `tmp/pc/last-session.log`):
+
+```
+fit_height: target 40 px, got 66 px, height 128 after 6 attempt(s)
+```
+
+`attempt` reaching 5 (the loop's own cap, printed as 6) with `height` sitting
+exactly on `HEIGHT_SMALLEST` means the loop never converged — it ran out its full
+budget pinned to the floor. Working the ratio backwards: 128 world units already
+projects to 66 px against a 40 px target, so every iteration computed `wanted`
+around 77-78 (correctly smaller), but 77 is below `HEIGHT_SMALLEST` (128), so it
+got clamped straight back up to 128 and the loop repeated the same losing move
+five times. The cutout was never "blowing out" to `HEIGHT_LARGEST` (suspect #2
+below, now ruled out) — it was being held at a floor well *above* the size the
+camera's real scale needed, permanently oversized by about the 66/40 ratio (~65%
+too big). That single fixed world-space size, applied to every card uniformly
+regardless of the small diamond-shaped tile it sits over, reads exactly like the
+"a wall rising off the field's edge, not hovering over its own card" shape the
+user described — a plain size bug once the numbers are in hand, not a separate
+placement one.
+
+`HEIGHT_SMALLEST = 128` came from this file's own header comment analogy to the
+3D Monsters mod's `fit()`, but the constant it was actually modeled on,
+`SCALE_SMALLEST = 0x100`, is a fixed-point *scale fraction* (of `MODEL_FIXED_ONE`,
+4096 = 100%), not a raw world-unit height — the same number, 128, means something
+completely different in the two mods, and using it as a height floor here was
+simply too high for what this camera's projection scale calls for (the real
+answer converges around 60-80).
+
+**Fix:** `HEIGHT_SMALLEST` dropped from 128 to 16 — a guard against a genuinely
+degenerate `got` (near-zero or negative), not a plausible lower bound on the real
+answer — so the loop can actually reach the smaller height it keeps computing.
+Also (from the user's original ask): `DEFAULT_PIXELS` (and `mod.json`'s matching
+`pixels` default) dropped from 40 to 32, matching the 3D Monsters mod's own
+`TALL_PIXELS` target. The diagnostic `say()` in `fit_height()` is left in,
+gated on the same mods log already used to confirm `WA_MRG.MRG` reads — cheap
+to check again if the size still looks off.
+
+**Fix confirmed live, 2026-09-29** (rebuilt, same scene, `tmp/pc/last-session.log`):
+
+```
+fit_height: target 40 px, got 40 px, height 189 after 3 attempt(s)
+```
+
+`got` matches `target` exactly, converged in 3 of 5 attempts, not pinned to
+either `HEIGHT_SMALLEST` (16) or `HEIGHT_LARGEST` (8192) — healthy convergence.
+User confirms the cutout size now looks right. (`target` reads 40, not the new
+`DEFAULT_PIXELS`/`mod.json` default of 32, because the user's `pixels` setting
+was already persisted at 40 from before the change — `Settings_GetNamed` returns
+a persisted value over a new fallback. Harmless; 32 is only a suggested starting
+point to match the 3D Monsters mod's own scale, adjustable live from the mod
+menu with no rebuild either way.)
+
+**Second bug found live, 2026-09-29** (two screenshots, camera zoomed out and in,
+same scene, size now correct): every cutout in a row is cropped clean across the
+bottom, at the exact same screen height, right where each zone's own small
+upright field-card token sits — the token is drawing *over* the cutout's lower
+half rather than under it. The flat, identical cropping line across all five
+zones (not following the board's own perspective slope) was the tell: a
+screen-space/ordering artifact, not a geometry or lift problem.
+
+**Root cause:** a depth-scale mismatch, found by comparing against the 3D
+Monsters mod (prompted by the user asking why 3D models don't show this same
+cropping). `func_80015EF4` sorts a field card's own upright quad at an averaged,
+twice-halved depth — a sixteenth of a single corner's raw projected depth, what
+this file's header calls "the card's scale." The 3D Monsters mod's
+`sort_monster()` explicitly converts to that same scale before reusing this
+table: `at = nearest / 4 - tunable("depth", DEPTH_STEPS)` (`field_models.c:677`)
+— a model's own raw depth is 4x finer than the card scale, so it has to be
+divided down before the two are comparable. `field_art.c`'s `draw_one()` skipped
+that conversion: it took `RotTransPers`'s raw depth straight from `project()`
+and only subtracted the small `DEPTH_STEPS` bias. That left every cutout's depth
+number about 4x too large for its real position — read as much farther away than
+the correctly-scaled card token sitting in the very same zone, so the token
+(nearer, by the numbers) drew over the cutout's bottom half. Same error at every
+zone, hence the identical flat crop line. The file's own header comment had
+assumed the raw depth was "already scaled the way this table's other content
+is," which is the belief this bug lived in.
+
+**First attempt (the `/4` alone) confirmed NOT enough, live, 2026-09-29:** added a
+`say()` per cutout (zone, world position, projected points, size, depth at each
+stage). Live log after the `/4` fix, cropping still identical:
+
+```
+zone 5:  raw_depth 126, final_depth 3
+zone 20: raw_depth 171, final_depth 3
+```
+
+Different raw depths landing on the *identical* final value only happens if the
+table is clamping at a ceiling — added `table->length` to the log to check:
+came back **2**, i.e. a 4-slot table (indices 0-3). Every cutout's post-`/4`
+value (28-45 in these samples) blew straight through that ceiling, so all ten
+saturated at index 3 regardless of real position — draw order among them (and
+against anything else sharing that slot) came down to insertion order, not
+depth. That's why cranking the `depth` setting live did nothing: any bias small
+enough not to go negative still left every value pinned at the same ceiling.
+
+**Real root cause: the wrong table, not just the wrong scale.**
+`D_800E9D90[0]` — what `draw_one()` was targeting — genuinely is that tiny
+4-slot table in this state, and was never the right target: checking the 3D
+Monsters mod's *field*-standing code (`draw_monster()`, not the battle-card
+code compared against the first time, which targets something else again)
+shows it sorts into `D_800E9D98[0]` — which `field_models.c`'s own comment
+identifies as `D_800E9D90[2]`, an aliased view of the same storage. `D_800E9D90[2]`
+is also exactly what `func_80015EF4` sorts a field card's own upright quad into
+— a real, properly-sized table shared with the field's own geometry, which is
+why 3D models layer correctly against it. This file's header comment asserting
+cutouts belonged in table 0 ("the table the battle presentation draws its two
+duellists into") was simply wrong from the start — a mix-up between
+`D_800E9D98` (a different array) and `D_800E9D90[0]`, apparently never checked
+against the 3D mod's actual field-drawing code.
+
+**Fix:** `table = D_800E9D90[2]` (was `[0]`). The `/4` depth-scale conversion
+was already correct (it matches `func_80015EF4`'s own conversion for this same
+table) — it just fed the right number into the wrong table. Header comments
+corrected throughout.
+
+**Confirmed live, 2026-09-29:** rebuilt, same scene — cutouts now sit correctly on
+their own card, sized right, not cropped by the card token beneath them. User
+confirmed with a capture. Diagnostic `say()`s (per-cutout in `draw_one()`, and
+`fit_height`'s own) removed once confirmed; the reasoning above and the comments
+left in `field_art.c` are the record.
+
+**Lesson learned:** three unrelated bugs in one mod, each found by the same
+pattern — a plausible assumption, copied or reasoned by analogy from the 3D
+Monsters mod, that turned out to not match what that mod's code actually does
+in the equivalent situation:
+- A **draw-order** assumption (calibrate then set up the camera) that just had
+  two steps backwards.
+- A **constant copied by name/value from another mod** (`HEIGHT_SMALLEST` from
+  `SCALE_SMALLEST`) without checking that the two mods use the constant for
+  different *kinds* of quantity (a raw world-unit height here, a fixed-point
+  scale fraction there) — same number, unrelated meaning.
+- A **borrowed resource** (an ordering table) identified by a comment's
+  description ("the table the battle presentation draws its two duellists
+  into") rather than by reading the reference mod's actual code for the
+  *matching* situation (field-standing, not battle) — and the comment's
+  description didn't even hold up when checked.
+
+In each case, screenshots alone couldn't distinguish the real cause from
+plausible-looking alternatives; what closed each one out was a live numeric
+log (a calibration's own working, or a per-object depth and the target table's
+actual length) checked against a specific, falsifiable prediction. Reasoning
+by analogy to a sibling mod is a good way to find a *candidate* fix fast; it is
+not a substitute for reading that mod's code for the same situation, or for a
+number from the running game that could have come out differently if the
+candidate were wrong.

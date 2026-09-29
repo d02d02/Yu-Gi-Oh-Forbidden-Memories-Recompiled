@@ -12,7 +12,7 @@
             "key": "pixels",
             "label": "Target height",
             "type": "int",
-            "default": 40,
+            "default": 32,
             "min": 8,
             "max": 160,
             "step": 4,

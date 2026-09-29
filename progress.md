@@ -136,8 +136,9 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Live-tested; found a real sizing/clipping bug, root cause found and fixed, **fix not yet re-confirmed live** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | User rebuilds on Windows (`tmp\pc\game32\obj` needs clearing first, see "How to test things"), re-checks the same top-down duel scene |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs; `history.md`) | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
 | — | Game > Restart | Parked | — | — |
+| — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
 
 ---
 
@@ -539,76 +540,25 @@ of geometry are fighting at that seam.
 
 ## 8. 2D Monsters mod
 
-**What it is:** `mods/2d-monsters/` (`field_art.c`, `mod.json`) — an alternative to
-the 3D Monsters mod: instead of a loaded battle model standing on a face-up field
-card, an enlarged, camera-facing cutout of the card's own art (`WA_MRG.MRG`'s
-102x96 record) floats over it. Disabled by default, `"conflicts": ["3d-monsters"]`
-(same software-GPU texture-bank range, `SOFT_GPU_BANKS`). Not built on this
-branch — cherry-picked here (code + `tests/pc/smoke/duel-2d-monsters.json`) from
-`claude/2d-art-replace-3d-models-bbpme7`, which also has a clean copy pushed off
-`origin/master` as `feat/2d-monsters-mod`, for whenever this is ready to PR
-upstream. This branch's own `progress.md`/`history.md` were left alone by that
-cherry-pick (same paths, unrelated content); this section is the bridge.
+**What it is:** `mods/2d-monsters/` — an alternative to 3D Monsters: an enlarged,
+camera-facing cutout of a card's own art floats over it instead of a loaded
+battle model. Cherry-picked here from `claude/2d-art-replace-3d-models-bbpme7`;
+a clean copy also lives at `feat/2d-monsters-mod` for eventually PRing upstream.
 
-**How it's built, briefly** (reuses 3D Monsters' own patterns: the LRU
-texture-bank cache, `duel_field_up()`'s gating, borrowing `D_800E9D90[0]`); no
-model load, no arena, since there's no model: the card's art is read straight
-from disc into a private bank, and both screen placement and the
-ordering-table depth come from one `RotTransPers` call per corner-pair, the
-same projection `func_80015EF4` uses for a field card's own ground sprite —
-so it needs only the GTE/projection state the field's own draw pass already
-sets up, nothing extra.
+**Fixed and confirmed live, 2026-09-29.** Three bugs, found in turn by live
+testing on the user's Windows build: camera/projection setup ran after the size
+calibration instead of before; a height floor (`HEIGHT_SMALLEST`) copied by
+analogy from the 3D Monsters mod meant a different kind of quantity there
+(a scale fraction, not a world-unit height) and pinned every cutout oversized;
+and the cutout was sorted into the wrong ordering table (a 4-slot table meant
+for something else) instead of the one the field's own card art and the 3D
+Monsters mod both actually use, so draw order came down to chance rather than
+real depth. User confirms it now looks right, with a capture. Full
+investigation and the general lesson it left behind: `history.md`.
 
-**Live-tested, 2026-09-29** (user's Windows build, real disc, a real duel reaching the
-card-flip reveal / face-up field): compiles and loads clean, no crash, the card art
-texture reads correctly (`WA_MRG.MRG` sectors load, log confirms). **But the cutouts
-were wrong:** way too big on both sides, and the opponent's-side cutouts were getting
-truncated (clipped at the screen edge) while the player's-side ones stayed fully
-visible — screenshots: `2026-09-29-105213-2062.bmp` (hand-select filmstrip, not the
-mod — a red herring), `2026-09-29-105353-8057.bmp` (the actual bug, behind the
-card-flip animation: oversized silhouettes, one clipped by the right edge).
-
-**Root cause found and fixed:** `draw_frame()` called `fit_height()` — which
-calibrates the world-space cutout height by projecting two points and measuring the
-resulting screen-pixel delta — *before* `GsSetRefView2`/`SetGeomScreen`/
-`SetGeomOffset` set up the duel field's actual camera and projection scale for the
-frame. So the calibration ran under whatever GTE state was left over from the
-previous draw call, not the field's own camera; the resulting `world_height` was then
-used to draw every cutout under the *correct* (different-scale) camera in
-`draw_one()`, producing a systematic size error on every card. The opponent-side
-clipping looks like a consequence of that, not a separate bug: those zones sit
-higher/farther on screen, so an oversized cutout there is far more likely to run off
-the top edge, while the player-side ones just spill into empty space below and stay
-on-screen. Fix: moved the three camera/projection calls before the `fit_height()`
-call in `draw_frame()` (`mods/2d-monsters/field_art.c`).
-
-**Not yet re-confirmed:** rebuilt clean after the fix, but the deterministic smoke
-fixture (`duel-2d-monsters.json`, frame 6760) produced a byte-identical screenshot
-before and after the fix — confirming it never actually reaches the `duel_field_up()`
-gate at that frame, so it can't verify this fix either way. Needs the user's live
-check in the same top-down duel view where the bug was seen. The user's Windows
-rebuild also hit the shared-`tmp/pc/game32` object corruption above (from a WSL
-session building into the same directory this session) — clear `tmp\pc\game32\obj`
-first.
-
-**Left to do:**
-1. User rebuilds on Windows (clean `tmp\pc\game32\obj` first) and re-checks the same
-   scene: cutouts should now be sized plausibly relative to their card, correctly
-   layered against nearer/farther field cards, and not clipped on either side.
-2. If still off: next suspect is `fit_height`'s iterative convergence itself
-   (`field_art.c:219-237`) rather than the ordering bug — it can hit `HEIGHT_LARGEST`
-   (8192) if `got` (the calibration's screen-pixel delta) comes out very small.
-3. `pixels`/`lift`/`depth` (`mods/2d-monsters/mod.json`) are read live, no rebuild —
-   use those to tune once the placement itself is correct, not to paper over a
-   placement bug.
-4. Once it looks right: `python3 tools/pc/smoke.py --record` fills in
-   `duel-2d-monsters.json`'s `sha256` (for whatever it does cover — title/menu
-   regressions — even though it doesn't reach the field-drawing code path); commit
-   the fix and the recorded fixture here, and cherry-pick onto `feat/2d-monsters-mod`
-   too, since that's the branch meant to eventually carry a PR.
-
-Once verified and the baseline is recorded, this item is done and moves to
-`history.md`.
+**Left to do:** record `duel-2d-monsters.json`'s `sha256`
+(`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the fix onto
+`feat/2d-monsters-mod` for the eventual upstream PR. Then this item is done.
 
 ---
 
@@ -618,3 +568,15 @@ Once verified and the baseline is recorded, this item is done and moves to
   game (used by the Mods window); a menu item would need to wait for a safe point like
   `TitleJump_Poll` (not while the memory card is written or the save menu is open).
   "Return to title" exists under Debug > Jump to > Title Screen.
+
+- **Test scenes: boot straight into the duel** (user request 2026-09-29, later — not
+  now): the **Test scenes mod** (`mods/test-scenes/`, "Measuring" above) already reaches
+  its duel (Simon Muran, ten monster zones from `field.json`) from the title screen with
+  L1 + Cross on Option, but that still means waiting through the title screen and
+  whatever's in between. The ask: skip straight to the duel on boot — wait only for the
+  game's own data load, no title screen, no intro animation, nothing to hold or press.
+  Likely shaped like `MEMORIES_MODE_AT` (`progress.md`'s own "Reach a screen with no save
+  needed" note under "How to test things") or `scene_measure.py`'s own boot-to-state
+  flow, but triggered unconditionally at startup rather than needing a state load or a
+  title-screen hotkey. Would speed up manual live-testing of test-scenes work (like this
+  session's 2D Monsters mod checks) as well as automated runs.
