@@ -137,6 +137,7 @@ unpushed there).
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
 | 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs; `history.md`) | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
+| 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
 | — | Game > Restart | Parked | — | — |
 | — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
 
@@ -559,6 +560,39 @@ investigation and the general lesson it left behind: `history.md`.
 **Left to do:** record `duel-2d-monsters.json`'s `sha256`
 (`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the fix onto
 `feat/2d-monsters-mod` for the eventual upstream PR. Then this item is done.
+
+---
+
+## 9. Remaining MIPS-interpreted subsystems (not decompiled)
+
+User-requested tracking, 2026-09-29: three pieces of duel code exist only as MIPS
+bytes and currently run through the interpreter in `src/pc/guest/mips.c` rather
+than as native C — working correctly today, but not yet decompiled. Full technical
+detail: `notes/pc-build.md` ("MIPS-only effects", "Credits").
+
+1. **The shared duel effects bank** (`0x80146000`, entered at `0x801462B0`):
+   fusion, battle damage, destruction, and the magic/trap/ritual/terrain/field
+   effects up to id 23. `MEMORIES_DUEL_EFFECTS=native` restores the older
+   bring-up behaviour (only ids 1-3 interpreted, others complete at once) for
+   comparison.
+2. **The credits module**: the ending's credits (`Main_RunCredits` phase 2,
+   `func_800507D0`) load MIPS into `0x80180000` (where the main menu overlay is
+   otherwise linked natively) and call it directly.
+3. **Monster attack choreographies** — the bigger of the three: the per-monster
+   MODEL control modules swapped into the two duel arena slots with each
+   monster. A primary module is trivial (`return 2` in every record seen), but
+   the variant module holding a monster's actual attack choreography and impact
+   particles is not — MODEL.MRG has 621 records and **1,181 distinct variant
+   modules**. `MEMORIES_MODEL_MODULES=native` substitutes the resident spark
+   burst instead, for comparison.
+
+**Left to do:** not started. A code-following scan (`tmp/`, 2026-09-21) found
+only instructions the interpreter already handles (no GTE opcodes) across the
+WA effect bank and all 1,181 variant modules, so nothing here is blocked on a
+missing capability — it's translation volume, mostly in the choreographies.
+Decompiling any one is independent of the others; no particular order is
+required. `notes/pc-port-plan.md`'s roadmap calls the end state "no reachable
+MIPS fallback" (its "Full gameplay" milestone).
 
 ---
 
