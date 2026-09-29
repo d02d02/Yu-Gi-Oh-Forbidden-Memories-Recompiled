@@ -653,6 +653,17 @@ MIPS fallback" (its "Full gameplay" milestone).
 
 ## Parked
 
+- **Custom 3D models: how a mod could replace or add one** (user request
+  2026-09-30, not started): today a card's `"model"` key (`notes/more-cards.md`)
+  can only *borrow* one of the disc's own retail monster models — there is no
+  importer for a wholly new mesh. Upstream has a branch that may already bear
+  on this: `feat/model-replace`
+  (https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled/tree/feat/model-replace) —
+  read it first before designing anything here, it may cover geometry, UVs,
+  textures, and/or a save/build pipeline already. Related but distinct from
+  item 7's HD *texture* work on existing models, and from item 8's 2D Monsters
+  `field_art`, which only ever swaps a flat picture, never geometry.
+
 - **Game > Restart** (dropped for now): `Platform_RestartGame()` already relaunches the
   game (used by the Mods window); a menu item would need to wait for a safe point like
   `TitleJump_Poll` (not while the memory card is written or the save menu is open).
