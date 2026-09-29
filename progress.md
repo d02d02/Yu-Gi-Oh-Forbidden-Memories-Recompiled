@@ -118,6 +118,27 @@ unpushed there).
   **To avoid causing it:** when testing from a WSL/Linux session on a checkout the user also
   builds on Windows, build into a directory the Windows side never touches, e.g.
   `python3 tools/pc/build_game32.py --build tmp/pc/game32-wsl`, instead of the shared default.
+- **Claude can build and run the game headlessly, without the user** — the llvm-mingw
+  toolchain `play.bat` fetches is already under `tmp/pc/tools/`, just not on a fresh shell's
+  `PATH`. Add it, then build straight into the debug dir (pass the full `tmp/pc/game32dbg`
+  path — a bare `--build game32dbg` creates a stray directory at the repo root instead):
+  `PATH="$PWD/tmp/pc/tools/llvm-mingw/llvm-mingw-20260922-ucrt-x86_64/bin:$PATH" python3
+  tools/pc/build_game32.py --target windows --build tmp/pc/game32dbg`. From there,
+  `tools/pc/scene_measure.py`'s `capture(options, path, pgxp, scale, frame, input=...)` takes
+  any `MEMORIES_INPUT` script and dump frame and screenshots it deterministically — a
+  regression check Claude can run and diff *before* asking the user to test something live,
+  not just a way to reach the test scene. Scripted and confirmed working this way (2026-09-29,
+  raw SIO codes, `frame:code` pairs, `0000` releases): the bare field view (no input, all ten
+  zones' art); the card-detail view, one Triangle (`"60:1000,66:0000"`); and a fusion —
+  Hitotsu-me Giant (card 3) + Baby Dragon (card 4) → Koumori Dragon, the one combo entirely
+  within the test scene's own cards (`notes/research/fusion-and-drop-tables/fusions.csv`) —
+  with `"60:0020,66:0000,120:0020,126:0000,180:4000,186:0000,240:0020,246:0000,300:4000,
+  306:0000,360:0020,366:0000,420:0020,426:0000,480:0020,486:0000,540:4000,546:0000"` (moves the
+  hand cursor to it, opens the two-row fusion picker, confirms the pairing), mid-animation
+  around frame 620. Reference captures themselves are local/gitignored
+  (`tmp/pc/measure/2d-monsters-regression/`); this recipe is what needs to survive between
+  sessions. Born from item 8's HD-art regression (`history.md`) — reuse it before any future
+  change to shared engine state (VRAM, ordering tables, and the like), not just for that mod.
 
 ---
 
@@ -546,51 +567,23 @@ camera-facing cutout of a card's own art floats over it instead of a loaded
 battle model. Cherry-picked here from `claude/2d-art-replace-3d-models-bbpme7`;
 a clean copy also lives at `feat/2d-monsters-mod` for eventually PRing upstream.
 
-**Fixed and confirmed live, 2026-09-29.** Three bugs, found in turn by live
-testing on the user's Windows build: camera/projection setup ran after the size
-calibration instead of before; a height floor (`HEIGHT_SMALLEST`) copied by
-analogy from the 3D Monsters mod meant a different kind of quantity there
-(a scale fraction, not a world-unit height) and pinned every cutout oversized;
-and the cutout was sorted into the wrong ordering table (a 4-slot table meant
-for something else) instead of the one the field's own card art and the 3D
-Monsters mod both actually use, so draw order came down to chance rather than
-real depth. User confirms it now looks right, with a capture. Full
-investigation and the general lesson it left behind: `history.md`.
+**Current state:** sizing and depth-sort are fixed and confirmed live (three
+unrelated bugs, each traced to a plausible-but-wrong assumption borrowed from
+the 3D Monsters mod). An attempt to add HD texture pack support broke three
+unrelated systems live (opponent card art, a fusion animation, the card-detail
+title) and was fully reverted; confirmed working normally again afterward.
+Full investigation, both fixes, the failed attempt, and the lesson each left
+behind: `history.md`. The regression this drove led to a headless
+build-and-capture recipe, now in "How to test things" above, for checking any
+future shared-engine-state change before it ever reaches the user live.
 
-**HD texture pack support: tried, broke the game, reverted, 2026-09-29.** The
-private bank this mod draws from is structurally excluded from the texture
-pack system (`soft_gpu.c`'s `shadow_on` only applies to a primitive sampling
-*real* VRAM, the same reason HD model textures are blocked, item 7c), so
-getting an installed HD pack's card art to appear meant uploading for real
-via `LoadImage`, the way retail's own card-detail view does. Chose to write
-into the VRAM area the 3D Monsters mod's own comments call "the model area of
-VRAM for slot 0/1" and treat as safe while `duel_field_up()` (no 3D model is
-ever shown then, and that mod is mutually exclusive with this one) — worked
-out the exact layout carefully (including a real page-addressing limit: a
-texture page's Y origin is only ever 0 or 256 in this software GPU), shipped
-it, and asked the user to live-test.
-
-**That assumption was wrong.** Live-tested with the HD pack *disabled* (so
-this alone, not the HD-pack code path): the opponent's card art came out as
-degraded copies of the player's own cards, the fusion animation broke, and
-the card-detail view's title (Triangle to examine a card) turned to garbled
-text — three unrelated systems, all broken at once. That VRAM is evidently
-doing real work during ordinary play, not reserved the way the 3D Monsters
-mod's own comments implied; reusing it, even by the same reasoning that mod
-uses for its own (much shorter-lived, load-then-evacuate) purpose, corrupted
-live state. **Reverted in full** (`git revert` of the real-VRAM commit) —
-back to the private-bank version already confirmed correct for sizing and
-depth-sort. **Revert confirmed live, 2026-09-29:** user reports it works
-normally with the HD pack both on and off. HD pack support for this mod is
-unsolved; the next attempt needs either a VRAM region verified safe by
-something stronger than reading another mod's comments (e.g. instrumented
-tracing of actual writes during a live session), or a different mechanism
-entirely, not a fresh guess at a bigger or different address range.
-
-**Left to do:** record `duel-2d-monsters.json`'s `sha256`
-(`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the
-(reverted-to) fix onto `feat/2d-monsters-mod` for the eventual upstream PR.
-HD pack support is parked, not required for that PR.
+**Left to do:**
+1. HD pack support: parked. Needs a VRAM region verified safe by something
+   stronger than reading another mod's comments, or a different mechanism
+   entirely — not a fresh guess at a different address range.
+2. Record `duel-2d-monsters.json`'s `sha256` (`python3 tools/pc/smoke.py
+   --record`), then commit and cherry-pick the current fix onto
+   `feat/2d-monsters-mod` for the eventual upstream PR.
 
 ---
 
