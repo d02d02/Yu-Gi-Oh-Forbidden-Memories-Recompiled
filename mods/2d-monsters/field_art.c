@@ -1,11 +1,24 @@
 /* The 2D Monsters mod (mod.json beside this file; notes/modding.md): where
  * the 3D Monsters mod stands a battle model on a face-up field card, this
  * stands an enlarged cutout of the card's own art instead, floating just
- * above it, always facing the camera. No model, no arena, no VRAM budget to
- * borrow: a card's art record is seven sectors of WA_MRG.MRG, the same disc
- * data the card-detail panel and the Library already draw large, held here
- * one bank per cached card in the software GPU (src/pc/render/soft_gpu.h),
- * exactly as the 3D Monsters mod holds a model's textures.
+ * above it, always facing the camera.
+ *
+ * The art comes from WA_MRG.MRG the same way the card-detail panel and the
+ * Library read it (func_800289BC, Cards_PatchArtRecord), and is uploaded to
+ * VRAM the same way that panel shows it: a plain LoadImage, not a private
+ * software-GPU bank. That is deliberate, not incidental: a texture pack's HD
+ * replacement (notes/modding.md, "Texture packs") only ever applies to a
+ * primitive sampling real VRAM (soft_gpu.c's shadow_on is gated on
+ * `texture_source == vram`; a bank never qualifies -- the same reason the HD
+ * model-texture item, progress.md item 7c, is blocked). Uploading for real,
+ * the way retail's own big-card view does, means an installed HD pack's own
+ * card art picks this cutout up automatically: no reading of the pack's
+ * files, no engine change, nothing kept past the upload itself -- each
+ * zone's art and CLUT are re-uploaded every frame (ten uploads of a few KB
+ * each, cheap next to a model's textures), never cached.
+ *
+ * Where they land is VRAM already established safe to write while this mod
+ * draws: see VRAM_ART_X/VRAM_ART_Y/VRAM_CLUT_X/VRAM_CLUT_Y below.
  *
  * Unlike a model, a cutout has no size of its own to measure: every card's
  * art is the same 102x96 record, so one world-space height serves every
@@ -43,7 +56,6 @@
 #include "game/duel_display.h"
 #include "game/model.h"
 #include "game/card_constants.h"
-#include "pc/render/soft_gpu.h"
 #include "pc/mods/modapi.h"
 #include "pc/cards/cards.h"
 #include "pc/cards/art.h"
@@ -57,30 +69,6 @@ extern GsOT *D_800E9D90[4];    /* the four ordering tables of the frame */
 extern MATRIX D_800FE148;      /* GsWSMATRIX: GsSetRefView2's world-screen matrix */
 
 static const MemoriesModHost *host;
-static unsigned frame;
-
-/* Cards kept loaded, least recently drawn replaced first (3D Monsters' own
- * CACHE and acquire() explain the reasoning; a bank is bank = index + 1,
- * below SOFT_GPU_BANKS). */
-#define CACHE 12
-
-typedef struct {
-    int card;      /* one-based card id; 0 when the entry is free */
-    unsigned used; /* frame number of the last draw, for replacement */
-    int bank;      /* its texture bank in the software GPU */
-} Art;
-
-static Art cache[CACHE];
-static u8 *record;             /* one card's WA_MRG.MRG art record, read whole */
-static int mrg_start = -2;
-
-static void reset(void)
-{
-    int i;
-    for (i = 0; i < CACHE; i++) {
-        cache[i].card = 0;
-    }
-}
 
 static void say(const char *format, ...)
 {
@@ -101,25 +89,12 @@ static int tunable(const char *key, int fallback)
 #define SECTOR 2048
 #define ART_SECTORS 7
 
-/* Where the art's pixels and its CLUT sit inside the private bank: any two
- * places that do not overlap, since nothing else ever reads this bank. */
-#define PIXELS_X 0
-#define PIXELS_Y 0
-#define CLUT_X 0
-#define CLUT_Y CARD_ART_HEIGHT
+static u8 *record;             /* one card's WA_MRG.MRG art record, read whole */
+static int mrg_start = -2;
 
-static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
-{
-    int row;
-    for (row = 0; row < h; row++) {
-        memcpy(bank + (size_t)(y + row) * SOFT_GPU_WIDTH + x, pixels + (size_t)row * w, (size_t)w * 2);
-    }
-}
-
-static int load_art(Art *art, int card)
+static int read_art(int card)
 {
     int base, sectors;
-    u16 *bank;
 
     if (mrg_start == -2) {
         mrg_start = host->disc_file_start(host, "\\DATA\\WA_MRG.MRG;1");
@@ -143,44 +118,46 @@ static int load_art(Art *art, int card)
     /* A mod's own artwork over the base's, exactly as the card-detail panel
      * gets it (func_800289BC). */
     Cards_PatchArtRecord(card, record);
-
-    bank = SoftGpu_Bank(art->bank);
-    if (!bank) {
-        say("no bank %d\n", art->bank);
-        return 0;
-    }
-    bank_put(bank, PIXELS_X, PIXELS_Y, CARD_ART_WIDTH / 2, CARD_ART_HEIGHT, (const u16 *)(record + CARD_ART_PIXELS));
-    bank_put(bank, CLUT_X, CLUT_Y, 256, 1, (const u16 *)(record + CARD_ART_CLUT));
-    art->card = card;
     return 1;
 }
 
-static Art *acquire(int card)
+/* Every zone's full card art and CLUT fit inside the exact VRAM footprint the
+ * 3D Monsters mod already established safe to write while duel_field_up():
+ * no 3D model is ever shown then, and that mod is mutually exclusive with
+ * this one (mod.json's "conflicts"), so its own reasoning ("the model area of
+ * VRAM for slot 0", field_models.c: BLOCK_X/BLOCK_Y/BLOCK_W/BLOCK_H, x
+ * 0-0x100 and, "slot 1's block sits 0x100 to the next", x 0x100-0x200, y
+ * 0xF0-0x200) carries over unchanged.
+ *
+ * A texture page's Y origin is only ever 0 or 256 in this software GPU
+ * (gpu.page_y: bit 4 of the tpage word, times 256; soft_gpu.c) -- a card
+ * placed at y 0xF0 (240) would cross that boundary partway through its 96
+ * rows and be unsampleable by a single primitive, so the art starts at y
+ * 0x100 (256) instead, clear of it, one row of five zones per side. The
+ * CLUTs have no such restriction (clut_y is a free 9-bit field, soft_gpu.c)
+ * and live in the 16-row sliver between 0xF0 and 0x100 that the art can't
+ * use -- the same x range as the art's own columns, never overlapping
+ * because the rows differ. */
+#define VRAM_ART_X(zone) ((zone) * 64)
+#define VRAM_ART_Y(side) (0x100 + (side) * CARD_ART_HEIGHT)
+#define VRAM_CLUT_X 0
+#define VRAM_CLUT_Y(slot) (0xF0 + (slot))
+
+static void upload_art(int slot, int side, int zone)
 {
-    Art *art = NULL;
-    int i;
-    for (i = 0; i < CACHE; i++) {
-        if (cache[i].card == card) {
-            cache[i].used = frame;
-            return &cache[i];
-        }
-    }
-    for (i = 0; i < CACHE; i++) {
-        if (!cache[i].card) {
-            art = &cache[i];
-            break;
-        }
-        if (!art || cache[i].used < art->used) {
-            art = &cache[i];
-        }
-    }
-    art->bank = (int)(art - cache) + 1;
-    art->card = 0;
-    if (!load_art(art, card)) {
-        return NULL;
-    }
-    art->used = frame;
-    return art;
+    RECT rect;
+
+    rect.x = (short)VRAM_ART_X(zone);
+    rect.y = (short)VRAM_ART_Y(side);
+    rect.w = CARD_ART_WIDTH / 2;
+    rect.h = CARD_ART_HEIGHT;
+    LoadImage(&rect, (u32 *)(record + CARD_ART_PIXELS));
+
+    rect.x = VRAM_CLUT_X;
+    rect.y = (short)VRAM_CLUT_Y(slot);
+    rect.w = 256;
+    rect.h = 1;
+    LoadImage(&rect, (u32 *)(record + CARD_ART_CLUT));
 }
 
 /* A world point to screen, under the frame's own world-screen matrix, as
@@ -235,9 +212,9 @@ static int lift(void)
 
 static int fit_height(void)
 {
-    int target = tunable("pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt, got = 0;
+    int target = tunable("pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt;
     for (attempt = 0; attempt < 5; attempt++) {
-        int sx, base_sy, top_sy, wanted;
+        int sx, base_sy, top_sy, got, wanted;
         project(MIDDLE_X, -lift(), MIDDLE_Z, &sx, &base_sy);
         project(MIDDLE_X, -lift() - height, MIDDLE_Z, &sx, &top_sy);
         got = base_sy - top_sy;
@@ -250,9 +227,6 @@ static int fit_height(void)
         }
         height = wanted < HEIGHT_SMALLEST ? HEIGHT_SMALLEST : wanted > HEIGHT_LARGEST ? HEIGHT_LARGEST : wanted;
     }
-    /* Left in deliberately, gated on the same mods log the rest of this file
-     * uses: cheap to check against next time the size looks off. */
-    say("fit_height: target %d px, got %d px, height %d after %d attempt(s)\n", target, got, height, attempt + 1);
     return height;
 }
 
@@ -270,10 +244,11 @@ static int duel_field_up(void)
 #define SIDE_ZONE(side, zone) ((side) ? 20 + (zone) : 5 + (zone))
 #define DEPTH_STEPS 3
 
-static void draw_one(int index, int world_height)
+static void draw_one(int side, int zone, int world_height)
 {
+    int index = SIDE_ZONE(side, zone);
+    int slot = side * MONSTER_ZONES + zone;
     DuelCardRecord *card = &D_801A7AD8[index];
-    Art *art;
     int id = card->card_id;
     int wx, wz, base_sx, base_sy, top_sx, top_sy, depth;
     int height_px, width_px, cx;
@@ -284,10 +259,10 @@ static void draw_one(int index, int world_height)
         ((gDuel_adwCardStats[id - 1] >> 0x1A) & 0x1F) >= 0x14) {
         return; /* empty, face down, or a magic or trap card */
     }
-    art = acquire(id);
-    if (!art) {
+    if (!read_art(id)) {
         return;
     }
+    upload_art(slot, side, zone);
 
     wx = D_800908A0[index].x;
     wz = D_800908A0[index].y;
@@ -303,8 +278,8 @@ static void draw_one(int index, int world_height)
 
     setPolyFT4(&prim);
     prim.r0 = prim.g0 = prim.b0 = 0x80;
-    prim.tpage = GetTPage(1, 0, PIXELS_X, PIXELS_Y) | (u16)(art->bank << 11);
-    prim.clut = GetClut(CLUT_X, CLUT_Y);
+    prim.tpage = GetTPage(1, 0, VRAM_ART_X(zone), VRAM_ART_Y(side));
+    prim.clut = GetClut(VRAM_CLUT_X, VRAM_CLUT_Y(slot));
     prim.x0 = (short)(cx - width_px / 2);
     prim.y0 = (short)top_sy;
     prim.u0 = 0;
@@ -322,15 +297,15 @@ static void draw_one(int index, int world_height)
     prim.u3 = CARD_ART_WIDTH - 1;
     prim.v3 = CARD_ART_HEIGHT - 1;
 
-    /* D_800E9D90[0] (what this used to target) is a real, but tiny, table in
-     * this state -- 4 depth slots, confirmed live (table_length 2) -- meant
-     * for something else entirely; every cutout's depth saturated at its
-     * ceiling regardless of position, so draw order came down to insertion
-     * order, not depth, against anything sharing that slot. D_800E9D90[2] is
-     * what func_80015EF4 actually sorts a field card's own upright quad into,
-     * and what the 3D Monsters mod's field-standing draw_monster() uses too
-     * (its own D_800E9D98[0]) -- a real-sized table shared with the field's
-     * own geometry, so a cutout sorts correctly against the card under it. */
+    /* D_800E9D90[0] is a real, but tiny, table in this state -- 4 depth
+     * slots, confirmed live (table_length 2) -- meant for something else
+     * entirely; every cutout's depth would saturate at its ceiling regardless
+     * of position, so draw order would come down to insertion order, not
+     * depth, against anything sharing that slot. D_800E9D90[2] is what
+     * func_80015EF4 actually sorts a field card's own upright quad into, and
+     * what the 3D Monsters mod's field-standing draw_monster() uses too (its
+     * own D_800E9D98[0]) -- a real-sized table shared with the field's own
+     * geometry, so a cutout sorts correctly against the card under it. */
     table = D_800E9D90[2];
     /* RotTransPers's raw depth is at a model's own native resolution, a
      * quarter as fine as this table's card scale (func_80015EF4's own
@@ -349,7 +324,6 @@ static void draw_frame(void)
     if (!duel_field_up()) {
         return;
     }
-    frame++;
 
     /* The projection the duel draws its own field with, exactly as
      * Duel_DrawFieldCards and the 3D Monsters mod's draw_frame set it up.
@@ -365,7 +339,7 @@ static void draw_frame(void)
 
     for (side = 0; side < 2; side++) {
         for (zone = 0; zone < MONSTER_ZONES; zone++) {
-            draw_one(SIDE_ZONE(side, zone), world_height);
+            draw_one(side, zone, world_height);
         }
     }
     SetGeomOffset(0, 0);
@@ -379,6 +353,5 @@ int MemoriesModInit(const MemoriesModHost *from, MemoriesMod *mod)
     host = from;
     mod->api = MEMORIES_MOD_API;
     mod->frame = draw_frame;
-    mod->reset = reset;
     return 1;
 }
