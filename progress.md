@@ -136,7 +136,7 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Sizing/sorting bugs **confirmed fixed live**; HD texture pack support added, **not yet live-tested** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Live test HD wiring (with/without a pack installed) |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs; `history.md`) | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
 | 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
 | — | Game > Restart | Parked | — | — |
 | — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
@@ -557,47 +557,9 @@ Monsters mod both actually use, so draw order came down to chance rather than
 real depth. User confirms it now looks right, with a capture. Full
 investigation and the general lesson it left behind: `history.md`.
 
-**HD texture pack support, added 2026-09-29, not yet live-tested.** User asked
-for the cutout to pick up an installed HD pack's card art automatically, the
-same way the retail card-detail view does. First idea (reuse each field
-zone's already-uploaded, already-tagged 40x32 thumbnail — real VRAM, zero new
-risk) was checked and dropped: pulled the actual pack's thumbnail PNGs
-alongside their full-art ones and they are a cropped detail (e.g. just a
-dragon's head), not the whole card shrunk down — the retail thumbnail has
-always been a crop, pack or no pack, wrong for "the monster standing on its
-card."
-
-Root cause of why the private bank never got HD art: a texture pack's
-replacement (`soft_gpu.c`'s `shadow_on`) only ever applies to a primitive
-sampling *real* VRAM (`texture_source == vram`); a mod's private
-software-GPU bank is structurally excluded — the same reason HD model
-textures (item 7c) are blocked. So getting real HD art means uploading for
-real, like retail's own big-card view (`func_800289BC`) does, not through a
-bank.
-
-**Fix:** `field_art.c` now uploads each zone's full 102x96 art + CLUT with a
-plain `LoadImage()` every frame (no cache needed, cheap at this size) into
-VRAM the 3D Monsters mod already established safe to use in this exact camera
-state — its two "model texture" blocks, unused because no 3D model is ever
-shown while the field is seen from above, and that mod is mutually exclusive
-with this one. One real hardware constraint had to be worked around: a
-texture page's Y origin is only ever 0 or 256 in this software GPU, so the
-art sits at y=256 (not the 3D Monsters mod's own y=240, which would straddle
-that boundary partway through a 96-row image and be unsampleable); the CLUTs
-have no such restriction and fill the untouched 16-row sliver at y=240-249.
-All ten zones fit inside this one already-vetted area at once, so no
-fallback path was needed. Zero engine changes, zero duplicated artwork: the
-mod just uploads the same bytes it always read, for real, so whatever pack is
-installed (or none) applies the same way it already does for the retail
-card-detail view.
-
-**Left to do:**
-1. Live test: with an HD pack installed, the cutout should show full HD card
-   art, not a crop; with none installed, plain retail art as before (no
-   regression).
-2. Once confirmed: record `duel-2d-monsters.json`'s `sha256`
-   (`python3 tools/pc/smoke.py --record`), then cherry-pick the fixes onto
-   `feat/2d-monsters-mod` for the eventual upstream PR. Then this item is done.
+**Left to do:** record `duel-2d-monsters.json`'s `sha256`
+(`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the fix onto
+`feat/2d-monsters-mod` for the eventual upstream PR. Then this item is done.
 
 ---
 
