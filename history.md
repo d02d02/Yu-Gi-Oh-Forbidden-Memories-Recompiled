@@ -1323,3 +1323,63 @@ by analogy to a sibling mod is a good way to find a *candidate* fix fast; it is
 not a substitute for reading that mod's code for the same situation, or for a
 number from the running game that could have come out differently if the
 candidate were wrong.
+
+### HD texture pack support: tried, broke the game, reverted (2026-09-29)
+
+**Confirmed live** (separately from the three-bugs fix above): the size and
+depth-sort fixes hold up — cutouts sit correctly on their own card, sized
+right. User confirmed with a capture.
+
+**Then asked for HD art support**: an installed texture pack's redrawn card
+art should apply to the cutout automatically, the way it already does for the
+retail card-detail view, without touching the PC port's shared code (the same
+constraint the third-party HD pack itself respects, being a pure data mod).
+
+First idea: reuse each field zone's already-uploaded, already-tagged 40x32
+thumbnail (real VRAM, so texture-pack-compatible for free). Checked the actual
+pack's thumbnail PNGs against its full-art ones for the same card and dropped
+this: a thumbnail is a cropped detail (a dragon's head, not the whole dragon),
+not the full card art shrunk down — true of the retail thumbnail itself, pack
+or no pack, wrong for "the monster standing on its card."
+
+Root cause of why the private bank never got HD art: a texture pack's
+replacement (`soft_gpu.c`'s `shadow_on`) only ever applies to a primitive
+sampling *real* VRAM (`texture_source == vram`); a mod's private software-GPU
+bank is structurally excluded — the same reason HD model textures (item 7c)
+are blocked. So real HD art means uploading for real, like retail's own
+big-card view (`func_800289BC`) does, not through a bank.
+
+**Fix attempted:** `field_art.c` uploaded each zone's full 102x96 art + CLUT
+with a plain `LoadImage()` every frame (no cache needed, cheap at this size)
+into VRAM the 3D Monsters mod's own comments call "the model area of VRAM for
+slot 0/1" and treat as safe while `duel_field_up()` (no 3D model is ever shown
+then, and that mod is mutually exclusive with this one). Worked out the exact
+layout carefully, including a real hardware constraint: a texture page's Y
+origin is only ever 0 or 256 in this software GPU, so the art was placed at
+y=256 (not the 3D Monsters mod's own y=240, which would straddle that
+boundary partway through a 96-row image and be unsampleable); the CLUTs, which
+have no such restriction, filled the untouched 16-row sliver at y=240-249.
+Shipped it and asked the user to live-test.
+
+**That assumption was wrong.** Live-tested with the HD pack *disabled* (so
+this alone, not the HD-pack code path): the opponent's card art came out as
+degraded copies of the player's own cards, the fusion animation broke, and the
+card-detail view's title (Triangle to examine a card) turned to garbled text —
+three unrelated systems, all broken at once. That VRAM is evidently doing real
+work during ordinary play, not reserved the way the 3D Monsters mod's own
+comments implied; reusing it, even by the same reasoning that mod uses for its
+own (much shorter-lived, load-then-evacuate) purpose, corrupted live state.
+
+**Reverted in full** (`git revert` of the real-VRAM commit) — back to the
+private-bank version already confirmed correct for sizing and depth-sort.
+**Revert confirmed live:** user reports it works normally with the HD pack
+both on and off.
+
+**Status:** HD pack support for this mod is unsolved and parked, not required
+for the pending PR. The next attempt needs either a VRAM region verified safe
+by something stronger than reading another mod's comments, or a different
+mechanism entirely — not a fresh guess at a bigger or different address range.
+`progress.md`'s "How to test things" now has a headless build-and-capture
+recipe (built specifically so the next attempt can be checked without risking
+the user's live game again) covering the three systems this one broke: the
+field view, the card-detail view, and a fusion animation.
