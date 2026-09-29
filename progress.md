@@ -136,7 +136,7 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs; `history.md`) | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Fixed and **confirmed live** (three bugs); HD-pack attempt broke live state, **reverted** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Record smoke `sha256`, cherry-pick fix to `feat/2d-monsters-mod` |
 | 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
 | — | Game > Restart | Parked | — | — |
 | — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
@@ -557,9 +557,39 @@ Monsters mod both actually use, so draw order came down to chance rather than
 real depth. User confirms it now looks right, with a capture. Full
 investigation and the general lesson it left behind: `history.md`.
 
+**HD texture pack support: tried, broke the game, reverted, 2026-09-29.** The
+private bank this mod draws from is structurally excluded from the texture
+pack system (`soft_gpu.c`'s `shadow_on` only applies to a primitive sampling
+*real* VRAM, the same reason HD model textures are blocked, item 7c), so
+getting an installed HD pack's card art to appear meant uploading for real
+via `LoadImage`, the way retail's own card-detail view does. Chose to write
+into the VRAM area the 3D Monsters mod's own comments call "the model area of
+VRAM for slot 0/1" and treat as safe while `duel_field_up()` (no 3D model is
+ever shown then, and that mod is mutually exclusive with this one) — worked
+out the exact layout carefully (including a real page-addressing limit: a
+texture page's Y origin is only ever 0 or 256 in this software GPU), shipped
+it, and asked the user to live-test.
+
+**That assumption was wrong.** Live-tested with the HD pack *disabled* (so
+this alone, not the HD-pack code path): the opponent's card art came out as
+degraded copies of the player's own cards, the fusion animation broke, and
+the card-detail view's title (Triangle to examine a card) turned to garbled
+text — three unrelated systems, all broken at once. That VRAM is evidently
+doing real work during ordinary play, not reserved the way the 3D Monsters
+mod's own comments implied; reusing it, even by the same reasoning that mod
+uses for its own (much shorter-lived, load-then-evacuate) purpose, corrupted
+live state. **Reverted in full** (`git revert` of the real-VRAM commit) —
+back to the private-bank version already confirmed correct for sizing and
+depth-sort. HD pack support for this mod is unsolved; the next attempt needs
+either a VRAM region verified safe by something stronger than reading another
+mod's comments (e.g. instrumented tracing of actual writes during a live
+session), or a different mechanism entirely, not a fresh guess at a bigger or
+different address range.
+
 **Left to do:** record `duel-2d-monsters.json`'s `sha256`
-(`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the fix onto
-`feat/2d-monsters-mod` for the eventual upstream PR. Then this item is done.
+(`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the
+(reverted-to) fix onto `feat/2d-monsters-mod` for the eventual upstream PR.
+HD pack support is parked, not required for that PR.
 
 ---
 
