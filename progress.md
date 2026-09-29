@@ -580,11 +580,12 @@ mod's own comments implied; reusing it, even by the same reasoning that mod
 uses for its own (much shorter-lived, load-then-evacuate) purpose, corrupted
 live state. **Reverted in full** (`git revert` of the real-VRAM commit) —
 back to the private-bank version already confirmed correct for sizing and
-depth-sort. HD pack support for this mod is unsolved; the next attempt needs
-either a VRAM region verified safe by something stronger than reading another
-mod's comments (e.g. instrumented tracing of actual writes during a live
-session), or a different mechanism entirely, not a fresh guess at a bigger or
-different address range.
+depth-sort. **Revert confirmed live, 2026-09-29:** user reports it works
+normally with the HD pack both on and off. HD pack support for this mod is
+unsolved; the next attempt needs either a VRAM region verified safe by
+something stronger than reading another mod's comments (e.g. instrumented
+tracing of actual writes during a live session), or a different mechanism
+entirely, not a fresh guess at a bigger or different address range.
 
 **Left to do:** record `duel-2d-monsters.json`'s `sha256`
 (`python3 tools/pc/smoke.py --record`), then commit and cherry-pick the
