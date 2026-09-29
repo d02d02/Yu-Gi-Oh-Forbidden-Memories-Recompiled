@@ -104,6 +104,20 @@ unpushed there).
   frame dump; don't run it live/windowed for long, and don't read anything into the slowdown
   itself — it's a separate, pre-existing, unrelated limitation of this test tool, not of
   whatever is actually being tested.
+- **The repo lives on OneDrive and both machines' checkouts, plus a Claude Code (WSL) session,
+  can all resolve to the *same physical files* — not just the same commits.** The user's Windows
+  checkout at `C:\Users\mdahh\OneDrive\...\Yu-Gi-Oh-Forbidden-Memories-Recompiled` and a WSL
+  session's `/mnt/c/Users/mdahh/OneDrive/...` are one and the same directory on disk. Both
+  `play.bat` and `tools/pc/build_game32.py`'s default `--build` resolve to `tmp/pc/game32` on
+  either OS, so a Linux-side build (gcc, ELF objects) and a Windows-side build (clang/MSVC, PE/COFF
+  objects) share one `obj/` cache and stomp each other's object files — surfaces as link errors
+  (`undefined reference`, a relocation against a COFF-style underscore-prefixed symbol) or the
+  other direction (`the string table does not end the file` when Windows tries to parse a leftover
+  ELF `.o`). **Fix when hit:** delete the stale object(s), or the whole `tmp/pc/game32/obj`
+  (or, to be sure, all of `tmp/pc/game32`), then rebuild on the OS you're actually testing on.
+  **To avoid causing it:** when testing from a WSL/Linux session on a checkout the user also
+  builds on Windows, build into a directory the Windows side never touches, e.g.
+  `python3 tools/pc/build_game32.py --build tmp/pc/game32-wsl`, instead of the shared default.
 
 ---
 
@@ -122,7 +136,7 @@ unpushed there).
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Built, compiles clean, **not yet visually verified** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | Live look with the disc; `smoke.py --record`; tune `pixels`/`lift`/`depth` if needed |
+| 8 | 2D Monsters mod (flat card-art cutout, alt. to 3D Monsters) | Live-tested; found a real sizing/clipping bug, root cause found and fixed, **fix not yet re-confirmed live** | `feat/2d-monsters-mod` (clean, off `origin/master`), here (for testing) | User rebuilds on Windows (`tmp\pc\game32\obj` needs clearing first, see "How to test things"), re-checks the same top-down duel scene |
 | — | Game > Restart | Parked | — | — |
 
 ---
@@ -545,25 +559,53 @@ same projection `func_80015EF4` uses for a field card's own ground sprite —
 so it needs only the GTE/projection state the field's own draw pass already
 sets up, nothing extra.
 
-**Verified so far:** compiles clean (`build_mod.py`, the full `build_game32.py`,
-no `-Wall` warnings traced to `field_art.c` itself). **Not verified: how it
-actually looks.** No session that built it has had this project's disc image.
+**Live-tested, 2026-09-29** (user's Windows build, real disc, a real duel reaching the
+card-flip reveal / face-up field): compiles and loads clean, no crash, the card art
+texture reads correctly (`WA_MRG.MRG` sectors load, log confirms). **But the cutouts
+were wrong:** way too big on both sides, and the opponent's-side cutouts were getting
+truncated (clipped at the screen edge) while the player's-side ones stayed fully
+visible — screenshots: `2026-09-29-105213-2062.bmp` (hand-select filmstrip, not the
+mod — a red herring), `2026-09-29-105353-8057.bmp` (the actual bug, behind the
+card-flip animation: oversized silhouettes, one clipped by the right edge).
 
-**Left to do, here specifically — this is why the commit is on this branch:**
-1. Build (`tools/pc/build_game32.py`, or the `game32dbg` debug build above),
-   enable `mod.2d-monsters` and disable `mod.3d-monsters` (they conflict) —
-   a settings-file line each, or `MEMORIES_MOD_2D_MONSTERS=1
-   MEMORIES_MOD_3D_MONSTERS=0`.
-2. Reach the deterministic scene ("How to test things" above) or the Test
-   scenes mod (hold L1 + Cross on Option) and look: card art should float
-   above each face-up field monster, sized and positioned plausibly relative
-   to its card, correctly layered against nearer/farther field cards.
-3. If the size is off, `pixels`/`lift`/`depth` (`mods/2d-monsters/mod.json`)
-   are read live, no rebuild — adjust and re-dump rather than editing the code.
+**Root cause found and fixed:** `draw_frame()` called `fit_height()` — which
+calibrates the world-space cutout height by projecting two points and measuring the
+resulting screen-pixel delta — *before* `GsSetRefView2`/`SetGeomScreen`/
+`SetGeomOffset` set up the duel field's actual camera and projection scale for the
+frame. So the calibration ran under whatever GTE state was left over from the
+previous draw call, not the field's own camera; the resulting `world_height` was then
+used to draw every cutout under the *correct* (different-scale) camera in
+`draw_one()`, producing a systematic size error on every card. The opponent-side
+clipping looks like a consequence of that, not a separate bug: those zones sit
+higher/farther on screen, so an oversized cutout there is far more likely to run off
+the top edge, while the player-side ones just spill into empty space below and stay
+on-screen. Fix: moved the three camera/projection calls before the `fit_height()`
+call in `draw_frame()` (`mods/2d-monsters/field_art.c`).
+
+**Not yet re-confirmed:** rebuilt clean after the fix, but the deterministic smoke
+fixture (`duel-2d-monsters.json`, frame 6760) produced a byte-identical screenshot
+before and after the fix — confirming it never actually reaches the `duel_field_up()`
+gate at that frame, so it can't verify this fix either way. Needs the user's live
+check in the same top-down duel view where the bug was seen. The user's Windows
+rebuild also hit the shared-`tmp/pc/game32` object corruption above (from a WSL
+session building into the same directory this session) — clear `tmp\pc\game32\obj`
+first.
+
+**Left to do:**
+1. User rebuilds on Windows (clean `tmp\pc\game32\obj` first) and re-checks the same
+   scene: cutouts should now be sized plausibly relative to their card, correctly
+   layered against nearer/farther field cards, and not clipped on either side.
+2. If still off: next suspect is `fit_height`'s iterative convergence itself
+   (`field_art.c:219-237`) rather than the ordering bug — it can hit `HEIGHT_LARGEST`
+   (8192) if `got` (the calibration's screen-pixel delta) comes out very small.
+3. `pixels`/`lift`/`depth` (`mods/2d-monsters/mod.json`) are read live, no rebuild —
+   use those to tune once the placement itself is correct, not to paper over a
+   placement bug.
 4. Once it looks right: `python3 tools/pc/smoke.py --record` fills in
-   `duel-2d-monsters.json`'s `sha256`; commit it here, and cherry-pick that one
-   commit onto `feat/2d-monsters-mod` too, since that's the branch meant to
-   eventually carry a PR.
+   `duel-2d-monsters.json`'s `sha256` (for whatever it does cover — title/menu
+   regressions — even though it doesn't reach the field-drawing code path); commit
+   the fix and the recorded fixture here, and cherry-pick onto `feat/2d-monsters-mod`
+   too, since that's the branch meant to eventually carry a PR.
 
 Once verified and the baseline is recorded, this item is done and moves to
 `history.md`.
