@@ -12,6 +12,7 @@
 #include "../ygo_types.h"
 #ifdef MEMORIES_PC
 #include "pc/cards/tables.h"
+#include "pc/platform/settings.h"
 #endif
 /*
  * Duel card-detail panel: builds the scratchpad sprite parameters for the
@@ -127,6 +128,12 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     PRM->cxcy.h.cx = 0x1E0;
     white = 0xF8;
     PRM->cxcy.h.cy = white;
+#ifdef MEMORIES_PC
+    /* Card layout 1 (settings.h): no title plate, part of the retail frame
+     * this style leaves out. white/m/k above are still real code either
+     * way -- they are read again below, submitted or not. */
+    if (Settings_Get(SET_CARD_LAYOUT) == 0)
+#endif
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
 
     EXT->field_4 = 0;

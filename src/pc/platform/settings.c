@@ -64,6 +64,11 @@ static const SettingInfo info[SET_COUNT] = {
     /* 1: every way out (Esc, File > Exit, closing the window) asks first
      * (quit_prompt.c). */
     [SET_CONFIRM_QUIT] = {"confirm_quit", NULL, "MEMORIES_CONFIRM_QUIT", NULL, 1, 0, 1},
+    /* 0 the retail card-detail layout (frame, title plate, description box,
+     * ATK/DEF and stars at their retail positions); 1 full-bleed art with no
+     * frame, title or description, stats in a bottom band instead
+     * (func_80028B08.c, func_800291E0, duel_effect_resource_setup.c). */
+    [SET_CARD_LAYOUT] = {"card_layout", NULL, "MEMORIES_CARD_LAYOUT", NULL, 0, 0, 1},
     [SET_MASTER_VOLUME] = {"master_volume", "volume", "MEMORIES_MASTER_VOLUME", "MEMORIES_VOLUME", 100, 0, 100},
     [SET_MUSIC_VOLUME] = {"music_volume", NULL, "MEMORIES_MUSIC_VOLUME", NULL, 100, 0, 100},
     [SET_SFX_VOLUME] = {"sfx_volume", NULL, "MEMORIES_SFX_VOLUME", NULL, 100, 0, 100},
