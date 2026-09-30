@@ -69,6 +69,35 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     s32 sa;
     s32 sb;
     u32 m;
+#ifdef MEMORIES_PC
+    /* Card layout 1 (settings.h): win's own position is close to screen
+     * origin (~2,4) -- retail's own offsets below (+0x13, +0x9D, ...) are
+     * the entire positioning mechanism, not padding inside an
+     * already-placed frame, confirmed by research before touching this a
+     * second time. So this stays in retail's own coordinate neighbourhood,
+     * not a reset-to-zero origin: the picture and ATK/DEF keep their retail
+     * position untouched (ATK/DEF, y 0x9D/0xAB, already sits just below the
+     * picture's own real bottom edge, 0x32 + 0x60 = 0x92 -- it never needed
+     * to move). Only the level stars (retail y 0x20) and the attribute icon
+     * (retail y 0xD) actually float in the wrong place now that the frame
+     * and title they used to sit inside of are gone: this first pass moves
+     * just those two down into a new row under ATK/DEF, a first pass for
+     * live tuning, not a final measurement. Enlarging the art itself is
+     * separate, later work (extent is the texel-read size for every
+     * submission path reachable here, not an independent draw size --
+     * confirmed by research -- so it needs a hand-built POLY_FT4 like
+     * field_art.c's own cutout, not a bigger PRM->extent). */
+    int layout = Settings_Get(SET_CARD_LAYOUT);
+    /* Target (user-specified): directly under the picture, one row with
+     * the stars on the left and the attribute icon on the right; directly
+     * under that row, ATK and DEF as two side-by-side boxes, not stacked
+     * the way retail draws them. */
+    int icon_row_y = 0x92 + 4;   /* just below the picture's own bottom edge, 0x32 + 0x60 */
+    int star_x = 0x50, star_y = icon_row_y;   /* first (rightmost) star; more extend left */
+    int attr_x = 0x69, attr_y = icon_row_y;
+    int values_row_y = icon_row_y + 20;
+    int atk_x = 0x1A, def_x = 0x50;
+#endif
 
     wrap = 0xFFFF;
     win = (DisplayObject *)obj->field_54;
@@ -167,7 +196,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                leave no room for more. */
             s32 attack = rec->field_32 + rec->field_36;
             s32 defense = rec->field_34 + rec->field_38;
-            s32 digits, step, left;
+            s32 digits, step, left, atk_left, def_left;
 
             if (attack > Tables_StatCap(0)) {
                 attack = Tables_StatCap(0);
@@ -178,12 +207,14 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             digits = attack >= 10000 || defense >= 10000 ? 5 : 4;
             step = digits == 5 ? 5 : 6;
             left = digits == 5 ? 0x61 - 1 : 0x61;
+            atk_left = layout ? (digits == 5 ? atk_x - 1 : atk_x) : left;
+            def_left = layout ? (digits == 5 ? def_x - 1 : def_x) : left;
             Text_EncodeDecimalDigits(attack, digits, buf1);
             Text_EncodeDecimalDigits(defense, digits, buf2);
 
             PRM->uv.b.hi = (PRM->uv.b.hi & 0x80) + 0x10;
-            PRM->xy.h.x = win->field_30.h.field_30 + left;
-            PRM->xy.h.y = win->field_30.h.field_32 + 0x9D;
+            PRM->xy.h.x = win->field_30.h.field_30 + atk_left;
+            PRM->xy.h.y = win->field_30.h.field_32 + (layout ? values_row_y : 0x9D);
             *(u32 *)&PRM->extent = 0x000D0006;
             if (rec->field_3C & 0x80) {
                 PRM->cxcy.h.cy = 0xF9;
@@ -194,8 +225,8 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                 PRM->xy.h.x = PRM->xy.h.x + step;
             }
 
-            PRM->xy.h.x = win->field_30.h.field_30 + left;
-            PRM->xy.h.y = win->field_30.h.field_32 + 0xAB;
+            PRM->xy.h.x = win->field_30.h.field_30 + def_left;
+            PRM->xy.h.y = win->field_30.h.field_32 + (layout ? values_row_y : 0xAB);
             PRM->cxcy.h.cy = 0xF8;
             if (rec->field_3C & 0x40) {
                 PRM->cxcy.h.cy = 0xF9;
@@ -255,6 +286,12 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         do { sb = 0x00090009; } while (0);
         PRM->xy.h.x = sa + 0x77;
         PRM->xy.h.y = win->field_30.h.field_32 + 0x20;
+#ifdef MEMORIES_PC
+        if (layout) {
+            PRM->xy.h.x = sa + star_x;
+            PRM->xy.h.y = win->field_30.h.field_32 + star_y;
+        }
+#endif
         *(u32 *)&PRM->extent = sb;
         PRM->uv.b.lo = 0;
         PRM->cxcy.h.cx = 0x1C0;
@@ -271,9 +308,17 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
     }
 
+#ifdef MEMORIES_PC
+    if (layout) {
+        PRM->xy.h.x = win->field_30.h.field_30 + attr_x;
+        PRM->xy.h.y = win->field_30.h.field_32 + attr_y;
+    } else
+#endif
+    {
     PRM->xy.h.x = win->field_30.h.field_30 + 0x6E;
-    *(u32 *)&PRM->extent = 0x00100010;
     PRM->xy.h.y = win->field_30.h.field_32 + 0xD;
+    }
+    *(u32 *)&PRM->extent = 0x00100010;
     lo = rec->field_3B << 4;
     PRM->uv.b.lo = lo;
     PRM->uv.b.hi = PRM->uv.b.hi & 0x80;
