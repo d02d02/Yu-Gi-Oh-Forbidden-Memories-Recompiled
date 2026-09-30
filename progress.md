@@ -653,6 +653,21 @@ MIPS fallback" (its "Full gameplay" milestone).
 
 ## Parked
 
+- **Per-card glow colour override** (user request 2026-09-30, not started): the
+  2D Monsters mod's glow (item 8) is one uniform, mod-wide colour today
+  (`glow_r`/`g`/`b` settings). The idea: let a specific card glow its own
+  colour always — Blue-Eyes White Dragon in white, say — the same way
+  `field_art` overrides one card's picture alone. Scoped down on purpose after
+  discussion: only the *colour*, not the full glow dynamics (thickness, pulse
+  speed, reach) per card too — that would need a separate per-card table and
+  fallback for each one, real design surface for a much rarer ask than "this
+  card should always glow a certain colour." Shape: one new `cards.c` table
+  (`glow_colors[CARD_TABLE_ID_END]`, alongside `field_art_records`), one new
+  `cards` JSON key (`"glow_color"`), one getter (`Cards_GlowColor`), read in
+  `draw_glow` before falling back to the mod's own settings. Deliberately
+  *not* bundled into the field_art transparency work or the 3D-Monsters-merge
+  refactor in flight — a follow-up once those land.
+
 - **Custom 3D models: how a mod could replace or add one** (user request
   2026-09-30, not started): today a card's `"model"` key (`notes/more-cards.md`)
   can only *borrow* one of the disc's own retail monster models — there is no
