@@ -12,6 +12,7 @@
 #include "card_preview_callbacks.h"
 #ifdef MEMORIES_PC
 #include "pc/cards/cards.h"
+#include "pc/platform/settings.h"
 #endif
 
 #define DISPLAY_OBJECT_FIELD_5E_BYTES(object) ((u8 *)&(object)->field_5E)
@@ -151,7 +152,23 @@ shared_tail:
 
     entry->object_04 = object;
 
-    object = DisplayObject_AcquireSlot(DisplayObject_FindFreeGeneralSlot(), 2);
+    object = DisplayObject_AcquireSlot(DisplayObject_FindFreeGeneralSlot(),
+#ifdef MEMORIES_PC
+        /* Card layout 1 (settings.h): no frame. List 2 is what actually
+         * draws a sprite-sheet object's own graphic
+         * (DisplayObject_RenderSpriteSheetList); list 0 only ever runs its
+         * update callback (DisplayObject_RunUpdateCallbackList), never
+         * submits one. func_80028B08 does not care which list this object
+         * is in -- it reaches it directly through field_54, below -- so
+         * this is invisible to it either way; only the frame's own drawn
+         * graphic goes. Its flags (DISPLAY_OBJECT_RENDERABLE_MASK, which
+         * func_80028B08 does check) come from AcquireSlot itself and are
+         * the same regardless of the list argument. */
+        Settings_Get(SET_CARD_LAYOUT) ? 0 : 2
+#else
+        2
+#endif
+    );
 #ifdef MEMORIES_PC
     /* A mod's frame colour (Cards_FrameColor) is the frame's palette row;
      * the layout stays the type's. */
