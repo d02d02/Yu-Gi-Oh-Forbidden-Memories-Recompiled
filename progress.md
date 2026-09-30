@@ -653,6 +653,38 @@ MIPS fallback" (its "Full gameplay" milestone).
 
 ## Parked
 
+- **3D Monsters' `pixels`/`scale` need a restart; Card art's own `pixels`
+  inherited that** (found 2026-09-30, not started, and deliberately not
+  wanted right now): the 3D-Monsters-merge (item 8) made Card art share
+  3D Monsters' `pixels` setting (identical defaults in both, so nothing to
+  duplicate there originally) rather than keep its own copy. But 3D
+  Monsters' `pixels` and `scale` carry `"restart": true`
+  (`mods/3d-monsters/mod.json`) — a real, functional flag
+  (`src/pc/mods/mods.c`: a setting so marked keeps the value it was applied
+  with, per `Mods_RuntimeOption`'s own comment, not just a UI note) — so
+  Card art's "Target height" now also needs a restart to apply, when the
+  standalone 2D mod's own `pixels` had no such flag and changed live
+  (`fit_height()` recomputes every frame, no caching to invalidate).
+  Investigated why 3D Monsters needs it: `fit()` (`field_models.c`) doesn't
+  touch disc or VRAM at all — a monster's geometry is already resident in
+  its arena by the time `fit()` runs; it only re-measures and rescales
+  what's already loaded (~5 cheap in-memory trials), so the restart
+  requirement looks like the simpler, safer choice rather than a hard
+  technical necessity. Porting it to live would mean: tracking the last-seen
+  `pixels`/`scale` and re-running `fit()` on every cached monster when
+  either changes (cheap, confirmed no disc/VRAM cost), after verifying
+  nothing else assumes a cached monster's scale is fixed once loaded (the
+  one thing not yet checked live: whether a model's packet buffer, sized at
+  load time, could be affected by a later rescale — probably not, since
+  scaling only multiplies vertex coordinates, not triangle count, but
+  unverified). User's call: not worth the risk of touching `fit()`/`acquire()`
+  in the file every player's 3D Monsters already runs, for a minor
+  convenience on the newer Card art style. Alternative that was NOT
+  chosen either, and would need no changes to 3D Monsters at all: give Card
+  art its own separate height key instead of sharing `pixels`, accepting a
+  small amount of setting duplication in exchange for zero risk to 3D
+  Monsters and no restart requirement for Card art.
+
 - **Per-card glow colour override** (user request 2026-09-30, not started): the
   2D Monsters mod's glow (item 8) is one uniform, mod-wide colour today
   (`glow_r`/`g`/`b` settings). The idea: let a specific card glow its own
