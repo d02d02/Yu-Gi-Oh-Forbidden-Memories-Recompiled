@@ -12,7 +12,7 @@
 #include "card_preview_callbacks.h"
 #ifdef MEMORIES_PC
 #include "pc/cards/cards.h"
-#include "pc/platform/settings.h"
+#include "pc/cards/card_layout.h"
 #endif
 
 #define DISPLAY_OBJECT_FIELD_5E_BYTES(object) ((u8 *)&(object)->field_5E)
@@ -154,7 +154,7 @@ shared_tail:
 
     object = DisplayObject_AcquireSlot(DisplayObject_FindFreeGeneralSlot(),
 #ifdef MEMORIES_PC
-        /* Card layout 1 (settings.h): no frame. List 2 is what actually
+        /* Card layout (card_layout.h): no frame. List 2 is what actually
          * draws a sprite-sheet object's own graphic
          * (DisplayObject_RenderSpriteSheetList); list 0 only ever runs its
          * update callback (DisplayObject_RunUpdateCallbackList), never
@@ -164,7 +164,7 @@ shared_tail:
          * graphic goes. Its flags (DISPLAY_OBJECT_RENDERABLE_MASK, which
          * func_80028B08 does check) come from AcquireSlot itself and are
          * the same regardless of the list argument. */
-        Settings_Get(SET_CARD_LAYOUT) ? 0 : 2
+        CardLayout_Get(CARD_LAYOUT_FRAME).visible ? 2 : 0
 #else
         2
 #endif
