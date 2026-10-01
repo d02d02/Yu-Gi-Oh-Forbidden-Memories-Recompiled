@@ -51,8 +51,8 @@
  *    `li s4,248` to the top of the second submit block by itself.
  */
 #ifdef MEMORIES_PC
-/* A small flat, untextured plaque behind full-bleed's ATK/DEF (card_layout.c),
- * so retail's own digit draw -- semi-transparent, blended "plate minus digit"
+/* A flat Gouraud-quad plaque behind full-bleed's ATK/DEF (card_layout.c), so
+ * retail's own digit draw -- semi-transparent, blended "plate minus digit"
  * -- has the lighter backdrop it was always designed against. Deliberately
  * NOT a textured quad: the shared digit-font atlas (tpage 0x1F) packs glyphs
  * with no clean blank region to sample (confirmed live -- an opaque digit
@@ -60,31 +60,47 @@
  * through once nothing was there to blend it away), so reusing any of its
  * texels for a "plain" fill risks the same thing.
  *
- * x/y/w/h are this box's own screen-space rectangle, already including
- * whatever base position the caller added (win->field_30 + the element's
- * own offset) -- the same coordinate neighbourhood every other PRM->xy
- * assignment in this file already uses. This bypasses the PRM/
- * DisplayObject_SubmitPacket path entirely (a flat quad needs no texture
- * page, clut or uv), submitting straight to the GPU ordering table via
- * GsSortPoly the same way field_art.c's own draw_glow() builds a primitive
- * by hand. UNVERIFIED: DisplayObject_SubmitPacket's own packet-building
- * path (used for the digits) subtracts a per-call projection origin
- * (EXT, a DisplayObjectPacketOrigin) before projecting through
- * RotAverageNclip4; this plaque does not replicate that subtraction, since
- * this box is flat and axis-aligned and the origin's own frame of reference
- * is not exposed as a plain struct here. If the plaque appears offset from
- * the digits by a constant amount once this is seen live, that constant is
- * almost certainly this missing origin subtraction. */
-static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode)
+ * Routed through DisplayObject_SubmitPacket's own case-4 dispatch -- the
+ * plain screen-space Gouraud-quad path DisplayObject_RenderGouraudQuadList
+ * uses everywhere else in the game -- instead of a raw GsSortPoly bypass.
+ * That case treats its first argument's bit 0x04000000 as "project me": set,
+ * it subtracts EXT's own origin from each vertex and runs RotAverageNclip4
+ * before submitting, exactly like the digit submissions below; clear, it
+ * submits the vertices as given. x/y/w/h are this box's own screen-space
+ * rectangle, already including whatever base position the caller added
+ * (win->field_30 + the element's own offset) -- the same coordinate
+ * neighbourhood every other PRM->xy assignment in this file already uses,
+ * and exactly what case 4 expects to subtract its origin from.
+ *
+ * `mode` is the caller's own submit mode (`arg`): its upper halfword is 0xF
+ * while this card is mid-rotation (every other element projected through
+ * EXT) and 0x1 while it's static (the cheap unprojected GsSortFastSprite
+ * path, nothing else this frame projected either) -- the plaque mirrors
+ * that choice rather than always projecting, so a static card's plaque
+ * isn't run through RotAverageNclip4 for no reason.
+ *
+ * Confirmed live: the old GsSortPoly bypass stayed flat/static through the
+ * card's own turn/reveal rotation while every other element (picture,
+ * digits, stars, attribute) rotated with it; routed this way, the plaque
+ * rotates too. */
+static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
+                                   Func80028B08Extra *EXT)
 {
-    POLY_F4 plaque;
-    unsigned short pri = (unsigned short)(s16)mode;
+    POLY_G4 plaque;
+    s32 projected = ((u32)mode >> 16) == 0xF;
+    s32 attribute = projected ? 0x04000000 : 0;
+    s32 plaque_mode = (mode & 0xFFFF) | 0x40000;
 
-    setPolyF4(&plaque);
+    setPolyG4(&plaque);
     setRGB0(&plaque, 220, 200, 150); /* parchment beige, per the reference art */
+    setRGB1(&plaque, 220, 200, 150);
+    setRGB2(&plaque, 220, 200, 150);
+    setRGB3(&plaque, 220, 200, 150);
     setXY4(&plaque, (short)x, (short)y, (short)(x + w), (short)y,
            (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
-    GsSortPoly(&plaque, (GsOT *)ot, pri);
+
+    DisplayObject_SubmitPacket((SpritePrim *)attribute, (Func80028B08Ctx *)&plaque,
+                               ot, plaque_mode, EXT);
 }
 
 /* Comfortably holds up to 5 digits (step 5px, glyph 6px wide: a 5-digit
@@ -281,7 +297,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                  * first (underneath), not on top. */
                 CardLayout_DrawPlaque(win->field_30.h.field_30 + atk_layout.x - CARD_LAYOUT_PLAQUE_PAD_X,
                                       win->field_30.h.field_32 + atk_layout.y - CARD_LAYOUT_PLAQUE_PAD_TOP,
-                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg);
+                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg, EXT);
             }
 
             PRM->xy.h.x = win->field_30.h.field_30 + def_left;
@@ -298,7 +314,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             if (CardLayout_FullBleed()) {
                 CardLayout_DrawPlaque(win->field_30.h.field_30 + def_layout.x - CARD_LAYOUT_PLAQUE_PAD_X,
                                       win->field_30.h.field_32 + def_layout.y - CARD_LAYOUT_PLAQUE_PAD_TOP,
-                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg);
+                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg, EXT);
             }
         }
 #else
