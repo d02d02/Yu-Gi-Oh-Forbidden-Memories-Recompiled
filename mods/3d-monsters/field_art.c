@@ -235,8 +235,8 @@ static int lift(void)
  * Its own key, not the 3D Monsters mod's "pixels"/TALL_PIXELS: a model's
  * irregular silhouette tolerates crowding a full-rectangle cutout cannot
  * (#201 follow-up -- adjacent cutouts overlapping with a full row of five),
- * so the two need independently tunable defaults even though they used to
- * share one. DEFAULT_PIXELS is lower than TALL_PIXELS for exactly that. */
+ * so the two need independently tunable values even though they currently
+ * default to the same number. */
 #define MIDDLE_X 0
 #define MIDDLE_Z 0
 #define HEIGHT_DEFAULT 700
@@ -252,7 +252,7 @@ static int lift(void)
  * and every cutout was stuck oversized. */
 #define HEIGHT_SMALLEST 16
 #define HEIGHT_LARGEST 8192
-#define DEFAULT_PIXELS 24
+#define DEFAULT_PIXELS 32
 
 static int fit_height(void)
 {
