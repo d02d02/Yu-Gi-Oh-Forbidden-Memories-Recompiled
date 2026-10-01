@@ -23,12 +23,19 @@ typedef enum {
     CARD_LAYOUT_ATTRIBUTE,
     CARD_LAYOUT_ATK,
     CARD_LAYOUT_DEF,
+    CARD_LAYOUT_ART,
     CARD_LAYOUT_ELEMENT_COUNT
 } CardLayoutElement;
 
 typedef struct {
     int visible; /* 0: the call site leaves this element out entirely */
     int x, y;
+    /* w/h: only CARD_LAYOUT_ART uses these, to stretch the picture to a
+     * size independent of the texel footprint DisplayObject_
+     * ConfigureScreenSprite gave it (func_80028B08.c's own CardLayout_
+     * DrawArt). Every other element keeps these 0 -- retail's own sprite
+     * resource already fixes its draw size. */
+    int w, h;
 } CardLayoutPlacement;
 
 CardLayoutPlacement CardLayout_Get(CardLayoutElement element);
