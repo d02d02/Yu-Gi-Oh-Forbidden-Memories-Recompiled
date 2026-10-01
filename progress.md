@@ -50,6 +50,26 @@ unpushed there).
 
 ## How to test things
 
+- **Fresh-install check** (what a brand-new player, or the next release, actually
+  looks like with no settings/saves/mods baggage): `tools/pc/reset_fresh_user.py`.
+  A real profile (the player's own, or any profile ever used for this before)
+  can never answer that again once it's been played on — a saved `settings.txt`
+  always wins over a mod's own default, so leftover dev-testing state silently
+  masks shipped-default bugs as something else. The script wipes/rebuilds
+  `tmp/pc/<build>-fresh-user` from scratch every run instead:
+  `python tools/pc/reset_fresh_user.py --build game32dbg --launch` (or
+  `game32master`, rebuilt from a `master` checkout to see the *next* release,
+  since Releases lag behind `upstream/master`). `--copy-memory-card` pulls in
+  just `saves/` (the real card collection + duelist progress) from another
+  profile, never `states/` (full engine snapshots, tied to a build's own
+  compiled checksums, known to fail loading across builds even at the same
+  commit). `--link-mods` junctions in hand-installed mods from
+  `tmp/pc/shared-mods/<name>` (not copies — one real folder, linked into every
+  profile that wants it, so e.g. the HD pack `assets-hd` never goes out of sync
+  or gets duplicated). Shipped mods (this repo's own `mods/`, compiled into
+  every `tmp/pc/game32*/mods/` at build time) always show in the list
+  regardless of profile freshness — that's correct; only `shared-mods` holds
+  the hand-installed kind.
 - My debug build: `tmp/pc/game32dbg`, with its own user folder `tmp/pc/game32dbg-user`
   (saves, states and settings kept apart from the real game).
 - Run it (PowerShell, repo root):
