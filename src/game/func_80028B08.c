@@ -110,6 +110,70 @@ static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
 #define CARD_LAYOUT_PLAQUE_PAD_BOTTOM 2
 #define CARD_LAYOUT_PLAQUE_W (26 + 2 * CARD_LAYOUT_PLAQUE_PAD_X)
 #define CARD_LAYOUT_PLAQUE_H (0x0D + CARD_LAYOUT_PLAQUE_PAD_TOP + CARD_LAYOUT_PLAQUE_PAD_BOTTOM)
+
+/* Stretches the card's own picture to fill full-bleed's larger art rect
+ * (card_layout.c's CARD_LAYOUT_ART) instead of retail's small 0x66x0x60
+ * quad, the same way CardLayout_DrawPlaque above routes through the
+ * projected pipeline rather than a hand-built bypass.
+ *
+ * `src` is PRM at the point retail has it fully set up for the small
+ * picture (attribute/tpage/cxcy/uv/extent all already correct) -- this
+ * reads its texel footprint and clut/tpage encoding from there, exactly
+ * like the default dispatch case builds a POLY_FT4, but keeps that UV span
+ * fixed to the original 0x66x0x60 box while x/y/w/h set the quad's own
+ * (bigger) on-screen size independently. Confirmed by research: the shared
+ * default dispatch ties vertex size and UV span to the same extent value,
+ * so enlarging PRM->extent directly would also enlarge the texel read and
+ * sample past the art's real texture block.
+ *
+ * clut/tpage encode exactly like the default case's own POLY_FT4 build
+ * (func_80028B08.c already does this for the digits' packet) -- POLY_FT4
+ * and POLY_GT4 share the same byte layout for those two fields, standard
+ * PSX GPU packet format, so that formula is reused rather than re-derived.
+ * Routed through case 5 (the POLY_GT4 sibling of the plaque's case 4)
+ * rather than the default case, since the default case is exactly the
+ * extent-coupled path this function exists to avoid. */
+static void CardLayout_DrawArt(SpritePrim *src, s32 x, s32 y, s32 w, s32 h,
+                                s32 ot, s32 mode, Func80028B08Extra *EXT)
+{
+    POLY_GT4 art;
+    u32 attr = src->attribute;
+    s32 projected = ((u32)mode >> 16) == 0xF;
+    s32 packet_attr = (projected ? 0x04000000 : 0) | (attr & 0x70000000);
+    s32 art_mode = (mode & 0xFFFF) | 0x50000;
+
+    setPolyGT4(&art);
+    setRGB0(&art, (u8)src->rgb, (u8)(src->rgb >> 8), (u8)(src->rgb >> 16));
+    setRGB1(&art, (u8)src->rgb, (u8)(src->rgb >> 8), (u8)(src->rgb >> 16));
+    setRGB2(&art, (u8)src->rgb, (u8)(src->rgb >> 8), (u8)(src->rgb >> 16));
+    setRGB3(&art, (u8)src->rgb, (u8)(src->rgb >> 8), (u8)(src->rgb >> 16));
+
+    art.clut = (src->cxcy.h.cy << 6) | ((src->cxcy.h.cx >> 4) & 0x3F);
+    art.tpage = src->tpage | (((attr >> 17) & 0x180) | ((attr >> 23) & 0x60));
+
+    if (attr & 0x800000) {
+        art.u1 = art.u3 = src->uv.b.lo;
+        art.u0 = art.u2 = src->uv.b.lo + src->extent.wh.w.word - 1;
+        art.v0 = art.v1 = src->uv.b.hi;
+        art.v2 = art.v3 = src->uv.b.hi + src->extent.wh.h - 1;
+    } else {
+        art.u0 = art.u2 = src->uv.b.lo;
+        art.v0 = art.v1 = src->uv.b.hi;
+        if (attr & 0x80) {
+            art.u1 = art.u3 = src->uv.b.lo + src->extent.wh.w.word;
+            art.v2 = art.v3 = src->uv.b.hi + src->extent.wh.h;
+        } else {
+            art.u1 = art.u3 = src->uv.b.lo + src->extent.wh.w.word - 1;
+            art.v2 = art.v3 = src->uv.b.hi + src->extent.wh.h - 1;
+        }
+    }
+
+    setXY4(&art, (short)x, (short)y, (short)(x + w), (short)y,
+           (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
+
+    DisplayObject_SubmitPacket((SpritePrim *)packet_attr, (Func80028B08Ctx *)&art,
+                               ot, art_mode, EXT);
+}
 #endif
 
 void func_80028B08(DisplayObject *obj, s32 arg1) {
@@ -140,16 +204,18 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
      * second time. So every placement below stays in retail's own
      * coordinate neighbourhood, not a reset-to-zero origin: card_layout.c
      * is the single place that knows where each element sits for either
-     * layout. Enlarging the art itself is separate, later work (extent is
+     * layout. Enlarging the art itself (CardLayout_DrawArt above) needed
+     * its own POLY_GT4 build rather than a bigger PRM->extent: extent is
      * the texel-read size for every submission path reachable here, not an
-     * independent draw size -- confirmed by research -- so it needs a
-     * hand-built POLY_FT4 like field_art.c's own cutout, not a bigger
-     * PRM->extent). */
+     * independent draw size, confirmed by research -- a bigger extent
+     * would sample past the art's real texture block, not just stretch
+     * it. */
     CardLayoutPlacement title_layout = CardLayout_Get(CARD_LAYOUT_TITLE);
     CardLayoutPlacement atk_layout = CardLayout_Get(CARD_LAYOUT_ATK);
     CardLayoutPlacement def_layout = CardLayout_Get(CARD_LAYOUT_DEF);
     CardLayoutPlacement star_layout = CardLayout_Get(CARD_LAYOUT_LEVEL_STARS);
     CardLayoutPlacement attr_layout = CardLayout_Get(CARD_LAYOUT_ATTRIBUTE);
+    CardLayoutPlacement art_layout = CardLayout_Get(CARD_LAYOUT_ART);
 #endif
 
     wrap = 0xFFFF;
@@ -196,6 +262,17 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     PRM->cxcy.word = obj->field_40.word;
     PRM->uv.word = obj->field_5C;
     PRM->tpage = obj->field_66;
+#ifdef MEMORIES_PC
+    /* Card layout: full-bleed stretches the art (CardLayout_DrawArt) in
+     * place of retail's own small quad -- PRM is still fully set up with
+     * the original attribute/tpage/cxcy/uv/extent at this point, which is
+     * exactly what that helper reads its texel footprint from. */
+    if (art_layout.w != 0) {
+        CardLayout_DrawArt(PRM, win->field_30.h.field_30 + art_layout.x,
+                           win->field_30.h.field_32 + art_layout.y,
+                           art_layout.w, art_layout.h, arg1, arg, EXT);
+    } else
+#endif
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
 
     CTX->field_7 |= 2;
