@@ -46,8 +46,7 @@
             "min": 8,
             "max": 160,
             "step": 4,
-            "restart": true,
-            "description": "Cutout height in game pixels. Was shared with Model scale's Target height above; split out since a card's full-rectangle cutout overlaps its neighbours at a height models' own irregular silhouettes hid (#201 follow-up). Lower than 32 so a full row of five doesn't crowd; raise it back if you only ever see a few monsters out at once."
+            "description": "Cutout height in game pixels. Was shared with Model scale's Target height above; split out since a card's full-rectangle cutout overlaps its neighbours at a height models' own irregular silhouettes hid (#201 follow-up). Lower than 32 so a full row of five doesn't crowd; raise it back if you only ever see a few monsters out at once. No restart needed: fit_height() recomputes every frame, nothing cached to invalidate (unlike 3D models' own Target height above, which does need one)."
         },
         {
             "key": "lift",
