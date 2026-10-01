@@ -228,13 +228,15 @@ static int lift(void)
     return tunable("lift", LIFT_PIXELS * LIFT_UNITS_PER_PIXEL);
 }
 
-/* The world-space height that projects to `pixels` game pixels tall at the
- * middle of the field: found the way the 3D Monsters mod's fit() finds a
- * model's scale, by projecting instead of measuring drawn packets, because
+/* The world-space height that projects to `card_art_pixels` game pixels tall
+ * at the middle of the field: found the way the 3D Monsters mod's fit() finds
+ * a model's scale, by projecting instead of measuring drawn packets, because
  * every card's cutout is the same 102x96 record and needs the same height.
- * DEFAULT_PIXELS matches the 3D Monsters mod's own TALL_PIXELS: the same
- * "about this tall in the middle of the field" target its models are fit to,
- * so a cutout should read at the same scale a battle model would. */
+ * Its own key, not the 3D Monsters mod's "pixels"/TALL_PIXELS: a model's
+ * irregular silhouette tolerates crowding a full-rectangle cutout cannot
+ * (#201 follow-up -- adjacent cutouts overlapping with a full row of five),
+ * so the two need independently tunable defaults even though they used to
+ * share one. DEFAULT_PIXELS is lower than TALL_PIXELS for exactly that. */
 #define MIDDLE_X 0
 #define MIDDLE_Z 0
 #define HEIGHT_DEFAULT 700
@@ -250,11 +252,11 @@ static int lift(void)
  * and every cutout was stuck oversized. */
 #define HEIGHT_SMALLEST 16
 #define HEIGHT_LARGEST 8192
-#define DEFAULT_PIXELS 32
+#define DEFAULT_PIXELS 24
 
 static int fit_height(void)
 {
-    int target = tunable("pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt, got = 0;
+    int target = tunable("card_art_pixels", DEFAULT_PIXELS), height = HEIGHT_DEFAULT, attempt, got = 0;
     for (attempt = 0; attempt < 5; attempt++) {
         int sx, base_sy, top_sy, wanted;
         project(MIDDLE_X, -lift(), MIDDLE_Z, &sx, &base_sy);
