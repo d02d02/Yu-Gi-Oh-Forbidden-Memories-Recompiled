@@ -214,6 +214,15 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         if (rec->field_3C & 0x80) {
             PRM->cxcy.h.cy = PRM->cxcy.h.cy + 1;
         }
+#ifdef MEMORIES_PC
+        /* Card layout: "ATK"/"DFD" (same shared font page as the digits,
+         * positioned via obj->field_30 -- a fixed per-screen offset set at
+         * setup, never touched by card_layout.c). Retail's stacked layout
+         * has room for this label to the left of each value; full-bleed's
+         * relocated, side-by-side boxes do not, and the reference layout
+         * (bewd.jpeg) reads the boxes by position alone, no label text. */
+        if (!CardLayout_FullBleed())
+#endif
         DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
         PRM->cxcy.h.cy = white;
         PRM->uv.b.hi = PRM->uv.b.hi + *(u8 *)&PRM->extent.wh.h;
@@ -221,6 +230,9 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         if (rec->field_3C & 0x40) {
             PRM->cxcy.h.cy = 0xF9;
         }
+#ifdef MEMORIES_PC
+        if (!CardLayout_FullBleed())
+#endif
         DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
         PRM->cxcy.h.cy = white;
 
