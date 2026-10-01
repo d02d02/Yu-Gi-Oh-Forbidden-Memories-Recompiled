@@ -22,16 +22,17 @@ The window has a tab per table:
 
 | Tab | What you edit |
 |---|---|
-| Cards | search and filter the 722 cards; name, card text (with the game's 20-letter, 8-line wrapping counted, and **Tools > Card text preview** to see it as the card view draws it, below), ATK/DEF, type, attribute, level, guardian stars, password; the retail value beside each field. **Frame**: the colour of the card's frame (by type, or monster, magic, trap, ritual, purple or orange whatever its type), with a swatch of it; the card view, the Library and the duel draw it ([frame colour](../../../notes/more-cards.md#frame-colour)). **Notes**: text of your own on the card (what you changed, what you plan), saved as its `"notes"`; the game shows none of it, and a code mod can read `<tag: value>` tags from it ([notes on a card](../../../notes/more-cards.md#notes-on-a-card)). **Revert to retail** keeps them; the **With notes** filter lists the cards that have some, and the search finds words of them too. **Add a card** copies the selected one as a new card with a stable id; a new card starts in nobody's chest (it is won in its base's place, dealt in a starter deck, or given by Game > Cheats), and its password is only shown in the card view: the Password screen sells the disc's 722 |
+| Cards | search and filter the 722 cards; name, card text (with the game's 20-letter, 8-line wrapping counted, and **Tools > Card text preview** to see it as the card view draws it, below), ATK/DEF, type, attribute, level, guardian stars, password; the retail value beside each field. A guardian star may be **(none)**, written `0`: both none is a monster with no star at all (no SELECT A GUARDIAN STAR box, no star bonus given or taken, no star drawn), the second none a monster with one star; a first star of none with a second is warned about, because the game takes the second as the card's one star ([no star](../../../notes/modding.md#guardian-stars-names-icons-new-stars-and-matchups)). **Frame**: the colour of the card's frame (by type, or monster, magic, trap, ritual, purple or orange whatever its type), with a swatch of it; the card view, the Library and the duel draw it ([frame colour](../../../notes/more-cards.md#frame-colour)). **Notes**: text of your own on the card (what you changed, what you plan), saved as its `"notes"`; the game shows none of it, and a code mod can read `<tag: value>` tags from it ([notes on a card](../../../notes/more-cards.md#notes-on-a-card)). **Revert to retail** keeps them; the **With notes** filter lists the cards that have some, and the search finds words of them too. **Add a card** copies the selected one as a new card with a stable id; a new card starts in nobody's chest (it is won in its base's place, dealt in a starter deck, or given by Game > Cheats), and its password is only shown in the card view: the Password screen sells the disc's 722 |
 | Art | a card's picture (102x96), thumbnail (40x32, the hand and the field) and name plate (96x14) as the disc has them, beside what the game will draw at the console's resolution and at Internal 2x/4x; **Import PNG**, **Export** the disc's or the mod's (to paint over), **Revert** |
-| Fusions | every pair and its result (search by a card, or show the changed ones); add, change, remove (the pair no longer fuses) or revert; **Bulk...** adds or takes away the fusions of every card of one filtered set with every card of another (below) |
+| Fusions | every pair and its result (search by a card, or show the changed ones); add, change, remove (the pair no longer fuses) or revert; **Remove recipes of...** takes away every disc recipe of a card in one `remove` rule; a pair a card's own `fusions` list makes (no rule of the mod deciding it first) shows that list's result, marked "own list"; **Bulk...** adds or takes away the fusions of every card of one filtered set with every card of another (below) |
 | Equips | per equip card, the monsters it may equip; add one, add or remove a whole type, remove, revert |
 | Rituals | per ritual card, its three tributes and the monster it summons |
 | Duelists | per opponent, the deck pool and the S/A-POW, B/C/D and S/A-TEC drop pools: weights, their chance, the retail weight, and the total against 2048 (**Normalize** scales a pool back to 2048 the way the port does). The deck is either the **Weighted deck (retail)** or a **Fixed deck (40 cards)**: forty specific cards by their copies, counted against 40, each beside its weighted chance; **Copy the weighted deck's most likely 40**, **Clear**, **Revert to retail** |
 | Starter decks | the decks a new game may be dealt in place of the disc's weighted pools: a deck's name, its weight against the other decks offered, and its cards by their copies, counted against the forty a deck holds |
 | Map | the campaign map's sixteen places (below): each exit's destination, direction, story-flag condition, length and arrow on the screen, the Millennium Puzzle marker's place in the town, Confirm's destination and each place's camera, over pictures of the map drawn from your disc; **Reset place**, **Reset all**; **Pictures...**: the marker, arrows and name panel, and the terrain's textures |
 | Limits | the numbers the game caps (`limits`, [gameplay tables](../../../notes/gameplay-tables.md#limits-atk-def-lp-starchips-and-more)). The simple part: the ATK and DEF cap, the LP a duel starts with, and how far healing goes. **Show advanced**: ATK and DEF apart, each side's starting LP, the two-player LP choice (start, most, step), the most starchips, the chest's copies, the Free Duel and two-player records, and a table of duelists with the LP each side starts with against them. An empty field is the game's own number (beside it, with the range the game keeps); a value past that range is warned about and held at the most the game keeps |
-| Guardian Stars | the stars (`guardian_stars`, [Guardian Stars](../../../notes/modding.md#guardian-stars-names-icons-new-stars-and-matchups)): the list of stars with a name and an icon each (**Import icon (PNG)...**, with a preview; the game makes it 16x16 in the disc's stars' colours), **Add star** for 11 to 15 (a card holds its stars in 4 bits, so fifteen at most), and the full grid of matchups: a row is the attacker's star, a column the defender's, a cell the bonus the attacker's side gets, green above 0 and red below; click a cell, type a bonus or use **+ default**, **- default** or **0** (with **Reverse pair gets the opposite** on, the reverse cell takes the opposite sign). **Default bonus** moves the disc's 500 in both cycles, **Retail cycles** and **Clear all** are presets, **Revert to retail** takes the whole key away. **Set stars by rule...** sets many cards' first or second star from their attribute or type through a table you fill in (a Fire monster's first star is Fire), or one star for all, over a filter of cards like Bulk fusions', with a preview and **Undo last batch**. **Show advanced**: a name per language (`fr=Feu, de=Feuer`), an icon's colours (`game` or its own), and what happens at a summon (`ask`, `first`, `best`). The Cards tab's star lists show the mod's stars as they are named here |
+| Guardian Stars | the stars (`guardian_stars`, [Guardian Stars](../../../notes/modding.md#guardian-stars-names-icons-new-stars-and-matchups)): the list of stars with a name and an icon each (**Import icon (PNG)...**, with a preview; the game makes it 16x16 in the disc's stars' colours), **Add star** for 11 to 15 (a card holds its stars in 4 bits, so fifteen at most), and the full grid of matchups: a row is the attacker's star, a column the defender's, a cell the bonus the attacker's side gets, green above 0 and red below; click a cell, type a bonus or use **+ default**, **- default** or **0** (with **Reverse pair gets the opposite** on, the reverse cell takes the opposite sign). **Default bonus** moves the disc's 500 in both cycles, **Retail cycles** and **Clear all** are presets, **Revert to retail** takes the whole key away. **Set stars by rule...** sets many cards' first or second star from their attribute or type through a table you fill in (a Fire monster's first star is Fire), or one star for all, **(none)** included (a first star of none leaves the second as the card's one star, as the game reads it; both none, no star), over a filter of cards like Bulk fusions', with a preview and **Undo last batch**. **Show advanced**: a name per language (`fr=Feu, de=Feuer`), an icon's colours (`game` or its own), and what happens at a summon (`ask`, `first`, `best`). The Cards tab's star lists show the mod's stars as they are named here |
+| Packs | the card packs the mod sells for starchips on the Password screen: each pack's name, description, price, cards a pack and picture, its cards with their tier, weight and chance; an **Advanced** part for everything else; **Shop settings...** and **Simulate...** (below) |
 | Mod info | id, name, version, author, description, `settings`, and the other `mod.json` keys, kept as written (`limits` is the Limits tab's, `guardian_stars` the Guardian Stars tab's) |
 | Conflicts | the loader's checks; double-click a line to go to it |
 
@@ -219,6 +220,9 @@ record are shown as retail fusions and marked.
   passwords). Keys the editor does not show (`model`, `count`...) are kept as
   written; `art`,
   `thumbnail` and `title` are the Art tab's (below). A copy with no `name` shows its base's name from the disc.
+  `stars` is written as the disc's names and `0` for none (`[0, 0]`: no
+  star); read back, `0`, `null`, `"none"` and `"(none)"` are all none, as the
+  game reads them, and `[none, X]` stays as written.
 * `passwords`: a retail card whose password changed gets `{"password": "…"}`
   (`""` for none) under its name, merged into the mod's own entries, whose
   `starchips`, `all` and `"card number"` stay as written. A password is up to
@@ -226,7 +230,21 @@ record are shown as retail fusions and marked.
   one, since the Password screen then gives the lower card number.
 * `fusions`: one rule per pair whose result changed (`"result": null` for a
   fusion taken away). An added card fuses as its base until a rule names it,
-  so taking away its pair's fusion writes a `null` rule for it.
+  so taking away its pair's fusion writes a `null` rule for it. A mod's
+  `{"remove": C}` rules are kept as written, first: the disc recipes of C
+  they take away write nothing, and one the mod keeps or changes (reverted
+  in the tab, say) is written as a rule of its own, which the remove would
+  otherwise take away too. When every disc recipe of C is back, the remove
+  is dropped; one for a card no disc recipe makes stays as it was. A
+  pair rule the mod wrote is kept even where the result alone needs none
+  (the disc's result, or a `null` on a recipe a remove takes away): the
+  game asks it before a card's own `fusions` list. So is one for a pair
+  such a list names once the modder edits it, so the game plays what the
+  tab shows. A remove leaves such a pair to the list, as in the game (mods'
+  recipes still make the card): the tab's row says "own list" and shows
+  what the list makes (`own_fusion`). Deleting an added card turns a kept
+  rule that made it into a null rule, shown as "removed"; one on a pair
+  with no disc fusion that no own list names is dropped instead.
 * `equips`: per equip card, `add` and `remove` (a whole monster type as its
   name), or `replace` when that is shorter. An added card is equipped (and
   equips) as its base, so what differs for it is written in later entries,
@@ -278,6 +296,15 @@ record are shown as retail fusions and marked.
   A card the editor cannot place keeps its row and its copies, under the name
   it was written with, and `"starter"` given as the name of a file stays that
   filename.
+* `packs` and `pack_shop`: the card packs and the shop's rules
+  ([card packs](../../../notes/card-packs.md)). Each pack is kept as the
+  object the mod wrote, so a key the editor has no field for stays as
+  written, and is written back with only what differs from the game's
+  defaults: no `"count": 5`, `"price": 100`, `"duplicates": "allow"`,
+  `"reveal": "flip"`..., a pool of weights of 1 as a list, `"cost":
+  {"starchips": n}` alone as `"price"`. A pack's picture goes in the mod's
+  `packs/` folder. `"packs"` given as the name of a file stays that filename
+  (the tab then edits nothing).
 * The duelists the editor knows are the forty the disc lays out, since it
   reads the game's own files. A mod may add its own
   ([more duelists](../../../notes/more-duelists.md)), and which of those exist
@@ -516,6 +543,83 @@ its files (or `fm-editor`) lands beside the game's program. The Linux one is bui
 Debian 11, like the game, and brings its own Python and Tk. Running it from
 the source as above works too.
 
+### Packs
+
+The left list is the mod's packs in their order (`#`, name, price, cards a
+pack, stock): **Add pack**, **Duplicate**, **Remove**, **Up**/**Down** (the
+list's order is the order the game sells them in; `"order"` is written only
+when set under Advanced). A pack the game would leave out is red, one with a
+note amber; the Conflicts tab has the reader's words (packs.py says what the
+game's Mods window would).
+
+The simple view has what most packs need: **Name** (16 letters show; the
+identity `mod-id:id` beside it stays when the name changes, since a save's
+progress is kept by it), **Description**, **Price** in starchips and **Cards
+a pack**. The picture is what the big card on the Password screen shows:
+**Import PNG** (cut to 102:96 from the middle, kept at up to 4x; the console's
+resolution makes it 102x96, Internal 2x and 4x draw its own detail), **Export**,
+**Revert** (back to the cover card's art), with the name plate the game sets
+in its serif font under it, at 1x, 2x and 4x. The cards: `#`, card, tier,
+weight and **Chance**, the share of a slot dealt by the tiers' odds that is
+this card, before any is taken out. **Add a card...** (the mod's own cards
+too), **Add filtered...** (the Bulk fusions filters: every Dragon under 1500
+ATK, say) into the chosen tier at the weight typed, **Tier**/**Set** moves the
+selected rows, **Weight**/**Set**, **Remove selected**.
+
+**Advanced** (closed at first):
+
+* **Tiers**: name, odds (and their share), label (`"ULTRA RARE!"`), colour
+  (the game's text colours, 0-15), sound, reveal and how many cards; **Add
+  tier**, **Edit...**, **Remove**, **Up**/**Down**: the order is the rarity,
+  commonest first. A one-pool pack becomes a pack of tiers with its pool the
+  tier `cards`. A renamed tier is renamed in the slots, guarantee and pity.
+* **Slots**: every slot by the tiers' odds, or a rule for each: a tier, tiers
+  by weight, its own cards (`card=weight`), or always one card.
+* **Dealing**: guarantee and pity (`tier=n`), max copies, stock, cost in
+  cards (`card=copies` from the chest), order, shops, cover, duplicates
+  (`unique_in_pack`), reveal (`flip`, `quick`, `list`), include the cards mods
+  add, and **All owned** (`when_nothing_left`): with max copies, when the
+  player holds that many of every card, `refuse` the pack (ALL OWNED on the
+  screen, nothing paid) or `sell` it anyway, or `(shop's)` for Shop
+  settings' rule.
+* **Unlock**: beat (a duelist), wins, story flag (`0x6E0` + n is the n-th
+  campaign duelist beaten), card and copies, starchips spent on packs, packs
+  opened, opened (`pack=n`), and whether a locked pack is hidden or shown.
+* **Password and sounds**: a password (said when a card has it too: the card
+  comes first), once a save, in the list, and the five sound ids (empty for
+  the Password screen's own).
+
+**Shop settings...** edits `pack_shop`: what the Password screen sells (both,
+packs only, passwords only), the random numbers (`game`, or `save` so a
+reloaded save deals the same pack), the music, **All owned** (the rule for
+the packs that do not say, `refuse` by default), and the shops, one a line
+(`id | name | unlock as JSON`, sixteen at most); a shop's other keys (`where`,
+and any the editor has no field for) stay as written. Not yet in the game, and so not offered (the keys
+are kept free for them): a PACKS entry in the campaign's shop
+(`campaign_shop`), the main menu, saving after each purchase (`autosave`),
+selling mods' cards by their passwords (`sell_added_cards`), a currency of the
+mod's own (`currency`) and a stock that comes back (`restock`).
+
+**Simulate...** opens N packs (1000 at first) from a seed with the game's own
+dealer (`packs.py` is `src/pc/cards/packs.c` in Python: four of the game's
+random numbers a card, the guarantee and the pity redealing the last slots,
+`unique_in_pack` and `max_copies` shrinking the pools), the pity counted from
+one pack to the next as a save counts it, and lists the cards dealt by tier
+and by card, how often a tier with a pity came on average and how often the
+pity dealt it. The packs are opened a slice at a time, so the editor stays
+free meanwhile: a bar shows how far it is and **Stop** shows what came so far
+(at most a million packs, and five million cards in all, about a minute).
+The tests hold the Python dealer to the C one's deals
+(`tests/pc/packs_golden.txt`), line for line.
+
+A field of the pack left as the tab showed it keeps the key as the mod wrote
+it: opening a mod and moving through its packs changes nothing of it (a
+`"cover": 2` stays a number), and **Apply** writes only the fields changed.
+**Duplicate** gives the copy a picture of its own, so importing one for
+either pack leaves the other's. When `packs` names a file of the mod, the
+tab keeps it as written: a pack's fields and buttons are grey, and only
+**Shop settings...** (the manifest's `pack_shop`) is offered.
+
 ## Tests
 
     python -m unittest discover -s tools/pc/fm_editor/tests -t tools/pc
@@ -610,6 +714,11 @@ the engine keeps no undo (a front end may keep `project.clone()`s).
   `set_notes`, `card_label`, `model.card_matches` (the search).
 * Fusions: `project.fusions[(low, high)] = result`, through
   `set_fusion(a, b, result or None)`; `fusion_status`, `revert_fusion`.
+  `project.fusion_removes` lists the `{"remove": C}` cards in the mod's
+  order (`remove_recipes`, `retail_recipes`, `active_removes`,
+  `fusion_rule`: whether a pair is written, which the bulk count shares);
+  `project.fusion_explicit` the pairs written whatever their result
+  (`own_fusion_pairs`, `explicit_after_edit`).
   Bulk: `bulk_fusions.plan(project, BulkSpec(...))`, then `apply` and `undo`.
 * Equips: `project.equips[equip]` is a set of monsters; `equip_baseline`
   is what the disc gives it. Rituals: `project.rituals[ritual] = (t1, t2,

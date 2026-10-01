@@ -13,6 +13,7 @@
 #include "tables.h"
 #include "starter.h"
 #include "stars.h"
+#include "packs.h"
 #include "pc/free_duel/duelists.h"
 #include "pc/text/glyphs.h"
 #include "pc/text/text.h"
@@ -33,13 +34,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Where the retail tables sit in the executable's image (notes/card-catalog.md). */
+/* Where the retail tables sit in the executable's image (notes/card-catalog.md).
+ * A test that includes this file may put them elsewhere first. */
+#ifndef RETAIL_STATS
 #define RETAIL_STATS 0x801D4244u        /* s32 [722], by id - 1 */
 #define RETAIL_SORT_KEYS 0x801D4D8Eu    /* s16 [722], by id - 1 */
 #define RETAIL_LEVEL_ATTR 0x801D5332u   /* u8 [723], by id */
 #define RETAIL_NAME_OFFSETS 0x801D5800u /* u16, by 0x8000 + id - 0x8000, from 0x801D0000 */
 #define TEXT_BANK 0x801D0000u
 #define GLYPH_TABLE 0x801D9000u         /* u32 per glyph code, the Shift-JIS code in the low half */
+#endif
 
 /* The save's layout (src/game/save_data.h). */
 #define SAVE_CHEST 0x50
@@ -126,6 +130,12 @@ static unsigned char own_password[CARD_TABLE_ID_END];
 static unsigned char *art_records[CARD_TABLE_ID_END];
 static unsigned char art_parts[CARD_TABLE_ID_END];
 static unsigned char *plates[CARD_TABLE_ID_END];
+/* Field-only artwork ("field_art"): a card's picture and CLUT (art.h's
+ * CARD_ART_PIXELS/CARD_ART_CLUT layout) for its cutout on the duel field
+ * alone (mods/3d-monsters/field_art.c). Never patched into a card's own
+ * record, so nothing else the card's art shows (Library, hand, trade, the
+ * detail panel) is touched by it. NULL: the cutout uses the card's own art. */
+static unsigned char *field_art_records[CARD_TABLE_ID_END];
 static const char *replaced[CARD_ID_END];          /* the mod that replaced a retail card */
 static unsigned short *variants[2];                 /* per use: copies, grouped by base */
 static unsigned short variant_start[2][CARD_ID_END + 1];
@@ -255,6 +265,27 @@ static unsigned char *encode_name(const char *mod, const char *pattern, int n, i
  * most, broken at spaces (0xFE between them); "\n" breaks where it stands. */
 #define TEXT_LINE_LETTERS 20
 #define TEXT_LINES 8
+
+/* A code in card text, spelled as the FM Editor and the text listing show
+ * it: "{f8 0B NN}" an icon (one letter wide), "{f8 0A NN}" a colour (none),
+ * "{g X}" a glyph by number. Returns the characters it takes, 0 when "at"
+ * starts none (and is then read as letters); its bytes go to out. */
+static size_t text_code(const char *at, unsigned char out[3], int *bytes, int *letters)
+{
+    unsigned kind, value;
+    int used = 0;
+    if (sscanf(at, "{f8 %2x %2x}%n", &kind, &value, &used) == 2 && used && (kind == 0x0A || kind == 0x0B)) {
+        out[0] = 0xF8; out[1] = (unsigned char)kind; out[2] = (unsigned char)value;
+        *bytes = 3; *letters = kind == 0x0B;
+        return (size_t)used;
+    }
+    used = 0;
+    if (sscanf(at, "{g %4x}%n", &value, &used) == 1 && used && value < GLYPHS_EXTENDED_LIMIT) {
+        *bytes = (int)put_glyph(out, (int)value); *letters = 1;
+        return (size_t)used;
+    }
+    return 0;
+}
 static unsigned char *encode_description(const char *mod, const char *text, int id)
 {
     size_t length = strlen(text), n = 0;
@@ -270,11 +301,13 @@ static unsigned char *encode_description(const char *mod, const char *text, int 
             continue;
         }
         if (*word == ' ') { word++; continue; }
-        while (*end && *end != ' ' && *end != '\n') end++;
         letters = 0;   /* characters, not bytes */
-        {
-            const char *at;
-            for (at = word; at < end; at++) letters += ((unsigned char)*at & 0xC0) != 0x80;
+        while (*end && *end != ' ' && *end != '\n') {
+            unsigned char code[3];
+            int bytes, wide;
+            size_t used = *end == '{' ? text_code(end, code, &bytes, &wide) : 0;
+            if (used) { end += used; letters += wide; }
+            else letters += ((unsigned char)*end++ & 0xC0) != 0x80;
         }
         if (column && column + 1 + letters > TEXT_LINE_LETTERS) {
             glyphs[n++] = 0xFE; lines++; column = 0;
@@ -283,8 +316,14 @@ static unsigned char *encode_description(const char *mod, const char *text, int 
         }
         while (word < end) {
             const char *letter = word;
-            uint32_t character = Glyphs_NextCharacter(&word);
-            int code;
+            uint32_t character;
+            int code, bytes, wide;
+            size_t used = *word == '{' ? text_code(word, glyphs + n, &bytes, &wide) : 0;
+            if (used) {
+                word += used; n += (size_t)bytes; column += wide;
+                continue;
+            }
+            character = Glyphs_NextCharacter(&word);
             if (character == GLYPHS_NOT_UTF8) {
                 if (!warned++) Mods_Note(mod, "card %d: its text is not UTF-8; save the file as UTF-8. Left out", id);
                 continue;
@@ -389,13 +428,6 @@ static int choice(const JsonValue *value, const char *const *choices, int count)
     return (int)Json_Number(value, -1);
 }
 
-/* A guardian star: its number, or its name (stars.h). -1 for neither. */
-static int star_choice(const JsonValue *value)
-{
-    if (!value) return -1;
-    if (Json_TypeOf(value) == JSON_NUMBER) return (int)Json_Number(value, -1);
-    return Stars_Find(Json_String(value, ""));
-}
 
 /* Letters and digits only, lowercased: "Blue-Eyes White Dragon" finds the
  * disc's "Blue-eyes White Dragon". */
@@ -870,6 +902,19 @@ static int clamp(int value, int low, int high)
     return value < low ? low : value > high ? high : value;
 }
 
+/* The type a card has on the disc (-1 past it): what its effect is. */
+int Cards_RetailType(int id)
+{
+    return id >= 1 && id <= CARD_COUNT ? (int)((((const unsigned *)(uintptr_t)RETAIL_STATS)[id - 1] >> 26) & 0x1F) : -1;
+}
+
+/* Monster, magic, trap, ritual or equip: what a card is played as. */
+static int kind(int type) { return type < CARD_TYPE_MAGIC ? 0 : type; }
+int Cards_KindChanged(int id)
+{
+    return Cards_Valid(id) && kind(Cards_Type(id)) != kind(Cards_RetailType(Cards_BaseId(id)));
+}
+
 static int retail_monster(int id)
 {
     return id >= 1 && id <= CARD_COUNT &&
@@ -882,7 +927,8 @@ static int retail_monster(int id)
  * monster whose model it takes, and fights without one. A monster made
  * anything else has no effect unless "effect" names a card whose effect it
  * takes. */
-static void replace_model_effect(const char *mod, int index, const JsonValue *entry, int id, unsigned *stats)
+static void replace_model_effect(const char *mod, int index, const JsonValue *entry, int id, unsigned *stats,
+                                 int was_monster, int stars_given)
 {
     const JsonValue *model = Json_Member(entry, "model"), *effect = Json_Member(entry, "effect");
     int type = (int)((*stats >> 26) & 0x1F), value;
@@ -895,8 +941,10 @@ static void replace_model_effect(const char *mod, int index, const JsonValue *en
         }
     }
     /* A card that was no monster has no guardian stars either: unless
-     * "stars" gives some, its model's, or the Sun and the Moon. */
-    if (type < CARD_TYPE_MAGIC && !(*stats & (0xFFu << 18))) {
+     * "stars" gives some, its model's, or the Sun and the Moon. A monster
+     * that "stars" leaves with none, or that was one before this entry
+     * (an earlier mod's no-star card), keeps none (stars.h). */
+    if (type < CARD_TYPE_MAGIC && !was_monster && !stars_given && !(*stats & (0xFFu << 18))) {
         *stats |= retail_monster(Cards_ModelId(id))
                       ? ((const unsigned *)(uintptr_t)RETAIL_STATS)[Cards_ModelId(id) - 1] & (0xFFu << 18)
                       : (8u << 22) | (9u << 18);
@@ -997,11 +1045,12 @@ static void add_entry(const char *mod, const char *directory, int index, const J
     const char *setting = Json_String(Json_Member(entry, "count_setting"), NULL);
     const char *description = Json_String(Json_Member(entry, "description"), NULL);
     const JsonValue *password_value = Json_Member(entry, "password");
-    unsigned char *record = NULL, *title = NULL, *named_plate = NULL;
+    unsigned char *record = NULL, *title = NULL, *named_plate = NULL, *field_art_record = NULL;
     int parts = 0;
     int base = 0, count, n, value, has_password;
     unsigned stats, password = CARD_PASSWORD_NONE, entry_fusion_groups = 0;
     int entry_has_fusion_groups = 0;
+    int was_monster, stars_given = 0;
     unsigned char level_attr, frame;
     if (Json_TypeOf(entry) != JSON_OBJECT) {
         Mods_Note(mod, "cards[%d] is not an object", index);
@@ -1038,6 +1087,7 @@ static void add_entry(const char *mod, const char *directory, int index, const J
     }
     /* What the entry leaves out is the base's. */
     stats = (unsigned)gDuel_adwCardStats[base - 1];
+    was_monster = (int)((stats >> 26) & 0x1F) < CARD_TYPE_MAGIC;
     level_attr = gDuel_abCardLevelAttr[base];
     /* A card's own ATK and DEF are nine bits of tens in its stats word
      * (gDuel_adwCardStats): 0 to 5110 in steps of 10. A mod's "limits" raise
@@ -1074,24 +1124,39 @@ static void add_entry(const char *mod, const char *directory, int index, const J
             stats = (stats & ~(0x1Fu << 26)) | ((unsigned)value << 26);
         }
     }
-    if (Json_Count(stars) == 2) {
+    /* Only a monster has ATK and DEF: no magic, trap, ritual or equip card of
+     * the disc has either. A monster replaced as one of those would keep its
+     * own, and the CPU, which ranks its hand by them whatever their type,
+     * would take it for its best monster: it plays it face down every turn,
+     * into the back row, over the last one it set. */
+    if (((stats >> 26) & 0x1F) >= CARD_TYPE_MAGIC && (stats & 0x3FFFFu)) {
+        if (Json_Number(Json_Member(entry, "attack"), 0) > 0 || Json_Number(Json_Member(entry, "defense"), 0) > 0)
+            Mods_Note(mod, "cards[%d]: only a monster has ATK and DEF; \"attack\" and \"defense\" left out", index);
+        stats &= ~0x3FFFFu;
+    }
+    if (stars && (Json_TypeOf(stars) != JSON_ARRAY || Json_Count(stars) != 2)) {
+        Mods_Note(mod, "cards[%d]: \"stars\" is a list of two, [first, second] (none for no star); left out", index);
+    } else if (stars) {
         /* A number, the disc's names, or a name a mod's "guardian_stars"
          * gives (stars.h): up to 15, what the card's 4-bit fields hold. */
-        int first = star_choice(Json_At(stars, 0)), second = star_choice(Json_At(stars, 1));
-        /* No first star is no stars at all: the duel reads the first
-           unless the second is chosen, and a card with no second never
-           chooses it (stars.h). */
-        if (first == 0 && second > 0) {
-            Mods_Note(mod, "cards[%d]: \"stars\": the first star cannot be none when the second is not; left out",
-                      index);
-            first = second = -2;
-        }
+        int first = Stars_Value(Json_At(stars, 0)), second = Stars_Value(Json_At(stars, 1));
+        int kept_first, kept_second;
+        stars_given = first >= 0 && second >= 0;
         if (first >= 0) stats = (stats & ~(0xFu << 22)) | ((unsigned)clamp(first, 0, STARS_MAX) << 22);
         if (second >= 0) stats = (stats & ~(0xFu << 18)) | ((unsigned)clamp(second, 0, STARS_MAX) << 18);
         if (first > STARS_MAX || second > STARS_MAX)
             Mods_Note(mod, "cards[%d]: a card holds a guardian star in 4 bits: 15 at most", index);
         if (first == -1 || second == -1)
             Mods_Note(mod, "cards[%d]: \"stars\": not a guardian star; left out", index);
+        /* None is 0, null, "none" or "(none)". The duel reads the first star
+           unless the second is chosen, and a card with no second never
+           chooses it: so [none, X] is the one-star card [X, none], and
+           [none, none] a monster with no star at all (stars.h). Of the
+           pair as it now stands, with the base's for a star left out. */
+        kept_first = (int)((stats >> 22) & 0xF);
+        kept_second = (int)((stats >> 18) & 0xF);
+        if (Stars_Normalize(&kept_first, &kept_second))
+            stats = (stats & ~(0xFFu << 18)) | ((unsigned)kept_first << 22) | ((unsigned)kept_second << 18);
     }
     if ((value = (int)Json_Number(Json_Member(entry, "level"), -1)) >= 0) {
         level_attr = (unsigned char)((level_attr & 0xF0) | clamp(value, 0, 12));
@@ -1160,6 +1225,29 @@ static void add_entry(const char *mod, const char *directory, int index, const J
         if (parts & ART_PICTURE) add_full_picture(full[0], record, 0);
         if (parts & ART_THUMBNAIL) add_full_picture(full[1][0] ? full[1] : full[0], record, 1);
     }
+    /* Field-only artwork: its own PNG, never shared with "art" and never
+     * patched into the card's own record, so only the field cutout ever
+     * shows it. Its own transparency-preserving loader (art.h), not
+     * CardArt_FromImage's: a background-removed PNG draws as a cutout of
+     * its own shape, not a rectangle. */
+    {
+        const char *file = Json_String(Json_Member(entry, "field_art"), NULL);
+        char path[1200], why[1300];
+        if (file && *file && count) {
+            if (!Paths_Contained(file) || snprintf(path, sizeof(path), "%s/%s", directory, file) >= (int)sizeof(path)) {
+                Mods_Note(mod, "cards[%d]: \"field_art\": %s is outside the mod", index, file);
+            } else {
+                field_art_record = calloc(1, CARD_ART_RECORD);
+                if (!field_art_record) {
+                    Mods_Note(mod, "cards[%d]: \"field_art\": out of memory", index);
+                } else if (!CardArt_FieldArtFromImage(path, field_art_record, why, sizeof(why))) {
+                    Mods_Note(mod, "cards[%d]: \"field_art\": %s", index, why);
+                    free(field_art_record);
+                    field_art_record = NULL;
+                }
+            }
+        }
+    }
     for (n = 1; n <= count; n++) {
         char identity[192], fallback[32];
         const char *key = Json_String(Json_Member(entry, "id"), "");
@@ -1173,7 +1261,7 @@ static void add_entry(const char *mod, const char *directory, int index, const J
                 not_exodia[id - EXODIA_FIRST_CARD_ID] = !Json_Bool(Json_Member(entry, "exodia"), 0);
             }
             replaced[id] = mod;
-            replace_model_effect(mod, index, entry, id, &stats);
+            replace_model_effect(mod, index, entry, id, &stats, was_monster, stars_given);
             goto own;
         }
         if (!*key) { snprintf(fallback, sizeof(fallback), "entry-%d", index); key = fallback; }
@@ -1198,6 +1286,8 @@ static void add_entry(const char *mod, const char *directory, int index, const J
         fusion_groups[id] = entry_fusion_groups;
         has_fusion_groups[id] = (unsigned char)entry_has_fusion_groups;
         gDuel_adwCardStats[id - 1] = (int)stats;
+        /* A monster with no star: star 0 is neutral from now on (stars.h). */
+        if (((stats >> 26) & 0x1F) < CARD_TYPE_MAGIC && !(stats & (0xFu << 22))) Stars_NoteNoStar();
         gDuel_abCardLevelAttr[id] = level_attr;
         frames[id] = frame;
         names[id] = name && *name ? encode_name(mod, name, n, id) : NULL;
@@ -1209,6 +1299,7 @@ static void add_entry(const char *mod, const char *directory, int index, const J
         if (has_password) passwords[id] = password;
         art_records[id] = parts ? record : NULL;
         art_parts[id] = (unsigned char)parts;
+        field_art_records[id] = field_art_record;
         if (title) {
             plates[id] = title;
         } else if (name && *name && (!named_plate || strstr(name, "{n}") || strstr(name, "{id}"))) {
@@ -1316,6 +1407,10 @@ void Cards_Build(void)
     Stars_Check();
     /* And so do the starter decks a new game may be dealt (starter.h). */
     Starter_Build();
+    /* And the card packs (packs.h), whose files and pictures a state's
+     * mod signature covers. */
+    Packs_Build();
+    Mods_SetPackSignature(Packs_Signature());
 }
 
 /* --- what the game asks -------------------------------------------- */
@@ -1510,11 +1605,38 @@ static const unsigned char *translated_plate(int id)
     return text_plates[id];
 }
 
+/* The Password screen's card packs (pack_shop.c): the next record loaded
+ * for card `override_id` takes a pack's picture and plate, or its plate. */
+static int override_id, override_fired;
+static const unsigned char *override_record, *override_plate;
+
+void Cards_OverrideArt(int id, const unsigned char *record, const unsigned char *plate)
+{
+    override_fired = 0;
+    override_id = id;
+    override_record = record;
+    override_plate = plate;
+}
+
+int Cards_ArtOverridden(void)
+{
+    int fired = override_fired;
+    override_fired = 0;
+    return fired;
+}
+
 void Cards_PatchArtRecord(int id, unsigned char *record)
 {
     const unsigned char *translated;
     int from;
     if (!Cards_Valid(id)) return;
+    if (override_id && id == override_id && override_record) {
+        /* A pack's own picture, whole: the art, its palette and the plate. */
+        override_id = 0;
+        override_fired = 1;
+        patch(record, override_record, CARD_THUMB_PIXELS);
+        return;
+    }
     if ((from = art_of(id, ART_PICTURE)) != 0) patch(record, art_records[from], CARD_TITLE_PIXELS);
     /* The plate is not reported: it sits in the middle of the sector that
      * also ends the base's palette, and a write inside a delivery drops all
@@ -1529,12 +1651,28 @@ void Cards_PatchArtRecord(int id, unsigned char *record)
     if ((from = art_of(id, ART_THUMBNAIL)) != 0) {
         patch(record + CARD_THUMB_PIXELS, art_records[from] + CARD_THUMB_PIXELS, CARD_THUMB_BLOCK);
     }
+    if (override_id && id == override_id && override_plate) {
+        /* A pack shown by its cover card's art: the pack's name on the plate. */
+        override_id = 0;
+        override_fired = 1;
+        memcpy(record + CARD_TITLE_PIXELS, override_plate, CARD_TITLE_BYTES);
+    }
 }
 
 void Cards_PatchThumbnail(int id, unsigned char *block)
 {
     int from = art_of(id, ART_THUMBNAIL);
     if (from) patch(block, art_records[from] + CARD_THUMB_PIXELS, CARD_THUMB_BLOCK);
+}
+
+/* The card's own field_art record (picture at CARD_ART_PIXELS, CLUT at
+ * CARD_ART_CLUT), or its base's, or NULL when neither has one: the cutout
+ * then falls back to the card's own art, as before. */
+const unsigned char *Cards_FieldArtRecord(int id)
+{
+    if (!Cards_Valid(id)) return NULL;
+    if (field_art_records[id]) return field_art_records[id];
+    return field_art_records[Cards_BaseId(id)];
 }
 
 int Cards_PickVariant(int id, int use)

@@ -2,8 +2,9 @@
 
 The schema is the one the port reads (notes/modding.md, notes/more-cards.md,
 notes/gameplay-tables.md; src/pc/mods/mods.c, src/pc/cards/cards.c and
-tables.c and starter.c): "cards" (replace and copy), "fusions", "equips",
-"rituals", "drops", "decks" and "starter". Every other top-level key a mod
+tables.c, starter.c and packs.c): "cards" (replace and copy), "fusions",
+"equips", "rituals", "drops", "decks", "starter", "packs" and "pack_shop".
+Every other top-level key a mod
 has (data, text, textures, audio, library, requires..., and "duelists") is
 kept as it was written.
 
@@ -26,10 +27,10 @@ from pathlib import Path
 from .gamedata import (FUSION_GROUPS, RITUAL_REQUIREMENT_KEYS, fusion_group_named, ATTRIBUTE_NAMES, CARD_COUNT, DECK_SIZE, DUELIST_NAMES, FRAME_NAMES, POOLS, STAR_NAMES,
                        STARTER_WEIGHT_LIMIT, TYPE_NAMES, TYPE_MAGIC, GameData)
 from .model import AddedCard, ModInfo, Project, StarterDeck, duelist_named, type_named, KEY_RE
-from . import art, campaign_map, fixed_decks, guardian_stars, pools as poolmath
+from . import art, campaign_map, fixed_decks, guardian_stars, packs as packmath, pools as poolmath
 
 INFO_KEYS = ("id", "name", "version", "author", "description")
-TABLE_KEYS = ("settings", "cards", "fusions", "equips", "rituals", "drops", "decks", "starter")
+TABLE_KEYS = ("settings", "cards", "fusions", "equips", "rituals", "drops", "decks", "starter", "packs", "pack_shop")
 REPLACE_EXTRA = ("art", "thumbnail", "title", "model", "effect", "exodia")
 POOL_ALIASES = {"deck": "deck", "pow": "pow", "sapow": "pow", "bcd": "bcd", "tec": "tec", "satec": "tec"}
 
@@ -131,11 +132,18 @@ def build_cards(project: Project) -> list:
 
 
 def build_fusions(project: Project) -> list:
-    rules = []
+    """The mod's removes first, then a rule per pair that differs. A pair
+    the remove takes away is left to it; one of its disc recipes the mod
+    keeps (or changes) is written, as the remove would take it away too.
+    A rule the mod wrote (or an own "fusions" list needs) is written even
+    where the result alone needs none, as it comes before such a list."""
+    active = project.active_removes()
+    rules = [{"remove": project.ref(result)} for result in active]
+    active = set(active)
     retail = project.retail.fusions
-    for pair in sorted(set(retail) | set(project.fusions)):
+    for pair in sorted(set(retail) | set(project.fusions) | project.fusion_explicit):
         now = project.fusions.get(pair)
-        if retail.get(pair) == now:
+        if not project.fusion_rule(pair, now, active):
             continue
         rules.append({"with": [project.ref(pair[0]), project.ref(pair[1])],
                       "result": project.ref(now) if now else None})
@@ -351,6 +359,14 @@ def build_starter(project: Project):
     return out[0] if len(out) == 1 else out
 
 
+def build_packs(project: Project):
+    """"packs": the file the mod names, or each pack with only what differs
+    from the defaults (packs.minimize); None for no packs."""
+    if project.packs_file is not None:
+        return project.packs_file
+    return [packmath.minimize(entry) for entry in project.packs] or None
+
+
 def build_passwords(project: Project):
     """"passwords" (gameplay-tables.md): the entries the mod had, with the
     disc cards' passwords the editor changed written into them. None when
@@ -401,6 +417,12 @@ def build(project: Project) -> dict:
     if starter:
         manifest["starter"] = starter
     campaign_map.build_into(project, manifest)
+    packs = build_packs(project)
+    if packs:
+        manifest["packs"] = packs
+    rules = packmath.minimize_rules(project.pack_shop) if project.pack_shop is not None else None
+    if rules:
+        manifest["pack_shop"] = rules
     return manifest
 
 
@@ -566,14 +588,18 @@ def _apply_fields(card, entry: dict, is_replace: bool, messages: list, where: st
             else:
                 card.type = value
     stars = entry.get("stars")
-    if isinstance(stars, list) and len(stars) == 2:
-        # A number, the disc's names or a name the mod's "guardian_stars"
-        # gives, up to the card record's 15 (cards.c star_choice).
-        first, second = (guardian_stars.find(stars[0], stars_section), guardian_stars.find(stars[1], stars_section))
-        if first == 0 and second > 0:
-            messages.append(f"{where}: \"stars\": the first star cannot be none when the second is not; left out")
-            first = second = -2
-        elif first == -1 or second == -1:
+    if "stars" in entry and not (isinstance(stars, list) and len(stars) == 2):
+        messages.append(f"{where}: \"stars\" is a list of two, [first, second] (none for no star); left out")
+    elif "stars" in entry:
+        # A number, the disc's names, a name the mod's "guardian_stars" gives
+        # or none (0, null, "none", "(none)"), up to the card record's 15
+        # (stars.c Stars_Value). [none, X] is kept as written: the game reads
+        # it as the one star X, which validate says.
+        first, second = (guardian_stars.card_star(stars[0], stars_section),
+                         guardian_stars.card_star(stars[1], stars_section))
+        if first > guardian_stars.MAX_STARS or second > guardian_stars.MAX_STARS:
+            messages.append(f"{where}: a card holds a guardian star in 4 bits: 15 at most")
+        if first == -1 or second == -1:
             messages.append(f"{where}: \"stars\": not a guardian star; left out")
         if first >= 0:
             card.star1 = _clamp(first, 0, guardian_stars.MAX_STARS)
@@ -681,16 +707,21 @@ def read_fusions(project: Project, rules, messages: list):
     if not isinstance(rules, list):
         messages.append("\"fusions\" is not an array; left out")
         return
-    set_rules, removed = {}, set()
+    set_rules, removed = {}, []
+    project._own_pairs = None           # read_cards has read the own "fusions" lists
     for i, rule in enumerate(rules):
         where = f"fusions[{i}]"
         if not isinstance(rule, dict):
             messages.append(f"{where} is not an object; left out")
             continue
+        if "setting" in rule:     # switched by the mod's settings: the editor shows the disc's table
+            messages.append(f"{where}: switched by setting {rule['setting']!r}; kept as written")
+            project.kept["fusions"].append(rule)
+            continue
         if "remove" in rule:
             cid = project.resolve(rule["remove"])
             if cid:
-                removed.add(cid)
+                removed.append(cid)
             else:
                 messages.append(f"{where}: no card {rule['remove']!r}; kept as written")
                 project.kept["fusions"].append(rule)
@@ -710,12 +741,13 @@ def read_fusions(project: Project, rules, messages: list):
             project.kept["fusions"].append(rule)
             continue
         set_rules[Project.pair(a, b)] = made
-    if removed:
-        for pair, result in list(project.fusions.items()):
-            if result in removed and project.retail.fusions.get(pair) == result:
-                del project.fusions[pair]
+    # The removes first: a rule of the mod's for one of the pairs still
+    # makes the card (Tables_Fusion is asked before the filtered disc table).
+    for result in removed:
+        project.remove_recipes(result)
     for pair, made in set_rules.items():
         project.set_fusion(pair[0], pair[1], made)
+        project.fusion_explicit.add(pair)
 
 
 def _json_bool(value, default: bool) -> bool:
@@ -738,6 +770,11 @@ def equip_rules(project: Project, entries, messages: list, kept: list = None) ->
         where = f"equips[{i}]"
         if not isinstance(entry, dict):
             messages.append(f"{where} is not an object; left out")
+            continue
+        if "setting" in entry:
+            messages.append(f"{where}: switched by setting {entry['setting']!r}; kept as written")
+            if kept is not None:
+                kept.append(entry)
             continue
         order = i + 1
         equip = project.resolve(entry.get("card"))
@@ -823,9 +860,14 @@ def read_rituals(project: Project, entries, messages: list):
         where = f"rituals[{i}]"
         if not isinstance(entry, dict):
             continue
+        if "setting" in entry:
+            messages.append(f"{where}: switched by setting {entry['setting']!r}; kept as written")
+            project.kept["rituals"].append(entry)
+            continue
         ritual = project.resolve(entry.get("card"))
-        if not ritual or ritual > CARD_COUNT or project.cards[ritual].type != 22:
-            messages.append(f"{where}: \"card\" must be one of the disc's ritual cards; left out")
+        if not ritual or not project.is_ritual(ritual):
+            messages.append(f"{where}: \"card\" must be a ritual card whose effect is a ritual's (a copy of one, "
+                            "or \"effect\" naming one); left out")
             continue
         if "result" in entry and entry["result"] is None:
             project.rituals.pop(ritual, None)
@@ -1063,6 +1105,27 @@ def read_starter(project: Project, value, messages: list):
         project.starter.append(deck)
 
 
+def read_packs(project: Project, manifest: dict, messages: list):
+    """"packs" and "pack_shop" (notes/card-packs.md): each pack kept as the
+    object the mod wrote, for the Packs tab to edit; "packs" naming a file of
+    the mod is kept as that name."""
+    value = manifest.get("packs")
+    project.packs, project.packs_file = [], None
+    if isinstance(value, str):
+        project.packs_file = value
+        messages.append(f"\"packs\" names the file {value}; kept as written (the editor does not read it)")
+    elif isinstance(value, list):
+        project.packs = copy.deepcopy(value)
+    elif value is not None:
+        messages.append("\"packs\" is a list of packs, or the name of a file that holds them; left out")
+    rules = manifest.get("pack_shop")
+    if rules is None or isinstance(rules, dict):
+        project.pack_shop = copy.deepcopy(rules)
+    else:
+        messages.append("\"pack_shop\" is an object of the shop's rules; left out")
+        project.pack_shop = None
+
+
 def read_passwords(project: Project, messages: list):
     """The "password" of each "passwords" entry that names a disc card (the
     Password screen's; gameplay-tables.md) becomes the card's in the editor.
@@ -1127,6 +1190,7 @@ def apply(project: Project, manifest: dict, messages: list = None, default_id: s
     read_pools(project, manifest.get("drops"), False, messages)
     read_pools(project, manifest.get("decks"), True, messages)
     read_starter(project, manifest.get("starter"), messages)
+    read_packs(project, manifest, messages)
     read_passwords(project, messages)
     campaign_map.read_mod(project, messages)
     return messages
@@ -1134,9 +1198,30 @@ def apply(project: Project, manifest: dict, messages: list = None, default_id: s
 
 # --- folders ------------------------------------------------------------------
 
+class JsonObject(dict):
+    """An object that had a key twice in its file: Python keeps the last, as
+    json does; `duplicates` names them, since the game's reader sees both (a
+    pack's tier named twice leaves the pack out, packs.c)."""
+    duplicates = ()
+
+
+def _object(pairs):
+    out = dict(pairs)
+    if len(out) == len(pairs):
+        return out
+    seen, twice = set(), []
+    for key, _ in pairs:
+        if key in seen and key not in twice:
+            twice.append(key)
+        seen.add(key)
+    marked = JsonObject(out)
+    marked.duplicates = tuple(twice)
+    return marked
+
+
 def read_json(path: Path):
     text = Path(path).read_text(encoding="utf-8-sig")
-    return json.loads(text)
+    return json.loads(text, object_pairs_hook=_object)
 
 
 def open_mod(retail: GameData, folder) -> tuple:

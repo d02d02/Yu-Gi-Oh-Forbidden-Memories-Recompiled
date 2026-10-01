@@ -384,21 +384,25 @@ int Duelists_Unlocked(const void *state, int duelist)
      * conditions to is answered here instead, and the screen leaves its flag
      * alone (Duelists_HasUnlock). */
     if (!one || !one->has_unlock) return 1;
-    if (!state) return 0;
+    return Duelists_ConditionsMet(state, one->beat, one->wins, one->story, one->card, one->copies);
+}
 
-    if (one->story >= 0 && Campaign_TestStoryFlag(one->story) == 0) return 0;
-    if (one->beat[0]) {
+int Duelists_ConditionsMet(const void *state, const char *beat, int wins, int story, const char *card, int copies)
+{
+    if (!state) return 0;
+    if (story >= 0 && Campaign_TestStoryFlag(story) == 0) return 0;
+    if (beat && beat[0]) {
         /* A duelist that is not here this run -- its mod was turned off, or
          * the name is a misspelling -- leaves the condition unmet rather than
          * met, so a roster never opens up by accident. */
-        const int against = Duelists_Named(one->beat);
-        if (against < 0 || wins_against(state, against) < (one->wins > 0 ? one->wins : 1)) return 0;
-    } else if (one->wins > 0 && wins_against(state, -1) < one->wins) {
+        const int against = Duelists_Named(beat);
+        if (against < 0 || wins_against(state, against) < (wins > 0 ? wins : 1)) return 0;
+    } else if (wins > 0 && wins_against(state, -1) < wins) {
         return 0;
     }
-    if (one->card[0]) {
-        const int card = Cards_Named(one->card);
-        if (card <= 0 || copies_held((void *)state, card) < (one->copies > 0 ? one->copies : 1)) return 0;
+    if (card && card[0]) {
+        const int id = Cards_Named(card);
+        if (id <= 0 || copies_held((void *)state, id) < (copies > 0 ? copies : 1)) return 0;
     }
     return 1;
 }
@@ -1076,6 +1080,14 @@ static void settle_ai(Duelist *one)
     row = borrowed >= 0 ? Duelists_AiRow(borrowed) : gDuel_aOpponentData[one->base];
     for (field = 0; field < DUELIST_AI_FIELDS; field++)
         if (!one->ai_given[field]) one->ai[field] = row[field];
+    /* Byte 0 is how many cards from the hand on the AI looks through
+       (Ai_GetHandSize): the disc's run from 5 to 20, and its fusion search
+       keeps a flag per card for no more than that. A row it borrows is
+       one of those, or another mod's already held to them. */
+    if (one->ai_given[0] && (one->ai[0] < 5 || one->ai[0] > 20)) {
+        Mods_Note(one->mod, "duelists[%d]: ai search is 5 to 20 (%d asked)", one->index, one->ai[0]);
+        one->ai[0] = (signed char)(one->ai[0] < 5 ? 5 : 20);
+    }
 }
 
 /* Its rank rules, once it has an id to give the tables (tables.h). */

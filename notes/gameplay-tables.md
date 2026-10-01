@@ -53,6 +53,10 @@ Anywhere a rule names a card it may use:
 * a card a mod adds, by its stable identity, `"my-cards:moon-dragon:1"`
   ([More cards](more-cards.md)).
 
+A card a mod `replace`s keeps its disc name here: `"Turtwig"` names nothing
+(the Mods window says so) even when a mod renamed a card to it, so name such
+a card by its number.
+
 ## Fusions
 
 `"fusions"` is a list of rules:
@@ -68,8 +72,11 @@ disc's table does; a rule that names a copy itself is surer, and comes
 first: a rule for the two cards as they are, then one naming one of them
 as it is and the other's base (the later of two such), then the bases'
 rule. Mods' rules are asked before the recipes of an added card's own
-`fusions` list, which come before the disc's table. The AI fuses by the
-same rules as the player.
+`fusions` list, which come before the disc's table. A card a `replace`
+made another kind (a monster made a magic card, an equip made a monster)
+is out of the disc's table, as material and as result, since the table is of
+the card it was ([More cards](more-cards.md)); the mods' rules still name it.
+The AI fuses by the same rules as the player.
 
 ## Equips
 
@@ -84,7 +91,10 @@ same rules as the player.
 
 Within one entry a named card is surer than a type and a type surer than
 `replace`, so `"add": ["Dragon"], "remove": ["Curse of Dragon"]` equips every
-dragon but one. What no entry mentions, the disc's table decides.
+dragon but one. What no entry mentions, the disc's table decides, except for
+a card a `replace` made another kind, which the disc's table no longer
+covers either way: an equip made from a monster equips only what `add`
+names.
 
 An entry may also set what the equip adds to the monster's ATK and DEF, in
 place of the disc's +500 (+1000 for Megamorph):
@@ -122,7 +132,12 @@ never counted the bonus.
 ## Rituals
 
 `"rituals"` is a list, one entry per ritual card. `card` is one of the
-disc's ritual cards; `tributes` names the three monsters it takes, and
+disc's ritual cards, a mod's copy of one (`"copy"` of a ritual card,
+[more-cards.md](more-cards.md)), or a card made a ritual (`"type": "Ritual"`
+with `"effect"` naming a ritual card, whose effect it is played with). A
+card only typed Ritual does nothing when played and takes no recipe. A
+copy or "effect" card without an entry of its own is summoned by that
+ritual card's recipe. `tributes` names the three monsters it takes, and
 `result` what it summons. `"result": null` takes the ritual away. A tribute
 may be a copy a mod added; a retail tribute is also met by a copy of it.
 Every tribute takes a monster that is exactly it before any takes a copy,
@@ -448,6 +463,36 @@ the pair beside the mod that set the password, once the Password screen
 has loaded its table.
 View > Card passwords shows the passwords the mods set. The latest mod that
 sets a card's password or price wins.
+
+## Rules a setting switches
+
+A `fusions`, `equips` or `rituals` entry may say `"setting": "key"`, which
+names one of the mod's declared `settings`: the entry is read only while
+that setting is not 0, or, with `"value": N` as well, only while it is
+exactly N (one choice of a `choice` setting). An entry without `setting`
+is always read. So one mod may let the player turn groups of its rules on
+and off in the Mods window:
+
+```json
+"settings": [
+    {"key": "thunder_fusions", "label": "Thunder + Fiend fusions", "type": "bool", "default": 1,
+     "restart": true, "description": "Thunder and Fiend monsters fuse into King of Yamimakai."},
+    {"key": "expanded_fusions", "label": "Expanded Fiend fusions", "type": "bool", "default": 1,
+     "restart": true, "description": "Fiends fuse with Dragons, Beasts and Warriors."}
+],
+"fusions": [
+    {"with": ["Kuriboh", "Thunder Dragon"], "result": "King of Yamimakai", "setting": "thunder_fusions"},
+    {"with": ["Kuriboh", "Baby Dragon"], "result": "Darkfire Dragon", "setting": "expanded_fusions"}
+]
+```
+
+The Mods window shows each setting's `label`, with its `description`
+under it. The tables are read as the game starts, so such a setting wants
+`"restart": true`. A `setting` the mod does not declare is noted in the
+Mods window and the entry read. Each key is read once: a manifest with
+two `"fusions"` lists reads the first and warns of the second, so the
+groups go in one list, each entry with its setting. The FM Editor shows
+the disc's table and keeps these entries as they are written.
 
 ## Where two mods disagree
 

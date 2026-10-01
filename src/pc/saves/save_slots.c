@@ -79,18 +79,32 @@ void SaveSlots_StateName(const unsigned char *state, char *out, size_t size)
     out[length] = 0;
 }
 
-/* The slot's whole file, -1 when missing, -2 for other read failures. */
+static char read_error[1200];
+const char *SaveSlots_ReadError(void) { return read_error; }
+
+/* The slot's whole file, -1 when missing, -2 for other read failures (why
+ * in read_error). */
 static long read_file(int slot, unsigned char image[SAVE_SLOT_FILE_SIZE], long long *saved_at)
 {
     char path[1024];
     struct stat info;
     FILE *file;
     size_t got;
-    if (SaveSlots_Path(slot, path, sizeof(path))) return -2;
+    Paths_WriteBegin(); /* the reason below is mkdir's own (Paths_MakeDirs) */
+    if (SaveSlots_Path(slot, path, sizeof(path))) { /* the saves folder could not be made */
+        snprintf(path, sizeof(path), "%s/saves", Paths_UserDir());
+        Paths_WriteError(read_error, sizeof(read_error), path);
+        return -2;
+    }
     file = fopen(path, "rb");
-    if (!file) return errno == ENOENT ? -1 : -2;
+    if (!file) {
+        if (errno == ENOENT) return -1;
+        snprintf(read_error, sizeof(read_error), "%s: %s.", path, strerror(errno));
+        return -2;
+    }
     got = fread(image, 1, SAVE_SLOT_FILE_SIZE, file);
     if (ferror(file)) {
+        snprintf(read_error, sizeof(read_error), "%s: %s.", path, strerror(errno));
         fclose(file);
         return -2;
     }
@@ -112,6 +126,7 @@ void SaveSlots_Scan(SaveSlotInfo out[SAVE_SLOT_COUNT], SaveSlotCheck check)
 {
     static unsigned char image[SAVE_SLOT_FILE_SIZE];
     int slot, i;
+    read_error[0] = '\0';
     for (slot = 0; slot < SAVE_SLOT_COUNT; slot++) {
         SaveSlotInfo *info = &out[slot];
         const unsigned char *state;
@@ -122,6 +137,10 @@ void SaveSlots_Scan(SaveSlotInfo out[SAVE_SLOT_COUNT], SaveSlotCheck check)
         info->saved_at = saved_at;
         if (got == -1) {
             info->status = SAVE_SLOT_EMPTY;
+            continue;
+        }
+        if (got < 0) {
+            info->status = SAVE_SLOT_UNREADABLE;
             continue;
         }
         copy = sound_copy(image, got, check);
@@ -220,12 +239,22 @@ int SaveSlots_WriteFile(int slot, const unsigned char *image, size_t bytes)
     return store(slot, block);
 }
 
-unsigned SaveSlots_Token(int slot)
+int SaveSlots_ReadToken(int slot, unsigned *token)
 {
     static unsigned char image[SAVE_SLOT_FILE_SIZE];
     const unsigned char *tag = image + SAVE_SLOT_TAG_OFFSET;
-    if (read_file(slot, image, NULL) < 0 || memcmp(tag, TAG, sizeof(TAG))) return 0;
-    return read_u32(tag + sizeof(TAG));
+    long got = read_file(slot, image, NULL);
+    *token = 0;
+    if (got == -2) return -1;
+    if (got >= 0 && !memcmp(tag, TAG, sizeof(TAG))) *token = read_u32(tag + sizeof(TAG));
+    return 0;
+}
+
+unsigned SaveSlots_Token(int slot)
+{
+    unsigned token;
+    SaveSlots_ReadToken(slot, &token);
+    return token;
 }
 
 int SaveSlots_WriteAt(int slot, long offset, const unsigned char *data, size_t bytes)
