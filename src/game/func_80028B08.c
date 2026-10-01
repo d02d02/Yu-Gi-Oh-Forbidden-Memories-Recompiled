@@ -12,7 +12,7 @@
 #include "../ygo_types.h"
 #ifdef MEMORIES_PC
 #include "pc/cards/tables.h"
-#include "pc/platform/settings.h"
+#include "pc/cards/card_layout.h"
 #endif
 /*
  * Duel card-detail panel: builds the scratchpad sprite parameters for the
@@ -70,33 +70,23 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     s32 sb;
     u32 m;
 #ifdef MEMORIES_PC
-    /* Card layout 1 (settings.h): win's own position is close to screen
+    /* Card layout (card_layout.h): win's own position is close to screen
      * origin (~2,4) -- retail's own offsets below (+0x13, +0x9D, ...) are
      * the entire positioning mechanism, not padding inside an
      * already-placed frame, confirmed by research before touching this a
-     * second time. So this stays in retail's own coordinate neighbourhood,
-     * not a reset-to-zero origin: the picture and ATK/DEF keep their retail
-     * position untouched (ATK/DEF, y 0x9D/0xAB, already sits just below the
-     * picture's own real bottom edge, 0x32 + 0x60 = 0x92 -- it never needed
-     * to move). Only the level stars (retail y 0x20) and the attribute icon
-     * (retail y 0xD) actually float in the wrong place now that the frame
-     * and title they used to sit inside of are gone: this first pass moves
-     * just those two down into a new row under ATK/DEF, a first pass for
-     * live tuning, not a final measurement. Enlarging the art itself is
-     * separate, later work (extent is the texel-read size for every
-     * submission path reachable here, not an independent draw size --
-     * confirmed by research -- so it needs a hand-built POLY_FT4 like
-     * field_art.c's own cutout, not a bigger PRM->extent). */
-    int layout = Settings_Get(SET_CARD_LAYOUT);
-    /* Target (user-specified): directly under the picture, one row with
-     * the stars on the left and the attribute icon on the right; directly
-     * under that row, ATK and DEF as two side-by-side boxes, not stacked
-     * the way retail draws them. */
-    int icon_row_y = 0x92 + 4;   /* just below the picture's own bottom edge, 0x32 + 0x60 */
-    int star_x = 0x50, star_y = icon_row_y;   /* first (rightmost) star; more extend left */
-    int attr_x = 0x69, attr_y = icon_row_y;
-    int values_row_y = icon_row_y + 20;
-    int atk_x = 0x1A, def_x = 0x50;
+     * second time. So every placement below stays in retail's own
+     * coordinate neighbourhood, not a reset-to-zero origin: card_layout.c
+     * is the single place that knows where each element sits for either
+     * layout. Enlarging the art itself is separate, later work (extent is
+     * the texel-read size for every submission path reachable here, not an
+     * independent draw size -- confirmed by research -- so it needs a
+     * hand-built POLY_FT4 like field_art.c's own cutout, not a bigger
+     * PRM->extent). */
+    CardLayoutPlacement title_layout = CardLayout_Get(CARD_LAYOUT_TITLE);
+    CardLayoutPlacement atk_layout = CardLayout_Get(CARD_LAYOUT_ATK);
+    CardLayoutPlacement def_layout = CardLayout_Get(CARD_LAYOUT_DEF);
+    CardLayoutPlacement star_layout = CardLayout_Get(CARD_LAYOUT_LEVEL_STARS);
+    CardLayoutPlacement attr_layout = CardLayout_Get(CARD_LAYOUT_ATTRIBUTE);
 #endif
 
     wrap = 0xFFFF;
@@ -158,10 +148,10 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     white = 0xF8;
     PRM->cxcy.h.cy = white;
 #ifdef MEMORIES_PC
-    /* Card layout 1 (settings.h): no title plate, part of the retail frame
-     * this style leaves out. white/m/k above are still real code either
-     * way -- they are read again below, submitted or not. */
-    if (Settings_Get(SET_CARD_LAYOUT) == 0)
+    /* Card layout (card_layout.h): no title plate, part of the retail
+     * frame this style leaves out. white/m/k above are still real code
+     * either way -- they are read again below, submitted or not. */
+    if (title_layout.visible)
 #endif
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
 
@@ -196,7 +186,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                leave no room for more. */
             s32 attack = rec->field_32 + rec->field_36;
             s32 defense = rec->field_34 + rec->field_38;
-            s32 digits, step, left, atk_left, def_left;
+            s32 digits, step, atk_left, def_left;
 
             if (attack > Tables_StatCap(0)) {
                 attack = Tables_StatCap(0);
@@ -206,15 +196,14 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             }
             digits = attack >= 10000 || defense >= 10000 ? 5 : 4;
             step = digits == 5 ? 5 : 6;
-            left = digits == 5 ? 0x61 - 1 : 0x61;
-            atk_left = layout ? (digits == 5 ? atk_x - 1 : atk_x) : left;
-            def_left = layout ? (digits == 5 ? def_x - 1 : def_x) : left;
+            atk_left = digits == 5 ? atk_layout.x - 1 : atk_layout.x;
+            def_left = digits == 5 ? def_layout.x - 1 : def_layout.x;
             Text_EncodeDecimalDigits(attack, digits, buf1);
             Text_EncodeDecimalDigits(defense, digits, buf2);
 
             PRM->uv.b.hi = (PRM->uv.b.hi & 0x80) + 0x10;
             PRM->xy.h.x = win->field_30.h.field_30 + atk_left;
-            PRM->xy.h.y = win->field_30.h.field_32 + (layout ? values_row_y : 0x9D);
+            PRM->xy.h.y = win->field_30.h.field_32 + atk_layout.y;
             *(u32 *)&PRM->extent = 0x000D0006;
             if (rec->field_3C & 0x80) {
                 PRM->cxcy.h.cy = 0xF9;
@@ -226,7 +215,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             }
 
             PRM->xy.h.x = win->field_30.h.field_30 + def_left;
-            PRM->xy.h.y = win->field_30.h.field_32 + (layout ? values_row_y : 0xAB);
+            PRM->xy.h.y = win->field_30.h.field_32 + def_layout.y;
             PRM->cxcy.h.cy = 0xF8;
             if (rec->field_3C & 0x40) {
                 PRM->cxcy.h.cy = 0xF9;
@@ -287,10 +276,8 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         PRM->xy.h.x = sa + 0x77;
         PRM->xy.h.y = win->field_30.h.field_32 + 0x20;
 #ifdef MEMORIES_PC
-        if (layout) {
-            PRM->xy.h.x = sa + star_x;
-            PRM->xy.h.y = win->field_30.h.field_32 + star_y;
-        }
+        PRM->xy.h.x = sa + star_layout.x;
+        PRM->xy.h.y = win->field_30.h.field_32 + star_layout.y;
 #endif
         *(u32 *)&PRM->extent = sb;
         PRM->uv.b.lo = 0;
@@ -308,16 +295,12 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
     }
 
-#ifdef MEMORIES_PC
-    if (layout) {
-        PRM->xy.h.x = win->field_30.h.field_30 + attr_x;
-        PRM->xy.h.y = win->field_30.h.field_32 + attr_y;
-    } else
-#endif
-    {
     PRM->xy.h.x = win->field_30.h.field_30 + 0x6E;
     PRM->xy.h.y = win->field_30.h.field_32 + 0xD;
-    }
+#ifdef MEMORIES_PC
+    PRM->xy.h.x = win->field_30.h.field_30 + attr_layout.x;
+    PRM->xy.h.y = win->field_30.h.field_32 + attr_layout.y;
+#endif
     *(u32 *)&PRM->extent = 0x00100010;
     lo = rec->field_3B << 4;
     PRM->uv.b.lo = lo;

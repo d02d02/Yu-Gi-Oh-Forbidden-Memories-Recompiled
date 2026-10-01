@@ -43,7 +43,7 @@
 #include "main_mode_state.h"
 #ifdef MEMORIES_PC
 #include "pc/cards/card_browse.h"
-#include "pc/platform/settings.h"
+#include "pc/cards/card_layout.h"
 #include "pc/cards/stars.h"
 #endif
 
@@ -112,11 +112,11 @@ void DuelEffect_UpdateCardViewerState(void)
         stats = gDuel_adwCardStats;
         chan = D_800EB0F8;
 #ifdef MEMORIES_PC
-        /* Card layout 1 (settings.h): no description box. gDuel_pCardViewerTextBox
+        /* Card layout (card_layout.h): no description box. gDuel_pCardViewerTextBox
          * (D_8009B250, just cleared above) is documented optional
          * (notes/duel-effect-state-runtime.md) -- leaving it null is a real,
          * already-handled case, not a new one. */
-        if (Settings_Get(SET_CARD_LAYOUT) == 0)
+        if (CardLayout_Get(CARD_LAYOUT_DESCRIPTION).visible)
 #endif
         for (; i < 3; i++, chan++) {
             if ((chan->flags_34 & DUEL_EFFECT_CHANNEL_FLAG_ACTIVE) == 0) {
