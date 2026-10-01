@@ -326,7 +326,7 @@ static int duel_field_up(void)
 #define GLOW_CLUT_X 0
 #define GLOW_CLUT_Y GLOW_SIZE
 #define GLOW_INNER_HALF 0.30 /* the middle square's half-width, normalised */
-#define GLOW_REACH_DEFAULT 50
+#define GLOW_REACH_DEFAULT 150
 #define GLOW_PERIOD_DEFAULT 90
 #define GLOW_FLOOR 0.35 /* the pulse's dimmest point: never fully off */
 #define GLOW_R_DEFAULT 255
