@@ -11,6 +11,7 @@
 #include "card_constants.h"
 #include "../ygo_types.h"
 #ifdef MEMORIES_PC
+#include "../psyq/libgpu.h"
 #include "pc/cards/tables.h"
 #include "pc/cards/card_layout.h"
 #endif
@@ -49,6 +50,52 @@
  *    With those registers the second scheduling pass floats `li t1,14` and
  *    `li s4,248` to the top of the second submit block by itself.
  */
+#ifdef MEMORIES_PC
+/* A small flat, untextured plaque behind full-bleed's ATK/DEF (card_layout.c),
+ * so retail's own digit draw -- semi-transparent, blended "plate minus digit"
+ * -- has the lighter backdrop it was always designed against. Deliberately
+ * NOT a textured quad: the shared digit-font atlas (tpage 0x1F) packs glyphs
+ * with no clean blank region to sample (confirmed live -- an opaque digit
+ * draw showed scratches, the atlas's own inter-glyph padding bleeding
+ * through once nothing was there to blend it away), so reusing any of its
+ * texels for a "plain" fill risks the same thing.
+ *
+ * x/y/w/h are this box's own screen-space rectangle, already including
+ * whatever base position the caller added (win->field_30 + the element's
+ * own offset) -- the same coordinate neighbourhood every other PRM->xy
+ * assignment in this file already uses. This bypasses the PRM/
+ * DisplayObject_SubmitPacket path entirely (a flat quad needs no texture
+ * page, clut or uv), submitting straight to the GPU ordering table via
+ * GsSortPoly the same way field_art.c's own draw_glow() builds a primitive
+ * by hand. UNVERIFIED: DisplayObject_SubmitPacket's own packet-building
+ * path (used for the digits) subtracts a per-call projection origin
+ * (EXT, a DisplayObjectPacketOrigin) before projecting through
+ * RotAverageNclip4; this plaque does not replicate that subtraction, since
+ * this box is flat and axis-aligned and the origin's own frame of reference
+ * is not exposed as a plain struct here. If the plaque appears offset from
+ * the digits by a constant amount once this is seen live, that constant is
+ * almost certainly this missing origin subtraction. */
+static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode)
+{
+    POLY_F4 plaque;
+    unsigned short pri = (unsigned short)(s16)mode;
+
+    setPolyF4(&plaque);
+    setRGB0(&plaque, 220, 200, 150); /* parchment beige, per the reference art */
+    setXY4(&plaque, (short)x, (short)y, (short)(x + w), (short)y,
+           (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
+    GsSortPoly(&plaque, (GsOT *)ot, pri);
+}
+
+/* Comfortably holds up to 5 digits (step 5px, glyph 6px wide: a 5-digit
+ * row spans (5-1)*5+6 = 26px) plus a few pixels of padding on every side. */
+#define CARD_LAYOUT_PLAQUE_PAD_X 3
+#define CARD_LAYOUT_PLAQUE_PAD_TOP 2
+#define CARD_LAYOUT_PLAQUE_PAD_BOTTOM 2
+#define CARD_LAYOUT_PLAQUE_W (26 + 2 * CARD_LAYOUT_PLAQUE_PAD_X)
+#define CARD_LAYOUT_PLAQUE_H (0x0D + CARD_LAYOUT_PLAQUE_PAD_TOP + CARD_LAYOUT_PLAQUE_PAD_BOTTOM)
+#endif
+
 void func_80028B08(DisplayObject *obj, s32 arg1) {
     u8 buf1[5];
     u8 buf2[5];
@@ -213,6 +260,17 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                 DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
                 PRM->xy.h.x = PRM->xy.h.x + step;
             }
+            if (CardLayout_FullBleed()) {
+                /* Submitted AFTER its digits on purpose: this port's own OT
+                 * (src/pc/sdk/libgs.c's make_packet) prepends each new
+                 * submission to its depth bucket's head, and the head is
+                 * what gets walked/drawn first -- so the most recently
+                 * submitted primitive at a shared depth ends up drawn
+                 * first (underneath), not on top. */
+                CardLayout_DrawPlaque(win->field_30.h.field_30 + atk_layout.x - CARD_LAYOUT_PLAQUE_PAD_X,
+                                      win->field_30.h.field_32 + atk_layout.y - CARD_LAYOUT_PLAQUE_PAD_TOP,
+                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg);
+            }
 
             PRM->xy.h.x = win->field_30.h.field_30 + def_left;
             PRM->xy.h.y = win->field_30.h.field_32 + def_layout.y;
@@ -224,6 +282,11 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                 PRM->uv.b.lo = buf2[i] * 6 + 0x10;
                 DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
                 PRM->xy.h.x = PRM->xy.h.x + step;
+            }
+            if (CardLayout_FullBleed()) {
+                CardLayout_DrawPlaque(win->field_30.h.field_30 + def_layout.x - CARD_LAYOUT_PLAQUE_PAD_X,
+                                      win->field_30.h.field_32 + def_layout.y - CARD_LAYOUT_PLAQUE_PAD_TOP,
+                                      CARD_LAYOUT_PLAQUE_W, CARD_LAYOUT_PLAQUE_H, arg1, arg);
             }
         }
 #else
