@@ -1,11 +1,11 @@
 # Working in this repo
 
-Durable conventions for this repo. Branch-specific status/progress goes in
-`WIP_NOTES.md` instead (see there, on whatever branch is checked out) — this
-file is for things that stay true across branches and sessions.
+Durable conventions that stay true across branches and sessions. Current
+branch status/progress/open-issues go in `WIP_NOTES.md` instead (repo
+root, active branch) — not here, not Claude's own memory.
 
-Like `WIP_NOTES.md`, this file is tracked and pushed on the user's own fork
-but is not meant to reach upstream — exclude it (and `WIP_NOTES.md`) when
+Both this file and `WIP_NOTES.md` are tracked and pushed on the user's own
+fork, but neither is meant to reach upstream: exclude both when
 cherry-picking commits onto a clean PR branch.
 
 ## Git workflow
@@ -18,7 +18,7 @@ cherry-picking commits onto a clean PR branch.
   found, and **ask before pulling, resetting, or rebasing** — don't do it
   unprompted.
 - Never PR a branch with personal/WIP commits mixed in (this file,
-  `WIP_NOTES.md`, scratch experiments). Cherry-pick the real code commits
+  `WIP_NOTES.md`, scratch experiments) — cherry-pick the real code commits
   onto a clean PR branch first.
 - Do not add a `Claude-Session` trailer line to commits or PRs in this repo.
 
@@ -46,9 +46,3 @@ cherry-picking commits onto a clean PR branch.
 PowerShell's `Get-Content`/`Set-Content` mangle UTF-8 (BOM/encoding issues)
 when rewriting repo files. Never use them to rewrite a tracked file — use
 the Edit tool, or if a shell must do it, write via .NET with no BOM.
-
-## Branch status
-
-See `WIP_NOTES.md` at the repo root on the active branch for current
-progress, open issues, and next steps — not this file, and not Claude's own
-memory.
