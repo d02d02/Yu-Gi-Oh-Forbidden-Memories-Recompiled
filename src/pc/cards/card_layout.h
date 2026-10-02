@@ -24,29 +24,37 @@ typedef enum {
     CARD_LAYOUT_ATK,
     CARD_LAYOUT_DEF,
     CARD_LAYOUT_ART,
-    CARD_LAYOUT_ROW_BACKDROP,
     CARD_LAYOUT_ELEMENT_COUNT
 } CardLayoutElement;
 
 typedef struct {
     int visible; /* 0: the call site leaves this element out entirely */
     int x, y;
-    /* w/h: only CARD_LAYOUT_ART and CARD_LAYOUT_ROW_BACKDROP use these --
-     * both stretch a picture (func_80028B08.c's CardLayout_DrawArt,
-     * CardLayout_DrawRowBackdrop) to a size independent of its own texel
-     * footprint. Every other element keeps these 0 -- retail's own sprite
+    /* w/h: only CARD_LAYOUT_ART uses these, to stretch the picture to a
+     * size independent of the texel footprint DisplayObject_
+     * ConfigureScreenSprite gave it (func_80028B08.c's own CardLayout_
+     * DrawArt). Every other element keeps these 0 -- retail's own sprite
      * resource already fixes its draw size. */
     int w, h;
 } CardLayoutPlacement;
 
+/* The frame's own total box (card_layout.c's own derivation comment,
+ * duel_effect_resource_setup.c's field_18/field_1A * 2): public, not just
+ * internal to card_layout.c, since func_80028B08.c needs it to size the
+ * unified frame's own draw rect (CardLayout_DrawFrame, CARD_LAYOUT_ART_FRAME
+ * -- the whole WIN box, border and bottom section as one piece, card_layout_
+ * art.c). */
+#define CARD_LAYOUT_WIN_W 0x8C
+#define CARD_LAYOUT_WIN_H 0xC4
+
 /* The ATK/DEF plaque's own box (func_80028B08.c's CardLayout_DrawPlaque),
  * anchored at each digit row's own x/y (CARD_LAYOUT_ATK/DEF above) minus
  * this padding. W's aspect matches the real plaque art's own
- * (src/pc/cards/card_layout_art.c's PLAQUE_W/H, 177x69 = ~2.57) instead of
+ * (src/pc/cards/card_layout_art.c's PLAQUE_W/H, 179x71 = ~2.52) instead of
  * an independently chosen number, so the art it now draws (CardLayoutArt_
- * PlaqueCell) isn't stretched off its own proportions: H stays fixed at
+ * Cell) isn't stretched off its own proportions: H stays fixed at
  * the digit glyph's own height (0x0D) plus top/bottom padding, and
- * PAD_X solves W = H * 177/69. Comfortably holds up to 5 digits either
+ * PAD_X solves W = H * 179/71. Comfortably holds up to 5 digits either
  * way (step 5px, glyph 6px wide: a 5-digit row spans (5-1)*5+6 = 26px). */
 #define CARD_LAYOUT_PLAQUE_PAD_X 9
 #define CARD_LAYOUT_PLAQUE_PAD_TOP 2

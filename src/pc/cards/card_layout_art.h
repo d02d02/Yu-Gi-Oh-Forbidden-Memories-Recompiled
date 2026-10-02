@@ -8,7 +8,7 @@
 
 typedef enum {
     CARD_LAYOUT_ART_PLAQUE,       /* the ATK/DEF plaque backdrop (CardLayout_DrawPlaque) */
-    CARD_LAYOUT_ART_ROW,          /* the icon/ATK-DEF row's own backdrop (CardLayout_DrawRowBackdrop) */
+    CARD_LAYOUT_ART_FRAME,        /* the unified card frame: border + bottom section as one piece (CardLayout_DrawFrame) */
     CARD_LAYOUT_ART_COUNT
 } CardLayoutArtAsset;
 

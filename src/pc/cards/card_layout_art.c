@@ -18,7 +18,7 @@
 #include "art.h"
 #include "pc/render/soft_gpu.h"
 #include "../assets/card_layout_plaque_png.h"
-#include "../assets/card_layout_row_png.h"
+#include "../assets/card_layout_frame_png.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,14 +32,16 @@ typedef struct {
     unsigned char made;   /* 0 not yet, 1 made, 2 failed */
 } Asset;
 
-/* Both source PNGs (src/pc/assets/) are bigger than their stored size here:
- * halved from 358x142 and 919x348, the largest even multiple that still
- * fits a u8 UV coordinate (<= 255 either axis) with headroom at Internal
- * 2x/4x left over -- not resampled all the way down to the tiny on-screen
- * boxes themselves (card_layout.c's CARD_LAYOUT_PLAQUE_W/H, ROW_W/H). */
+/* Both source PNGs (src/pc/assets/) are bigger than their stored size here
+ * -- scaled down only as far as POLY_GT4's u8 UV coordinates force (<= 255
+ * either axis), not all the way to the tiny on-screen box sizes
+ * themselves (card_layout.c's CARD_LAYOUT_PLAQUE_W/H, CARD_LAYOUT_WIN_W/H),
+ * for headroom at Internal 2x/4x. Plaque: half its own 358x142. Frame:
+ * its own 919x1319 divided by 5.319 (919/5.319=172.8, 1319/5.319=248.0),
+ * the largest divisor that keeps the taller axis comfortably under 255. */
 static Asset assets[CARD_LAYOUT_ART_COUNT] = {
     [CARD_LAYOUT_ART_PLAQUE] = { card_layout_plaque_png, sizeof(card_layout_plaque_png), 179, 71, 0, 0 },
-    [CARD_LAYOUT_ART_ROW]    = { card_layout_row_png,    sizeof(card_layout_row_png),    230, 87, 100, 0 },
+    [CARD_LAYOUT_ART_FRAME]  = { card_layout_frame_png,  sizeof(card_layout_frame_png),  173, 248, 100, 0 },
 };
 
 static int make(Asset *a, uint16_t *bank)
