@@ -26,6 +26,71 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
 #define ATK_X 0x1A
 #define DEF_X 0x50
 
+/* The card viewer is actually two independent DisplayObjects, not one: win
+ * (every placement in this file is win-relative) and a second, wholly
+ * separate backdrop object -- func_800283F4.c's own D_8009B240 -- that the
+ * description TextBox sits on top of. Its own sprite, its own slide-in,
+ * and created unconditionally: only the text box's own content loop is
+ * gated by CARD_LAYOUT_DESCRIPTION, not the backdrop object itself. So in
+ * full-bleed mode it's still on screen, just with nothing drawn on it --
+ * which is why full-bleed's art rect (ART_X/Y/W/H below) is sized against
+ * *that* object, not empty space.
+ *
+ * win's own base position (duel_effect_resource_setup.c's own
+ * `DisplayObject_ConfigureSpriteAtPosition(object, 2, 4, ...)` for its
+ * frame object) and the backdrop's own (func_800283F4.c's own
+ * `ConfigureSpriteAtPosition(..., 0x148, gDuel_bCardViewerYOffset + 0xE,
+ * ...)` for its base, sliding to x=0x94 once open) are both retail's own
+ * hand-placed literals, restated here rather than redefined there -- those
+ * call sites are not `#ifdef MEMORIES_PC`-gated and keep their own
+ * literals for byte-exactness. Both objects' y moves by the same
+ * gDuel_bCardViewerYOffset each frame, so the gap between their anchors is
+ * constant regardless of scroll position. DX/DY are that anchor-to-anchor
+ * gap, exact from source.
+ *
+ * The backdrop's own *visible* art doesn't start flush at its anchor --
+ * its texture has its own bezel margin on both axes -- so DX/DY alone
+ * aren't where full-bleed's art needs to reach. INSET_X/_Y below are that
+ * margin, measured live (2026-10-02): a headless run of the real save
+ * state (slot1.state, MEMORIES_LOAD_STATE=1), a scripted Triangle press to
+ * open the viewer (MEMORIES_INPUT), and a native 320x240 frame dump
+ * (MEMORIES_DUMP_FRAME=200) read back pixel by pixel. An earlier attempt
+ * at this (pixels.png) had recorded a ~15-20px horizontal gap and
+ * suspected a vertical one too; that screenshot turned out to be cropped
+ * before ever reaching the backdrop's edge, so that number was never real
+ * -- superseded by the measurement below. Found: the *horizontal* edge
+ * already exact (art's last pixel x=141, backdrop's stone border x=142,
+ * zero gap, checked across seven rows spanning the art's full height) --
+ * INSET_X is DX minus today's own ART_W, not an independent re-measurement.
+ * The *vertical* edge had a real, small gap: art's top (y=24) sat 2px
+ * above the backdrop's own top edge (y=26). */
+#define CARD_LAYOUT_WIN_ORIGIN_X 2    /* duel_effect_resource_setup.c's ConfigureSpriteAtPosition(object, 2, 4, ...) */
+#define CARD_LAYOUT_WIN_ORIGIN_Y 4
+#define CARD_LAYOUT_BACKDROP_OPEN_X 0x94        /* func_800283F4.c's Widget_SlideSine/snap target for D_8009B240 */
+#define CARD_LAYOUT_BACKDROP_Y_OFFSET 0xE       /* func_800283F4.c's ConfigureSpriteAtPosition y argument, before + gDuel_bCardViewerYOffset */
+#define CARD_LAYOUT_BACKDROP_DX (CARD_LAYOUT_BACKDROP_OPEN_X - CARD_LAYOUT_WIN_ORIGIN_X)
+#define CARD_LAYOUT_BACKDROP_DY (CARD_LAYOUT_BACKDROP_Y_OFFSET - CARD_LAYOUT_WIN_ORIGIN_Y)
+#define CARD_LAYOUT_BACKDROP_INSET_X 6   /* measured 2026-10-02: DX(0x92=146) - the art's own 140 */
+#define CARD_LAYOUT_BACKDROP_INSET_Y 8   /* measured 2026-10-02: DY(0xA=10) - the measured 2px gap */
+
+/* The backdrop's own left edge is not one straight line for its whole
+ * height -- confirmed live (2026-10-02, same headless method as above,
+ * scanned row by row): it sits at win-relative x=140 (INSET_X above,
+ * CARD_LAYOUT_BACKDROP_DX - CARD_LAYOUT_BACKDROP_INSET_X) for its full
+ * height *except* the bottom (biggest) of its three stacked text-line
+ * rows, which is 2px wider on the left -- x=138 there, starting the exact
+ * row the art's own last pixel row ends (no frame of overlap where both
+ * are actually drawn; the step is a seam in the backdrop's own texture,
+ * not a collision). That texture is retail's own, reused as-is from
+ * Library/Build Deck (library_runtime.c) and unmodified here -- in
+ * retail's own non-full-bleed layout this seam is covered by the
+ * description text that normally sits on that row, so nobody built
+ * against it being straight. Left as-is on purpose: not a bug this file
+ * introduced, and the parked real-texture plan (WIP_NOTES.md) is the
+ * right place to actually mask it, if that's ever wanted, rather than
+ * nudging ART_W/CardLayout_Get's icon-row constants to chase a seam in
+ * someone else's asset. */
+
 /* Full-bleed's own art rect (func_80028B08.c's CardLayout_DrawArt): retail's
  * own frame, not an arbitrary guess, on three sides. duel_effect_resource_
  * setup.c sets the frame object's field_18/field_1A to 0x46,0x62, and
@@ -49,19 +114,16 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * (150) is 150/0xC4 = 77% of this frame's own height -- close enough to
  * use directly instead of a separately re-derived ratio.
  *
- * Known gap, deferred on purpose (2026-10-02): at this width the art falls
- * short of the card-viewer's own wider backdrop (the one that also covers
- * where description text sits, off to the right) by roughly 15-20px,
- * exposing the duel field's stone-textured background through that gap --
- * confirmed by pixel-measuring a live screenshot (pixels.png), not the
- * left/right translation issue it first looked like (the left edge has no
- * matching gap, just its own thin ~8px bezel on every row). Left as-is
- * until this whole rect is rethought to include that wider right-hand
- * backdrop -- see the next-steps note in memory. */
+ * X/W/Y are derived from the backdrop relationship above rather than
+ * independent numbers: W reaches exactly to the backdrop's own measured
+ * visible edge: DX minus its left bezel. Y drops the art's top down to the
+ * backdrop's own measured visible top: DY minus its top bezel. H keeps the
+ * bottom edge fixed at ICON_ROW_Y (the no-overlap constraint above) rather
+ * than growing it, so only the top moves. */
 #define ART_X 0
-#define ART_Y 0
-#define ART_W 0x8C
-#define ART_H ICON_ROW_Y
+#define ART_Y (CARD_LAYOUT_BACKDROP_DY - CARD_LAYOUT_BACKDROP_INSET_Y)
+#define ART_W (CARD_LAYOUT_BACKDROP_DX - CARD_LAYOUT_BACKDROP_INSET_X)
+#define ART_H (ICON_ROW_Y - ART_Y)
 
 CardLayoutPlacement CardLayout_Get(CardLayoutElement element)
 {
