@@ -70,44 +70,118 @@ introduced; retail's own layout never exposed it (description text
 covered that row); the parked real-texture plan below is the right place
 to actually mask it, if that's ever wanted.
 
-## Next steps
+## Done 2026-10-02: real textures for the plaque and row backdrop
 
-1. Build a gold/olive backdrop bar for the icon/ATK-DEF row (Duel Links
-   reference) -- stars/attribute/ATK/DEF still float with no backdrop.
+Shipped: `CardLayout_DrawPlaque`'s flat parchment-beige `POLY_G4` and the
+icon/ATK-DEF row's own empty background (next-steps item, previously) are
+now real art, following `src/pc/cards/star_icons.c`/`src/pc/text/glyphs.c`'s
+own precedent for putting a disc-less PNG onto a texture the duel's
+pipeline samples:
 
-## Parked: real textures for the plaque and row backdrop (2026-10-02)
+- `src/pc/cards/card_layout_art.c`/`.h`: a small per-asset table
+  (`CardLayoutArtAsset`: `CARD_LAYOUT_ART_PLAQUE`, `CARD_LAYOUT_ART_ROW`),
+  each decoded once (`CardArt_IndexedImageFromMemory`, `art.c` -- a new
+  from-memory sibling of the existing mod-art decoder, added for this)
+  and stored into a shared `SoftGpu_Bank` (13 -- 1-12 the 3D Monsters mod,
+  14 star icons, 15 glyphs, 0 is real VRAM). 8bpp, two texels a word, tpage
+  depth field 1 -- no existing 8bpp bank user to copy, derived from
+  `getTPage`'s own encoding (`psyq/libgpu.h`) instead. Stored at half each
+  source PNG's own resolution (the most that still fits `POLY_GT4`'s u8
+  UV coordinates, <=255 either axis), not the tiny on-screen box size, for
+  headroom at Internal 2x/4x.
+- `src/game/func_80028B08.c`: `CardLayout_DrawArtAsset`, shared by both --
+  a textured `POLY_GT4` through the same case-5 dispatch `CardLayout_DrawArt`
+  uses. The plaque falls back to its old flat fill if the asset/bank isn't
+  available; the row backdrop (`CardLayout_DrawRowBackdrop`) has no
+  fallback, purely decorative, submitted *last* so it ends up underneath
+  the stars/attribute/plaque/digits (this port's OT prepends to its
+  bucket's head, so the most recently submitted primitive at a shared
+  depth draws first -- underneath -- not on top; same trick the plaque's
+  own draw order already used).
+- `src/pc/cards/card_layout.c`/`.h`: `CARD_LAYOUT_ROW_BACKDROP` added as a
+  real layout element (`CardLayout_Get`), not an ad hoc rect -- derived
+  from two new named constants, `CARD_LAYOUT_WIN_W`/`_H` (0x8C/0xC4, the
+  frame's own total box, previously only inside a comment). The plaque's
+  own box (`CARD_LAYOUT_PLAQUE_W`, card_layout.h) widened from 32 to 44
+  native px to match the real art's own aspect (~2.57) instead of an
+  independent number, and moved there from `func_80028B08.c` for
+  consistency with every other layout constant. ATK/DEF digit centering
+  (`func_80028B08.c`) now derives from the plaque's own width instead of a
+  `-1`-for-5-digits special case, so a 4-digit row centers correctly in
+  the wider box too.
+- `tools/pc/embed_png_asset.py`: generalized `tools/pc/embed_controls_art.py`
+  (same PNG-chunk-stripping policy) for any `src/pc/assets/<name>.png`.
 
-User has captured PNGs for the ATK/DEF numbers plaque and (probably) the
-icon/ATK-DEF row's own backdrop -- real art to replace `CardLayout_DrawPlaque`'s
-flat parchment-beige `POLY_G4` fill, and to use for next-step 1 above (and
-possibly to mask the edge seam noted above). Plan, worked out and
-grounded in two existing precedents in this codebase
-(`src/pc/cards/star_icons.c`,
-`src/pc/text/glyphs.c` -- both already put a PNG with no disc counterpart
-onto a real texture the duel's own pipeline samples):
+Assets used: `atk-dfd-2-plaque.png` (ornate red/gold plaque, 358x142,
+user-provided) and `card-background-bottom.png` (gold/olive marble row
+background with real alpha cutouts for the two stat boxes and the
+attribute circle, 919x348, user-provided) -> `src/pc/assets/
+card_layout_plaque.png` / `card_layout_row.png`.
 
-1. **Packaging**: not a mod asset (this whole feature isn't a mod -- see
-   below) -- embed like `src/pc/assets/ps1-controller.png` /
-   `ps1_controller_png.h` (`tools/pc/embed_controls_art.py`'s pattern,
-   generalized or copied): PNG image chunks only, stripped of incidental
-   metadata, compiled in as a C byte array under `src/pc/assets/`. No
-   runtime file dependency.
-2. **Decode**: `src/pc/cards/art.c`'s existing `CardArt_IndexedImage(path,
-   w, h, indices, clut, ...)` -- "any size... one byte a texel, entry 0
-   clear" -- already built for exactly this (title screen's own
-   port-authored PNGs); a better fit than the 16-colour icon decoder.
-3. **Texture storage**: reserve a `SoftGpu_Bank` (`soft_gpu.h`). Allocated
-   today: 1-12 the 3D Monsters mod, 14 star icons, 15 glyphs, 0 is real
-   VRAM itself -- **13 is the one still free**. Decode-once-and-cache
-   (`made` flag) + store-into-bank, following `star_icons.c`'s
-   `make()`/`store()`/`Stars_IconCell()` trio as the template.
-4. **Draw**: upgrade `CardLayout_DrawPlaque` (and a sibling for the row
-   backdrop) from its current flat `POLY_G4` to a textured `POLY_GT4`,
-   through the same case-5 `DisplayObject_SubmitPacket` dispatch
-   `CardLayout_DrawArt` already uses (so it keeps rotating/projecting with
-   the card during the reveal, which is why the plaque goes through that
-   dispatch at all -- see its own comment), sourcing clut/tpage/UV from the
-   new bank/cell instead of an existing retail `SpritePrim`.
+Confirmed live (headless, `MEMORIES_INTERNAL_SCALE=4 MEMORIES_DUMP_PICTURE=1`):
+plaque renders correctly, transparency respected. Row backdrop not yet
+visually confirmed live -- built against the same, already-proven path,
+but the save state drifted stale (below) before it could be checked; and
+it is about to be retired anyway (next section), so not chasing that
+confirmation now.
+
+## Next: unified card frame, retiring the separate row backdrop
+
+**Resource to import, not yet in the repo**: `animeframe.png` (local path
+`C:\Users\mdahh\OneDrive\Desktop\Perso\hacking\animeframe.png`, outside
+the repo -- same place the plaque/row PNGs were found before being copied
+in), 919x1319 RGBA, real alpha cutouts (confirmed). One continuous
+card-shaped frame: a grey/dark border around the art (which the current
+layout doesn't have at all -- full-bleed's art runs edge to edge today)
+plus the same gold/olive bottom section `card-background-bottom.png`
+already covers, as one piece instead of two.
+
+User's call (2026-10-02): adopt this as the single frame for the whole
+WIN box, retiring `card_layout_row.png`/`CARD_LAYOUT_ART_ROW`/
+`CardLayout_DrawRowBackdrop` entirely rather than layering both. The
+plaque (`atk-dfd-2-plaque.png`) is kept -- confirmed its own two
+rectangular holes in `animeframe.png` are empty gold, not a plaque
+texture, so the plaque still draws inside them. **Two resources
+involved**: the frame (`animeframe.png`, new) and the plaque
+(`atk-dfd-2-plaque.png`, already imported) -- not the row background,
+which this replaces.
+
+Measured (2026-10-02, same alpha-transition-scan method as the backdrop
+work above), image px at native-WIN-box scale (919x1319 -> 140x196,
+~6.56x/~6.73x a axis -- not quite uniform, ~2.5% aspect mismatch, same
+order as already accepted for the plaque/row assets):
+
+- Art cutout: native x~[4,136] (a real ~4px matted margin each side,
+  unlike today's edge-to-edge art -- this is the "keep a left margin,
+  match it on the right" discussion resolved by the asset itself rather
+  than a hand-picked number), y~[3,141]. Shorter than today's art (which
+  runs to y=150): this frame's own gold section starts at native y~141,
+  ~9px above today's `ICON_ROW_Y`.
+- Attribute circle: x~[756,840] in image px (~84px wide) at image y~1038
+  -- not yet converted/cross-checked against `ATTR_X`/`_Y`.
+  Stat boxes: left x~[72,424], right x~[495,847] in image px, row at
+  image y~1180 -- not yet converted/cross-checked against `ATK_X`/`DEF_X`.
+
+**Not a drop-in**: every bottom-section constant (`ICON_ROW_Y`,
+`VALUES_ROW_Y`, `STAR_X`, `ATTR_X`, `ATK_X`, `DEF_X`, `ART_H`) needs
+rederiving against this asset's own cutouts, the same precision the
+backdrop-alignment work above used -- not eyeballed.
+
+**Compositing flips**: the row backdrop was deliberately submitted
+*last* (drawn underneath). A frame-with-holes needs the opposite --
+submitted *first*, so its opaque border/gold paints over the duel field
+everywhere except the holes, revealing the art/attribute/digits already
+drawn beneath it. `CardLayout_DrawArtAsset` (func_80028B08.c) is reusable
+as-is for the draw call itself; only where it's called from in the
+function changes.
+
+**Save state is stale for headless verification**: `slot1.state` has
+drifted past the hot-reload carry-over's tolerance (`N code addresses
+moved` growing with each rebuild since 13:17) -- `MEMORIES_LOAD_STATE`
+now fails and falls back to a fresh boot. Needs a fresh save (Triangle to
+open the viewer at the same spot, F5) before the headless pixel-exact
+repro (Workflow notes below) works again; until then, live user
+verification only.
 
 Why not a mod: this modifies retail's own byte-matched draw routine
 (`func_80028B08.c`) and object setup (`duel_effect_resource_setup.c`,
