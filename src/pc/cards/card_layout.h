@@ -41,26 +41,11 @@ typedef struct {
 /* The frame's own total box (card_layout.c's own derivation comment,
  * duel_effect_resource_setup.c's field_18/field_1A * 2): public, not just
  * internal to card_layout.c, since func_80028B08.c needs it to size the
- * unified frame's own draw rect (CardLayout_DrawFrame, CARD_LAYOUT_ART_FRAME
- * -- the whole WIN box, border and bottom section as one piece, card_layout_
- * art.c). */
+ * unified frame's own draw rect (CardLayout_DrawFrame, card_layout_art.c
+ * -- the whole WIN box, border and bottom section, ATK/DEF plaque look
+ * included, as one piece). */
 #define CARD_LAYOUT_WIN_W 0x8C
 #define CARD_LAYOUT_WIN_H 0xC4
-
-/* The ATK/DEF plaque's own box (func_80028B08.c's CardLayout_DrawPlaque),
- * anchored at each digit row's own x/y (CARD_LAYOUT_ATK/DEF above) minus
- * this padding. W's aspect matches the real plaque art's own
- * (src/pc/cards/card_layout_art.c's PLAQUE_W/H, 179x71 = ~2.52) instead of
- * an independently chosen number, so the art it now draws (CardLayoutArt_
- * Cell) isn't stretched off its own proportions: H stays fixed at
- * the digit glyph's own height (0x0D) plus top/bottom padding, and
- * PAD_X solves W = H * 179/71. Comfortably holds up to 5 digits either
- * way (step 5px, glyph 6px wide: a 5-digit row spans (5-1)*5+6 = 26px). */
-#define CARD_LAYOUT_PLAQUE_PAD_X 9
-#define CARD_LAYOUT_PLAQUE_PAD_TOP 2
-#define CARD_LAYOUT_PLAQUE_PAD_BOTTOM 2
-#define CARD_LAYOUT_PLAQUE_W (26 + 2 * CARD_LAYOUT_PLAQUE_PAD_X)
-#define CARD_LAYOUT_PLAQUE_H (0x0D + CARD_LAYOUT_PLAQUE_PAD_TOP + CARD_LAYOUT_PLAQUE_PAD_BOTTOM)
 
 CardLayoutPlacement CardLayout_Get(CardLayoutElement element);
 /* True when the frame/title/description plate is hidden: the one thing

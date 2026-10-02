@@ -17,31 +17,41 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * left and the attribute icon on the right; directly under that, ATK and
  * DEF as two side-by-side boxes instead of retail's stacked pair.
  *
- * ICON_ROW_Y, ATTR_X and DEF_X are measured against the real unified frame
- * art (card_layout_art.c's CARD_LAYOUT_ART_FRAME, src/pc/assets/
+ * ICON_ROW_Y, ATTR_X, ATK_X and DEF_X are measured against the real
+ * unified frame art (card_layout_art.c, src/pc/assets/
  * card_layout_frame.png, 919x1319) rather than the original first-pass
- * guess: its attribute-circle cutout flood-filled to image bbox
- * (753,1012)-(842,1101), its stat-box cutouts to (71,1126)-(424,1264) and
- * (491,1126)-(847,1264) (2026-10-02, Python/PIL flood fill on the alpha
- * channel, the same precision the backdrop-alignment measurements above
- * used). Converted at the image's own scale to the frame's 140x196 box
+ * guess, converted at the image's own scale to the frame's 140x196 box
  * (919/140=6.564 a width unit, 1319/196=6.730 a height unit -- not quite
- * uniform, ~2.5% off, the same order of aspect mismatch already accepted
- * for the plaque art): attribute circle centre (121,157), 14px across; left stat box
- * centre (38,178); right stat box centre (102,178). ATTR_X/Y are that
- * centre minus the icon's own half-extent (8, its 0x10x0x10 sprite); ATK/
- * DEF_X are the plaque's own left edge there (CARD_LAYOUT_PLAQUE_W/2
- * before the box centre) plus CARD_LAYOUT_PLAQUE_PAD_X, undoing
- * CardLayout_DrawPlaque's own `x - PAD_X` so the plaque ends up centred
- * on the frame's hole. STAR_X has no cutout to measure against (stars sit
- * directly on the frame's gold, nothing cut out for them) -- kept at its
- * original first-pass value. */
+ * uniform, ~2.5% off).
+ *
+ * ATK_X/DEF_X/VALUES_ROW_Y are *centres*, not a box's top-left corner --
+ * a deliberate change from the first-pass version (which anchored a
+ * separate plaque sprite's own corner). The frame's complete version
+ * (2026-10-02) bakes the plaque's own look -- its ornate border, its
+ * cream background -- directly into its painted art instead of leaving a
+ * cutout there for a separate plaque sprite (confirmed: zero transparent
+ * pixels anywhere in either stat box, where the first-pass version had a
+ * real cutout), which retired the separate plaque sprite entirely
+ * (func_80028B08.c no longer has a CardLayout_DrawPlaque draw call) --
+ * so there is no longer a plaque box to anchor a corner to, only a cream
+ * area to centre the digits inside. Measured (Python/PIL, colour match
+ * on the cream fill rather than alpha, since there is no cutout to flood-
+ * fill anymore): left cream area image bbox (85,1139)-(409,1251), right
+ * (508,1139)-(859,1251) -- both 112px tall in image
+ * space. Converted: left centre (38,178), right centre (104,178)
+ * (both halves round to the same y). ATTR_X is unchanged from the
+ * first-pass version's own method (its circle is still a real cutout,
+ * unaffected by the plaque change): bbox (753,1012)-(842,1101), centre
+ * (121,157) minus the icon's own half-extent (8, its 0x10x0x10 sprite).
+ * STAR_X has no cutout or fill to measure against (stars sit directly on
+ * the frame's gold, nothing marks where) -- kept at its original
+ * first-pass value. */
 #define ICON_ROW_Y 149
-#define VALUES_ROW_Y 171
+#define VALUES_ROW_Y 178
 #define STAR_X 0x50
 #define ATTR_X 114
-#define ATK_X 25
-#define DEF_X 89
+#define ATK_X 38
+#define DEF_X 104
 
 /* The card viewer is actually two independent DisplayObjects, not one: win
  * (every placement in this file is win-relative) and a second, wholly
@@ -83,7 +93,7 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * to route around anymore.
  *
  * Full-bleed's own art rect (func_80028B08.c's CardLayout_DrawArt) is now
- * a sub-region of the unified frame (CARD_LAYOUT_ART_FRAME, card_layout_
+ * a sub-region of the unified frame (CardLayoutArt_FrameCell, card_layout_
  * art.c, src/pc/assets/card_layout_frame.png) instead of reaching the
  * frame's own full width/height: that asset's own art cutout, measured
  * the same way as ICON_ROW_Y/ATTR_X/DEF_X above (flood fill, image bbox
@@ -100,7 +110,7 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
 
 /* The frame's own total box (duel_effect_resource_setup.c's field_18/
  * field_1A * 2, this file's own long-standing derivation): still what
- * CARD_LAYOUT_ART_FRAME's own draw rect uses (func_80028B08.c), covering
+ * CardLayout_DrawFrame's own draw rect uses (func_80028B08.c), covering
  * art, border and bottom section as one piece -- ART above is a sub-region
  * inside it, not the same rect anymore (see above). Public (card_layout.h),
  * not just internal here: func_80028B08.c needs it to size that draw call. */
