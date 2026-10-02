@@ -176,6 +176,9 @@ shared_tail:
         setup = 0x100 + Cards_FrameColor(card_id);
     }
 #endif
+    /* This object's base position (2, 4) is restated, not redefined, as
+     * CARD_LAYOUT_WIN_ORIGIN_X/_Y in pc/cards/card_layout.c, which documents
+     * its relationship to func_800283F4.c's separate backdrop object. */
     DisplayObject_ConfigureSpriteAtPosition(object, 2, 4, 1, 0, variant, 0x1C, setup + 8);
 
     object->field_18 = 0x46;

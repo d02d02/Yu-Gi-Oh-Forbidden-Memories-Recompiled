@@ -99,6 +99,13 @@ void DuelEffect_UpdateCardViewerState(void)
         DisplayObject_SelectOrderingTable1(obj);
         DisplayObject_SetDepthOffset(obj, 0x14);
         D_8009B24C = obj;
+        /* This object (D_8009B240 below) is the card viewer's own separate
+         * backdrop -- the description TextBox's own panel, not part of
+         * win/D_8009B24C's frame. Its base here (0x148, +0xE) and its
+         * open-x slide target below (0x94) are restated, not redefined, as
+         * CARD_LAYOUT_BACKDROP_OPEN_X/_Y_OFFSET in pc/cards/card_layout.c,
+         * which documents its offset from win's own origin -- read that
+         * before re-deriving this relationship again. */
         obj = DisplayObject_AcquireSlot(DisplayObject_FindFreeGeneralSlot(), 2);
         DisplayObject_ConfigureSpriteAtPosition((u8 *)obj, 0x148, gDuel_bCardViewerYOffset + 0xE, 0, 2, 0, 0xD, 0x107);
         obj->field_60 = slide_in;
