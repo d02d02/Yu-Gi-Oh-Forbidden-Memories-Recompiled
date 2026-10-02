@@ -219,3 +219,27 @@ frame template instead of hand-measuring. Validated against current
 constants (within 1px, rounding only).
 
 Not live-verified this round (token budget) -- build is clean.
+
+## Done 2026-10-03: live polish pass (art edge, attribute, description, centering)
+
+Confirmed live in an actual duel (not Build Deck):
+- `ART_W` +2 (134): closes a thin black sliver on the right edge, a soft/
+  antialiased texture-resize artifact, not a geometry error (margins were
+  already symmetric).
+- Attribute icon stretched like the card art (`CardLayout_DrawArt`,
+  reused as-is) to fill its frame cutout -- settled at 19x19 after live
+  iteration (16 too small, 24 way too big, 21/22 still too big, 20/19
+  closer); centre unchanged at the measured (122,157).
+- Stars and the attribute icon's circles now share one `ICON_CENTER_Y`
+  instead of two independently-tuned y values that didn't actually align.
+- `CARD_LAYOUT_DESCRIPTION` re-enabled in full-bleed (user's call): the
+  backdrop panel is on screen either way (see the dimension-tree comment
+  above `CARD_LAYOUT_WIN_W`), so hiding only its text left it looking
+  empty for no reason. `FRAME`/`TITLE` stay hidden -- no equivalent use
+  once the unified frame covers that area.
+
+`SET_CARD_BROWSE` (Build Deck's card-viewer Up/Down) investigated per a
+user report of it "not working" -- confirmed not a regression: the
+setting is off by default and was off in the test profile
+(`card_browse=0`), `CardBrowse_Poll()` returns immediately when off.
+Not a code issue.
