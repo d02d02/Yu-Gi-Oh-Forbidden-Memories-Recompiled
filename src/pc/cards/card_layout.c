@@ -39,17 +39,59 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * fill anymore): left cream area image bbox (85,1139)-(409,1251), right
  * (508,1139)-(859,1251) -- both 112px tall in image
  * space. Converted: left centre (38,178), right centre (104,178)
- * (both halves round to the same y). ATTR_X is unchanged from the
- * first-pass version's own method (its circle is still a real cutout,
- * unaffected by the plaque change): bbox (753,1012)-(842,1101), centre
- * (121,157) minus the icon's own half-extent (8, its 0x10x0x10 sprite).
- * STAR_X has no cutout or fill to measure against (stars sit directly on
- * the frame's gold, nothing marks where) -- kept at its original
- * first-pass value. */
-#define ICON_ROW_Y 149
+ * (both halves round to the same y). STAR_X has no cutout or fill to
+ * measure against (stars sit directly on the frame's gold, nothing marks
+ * where) -- kept at its original first-pass value.
+ *
+ * ATTR_X/Y/W/H (2026-10-03, corrected from a live duel screenshot, not
+ * just the PNG): the circle cutout's own bbox (753,1012)-(842,1101),
+ * centre (121.5,157), is real and unchanged, but drawing the retail
+ * attribute icon at its native 0x10x0x10 (16x16) there left a visible
+ * gap -- a live screenshot measured the icon's own *visible* content
+ * (the sprite has internal padding within its 16x16 cell) at only ~9
+ * native px across, well under the hole's ~13.4px. Stretched like the
+ * art (CardLayout_DrawArt, reused as-is -- it already takes any
+ * SpritePrim, not just the card picture) to 24x24 (scale ~13.4/9 applied
+ * to the whole 16x16 cell, not just its visible content, to keep the
+ * padding's own proportion), centred on the same point: first pass, not
+ * yet confirmed live at this exact size.
+ *
+ * Reverted 2026-10-03 (live call): 24x24 read as way too big. Back to the
+ * icon's own native 16x16 -- no stretch, CardLayout_DrawArt with w=h its
+ * own source extent is a no-op scale, kept rather than going back to the
+ * plain default-dispatch submission so centring stays expressed the same
+ * way (ATTR_X/Y are still this box's top-left, derived from the same
+ * measured centre) instead of two different conventions for the same
+ * element.
+ *
+ * Alignment 2026-10-03: stars and the attribute icon are each a circle,
+ * drawn from independent y constants (ICON_ROW_Y as a *top-left*, sized
+ * for the star's own 9x9 extent, func_80028B08.c's `sb`) that didn't
+ * actually land their centres on the same line -- user's call: align
+ * them, both on the measured (121.5,157) centre. ICON_ROW_Y is now
+ * derived from that shared centre instead of stated independently.
+ *
+ * A -2x/+2y nudge off that measured centre was tried and reverted
+ * (2026-10-03, user's call: "it was wrong") -- back to the measured
+ * centre exactly, not an offset from it. */
+#define ICON_CENTER_Y 157
+#define STAR_SIDE 9   /* func_80028B08.c's own sb = 0x00090009 */
+#define ICON_ROW_Y (ICON_CENTER_Y - STAR_SIDE / 2)
 #define VALUES_ROW_Y 178
 #define STAR_X 0x50
-#define ATTR_X 114
+/* Re-stretched 2026-10-03 (live call, more precise than the first try): a
+ * fresh live screenshot measured the hole at ~13.4 native px and the
+ * icon's own visible sphere at ~10 (not ~9 as first guessed) -- scale
+ * ~1.34x, not ~1.49x. 24x24 (that earlier scale applied to the whole
+ * 16x16 cell) was confirmed way too big. Settled at 19 after live
+ * iteration from that corrected ratio (21, then 22 -- too big again,
+ * then stepped down 20, 19) -- live sizing has more say than the
+ * measured ratio once they're this close; stop re-deriving the "right"
+ * number from pixels and trust the eye from here. */
+#define ATTR_W 19
+#define ATTR_H 19
+#define ATTR_X (122 - ATTR_W / 2)
+#define ATTR_Y (ICON_CENTER_Y - ATTR_H / 2)
 #define ATK_X 38
 #define DEF_X 104
 
@@ -102,10 +144,20 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * symmetric in image space: 23px in from both the left and right edges of
  * the 919-wide source) and y=[3.4,140.7]. Rounded to whole px, margin
  * kept symmetric left/right rather than the two edges independently
- * rounded. */
+ * rounded.
+ *
+ * ART_W +2 past that measured 132 (2026-10-03, live screenshot from an
+ * actual duel): the frame's own right border wasn't fully opaque right at
+ * its measured edge -- a ~2px soft/antialiased transition from the PNG's
+ * own resize down to its stored 177x254 texels -- showing as a thin black
+ * sliver between the art and the border there, not present on the left.
+ * Widening the art by 2px overlaps that soft zone instead of stopping
+ * exactly at the theoretical edge, painting over it. Not re-measured
+ * symmetric on purpose: this is compensating for a render artifact on one
+ * side, not a geometry correction on both. */
 #define ART_X 4
 #define ART_Y 3
-#define ART_W 132
+#define ART_W (132 + 2)
 #define ART_H 138
 
 /* The frame's own total box (duel_effect_resource_setup.c's field_18/
@@ -123,15 +175,25 @@ CardLayoutPlacement CardLayout_Get(CardLayoutElement element)
     switch (element) {
     case CARD_LAYOUT_FRAME:
     case CARD_LAYOUT_TITLE:
-    case CARD_LAYOUT_DESCRIPTION:
         p.visible = !full_bleed;
+        break;
+    case CARD_LAYOUT_DESCRIPTION:
+        /* Re-enabled in full-bleed 2026-10-03 (user's call): the backdrop
+         * panel it sits on (func_800283F4.c's D_8009B240) is on screen
+         * either way -- see the comment above -- so hiding only its own
+         * text left that panel looking empty for no reason. Always
+         * visible now, independent of full_bleed, unlike FRAME/TITLE
+         * above which stay genuinely retired in full-bleed (the small
+         * picture frame and its title plate have no equivalent use once
+         * the unified card frame covers that same area). */
+        p.visible = 1;
         break;
     case CARD_LAYOUT_LEVEL_STARS:
         if (full_bleed) { p.x = STAR_X; p.y = ICON_ROW_Y; }
         else             { p.x = 0x77;  p.y = 0x20; }
         break;
     case CARD_LAYOUT_ATTRIBUTE:
-        if (full_bleed) { p.x = ATTR_X; p.y = ICON_ROW_Y; }
+        if (full_bleed) { p.x = ATTR_X; p.y = ATTR_Y; p.w = ATTR_W; p.h = ATTR_H; }
         else             { p.x = 0x6E;  p.y = 0xD; }
         break;
     case CARD_LAYOUT_ATK:
