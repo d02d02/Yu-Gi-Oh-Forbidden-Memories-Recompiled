@@ -198,3 +198,24 @@ port feature, not a `mods/` directory.
   pixels instead of re-guessing.
 - Reference images used so far: `maxresdefault.png` (repo root, untracked)
   and `game/pixels.png` (untracked/ignored) -- both local-only, not in git.
+
+## Done 2026-10-02: frame resolution bump + auto-measure tool
+
+Frame texture (card_layout_art.c) bumped 173x248 -> 177x254 (u8 UV ceiling).
+Confirmed by direct crop comparison: blur is our own downsample, not the
+source PNG (sharp at full res). HD texture-pack pipeline (TexturePack_
+AddMade, used by cards.c mod art) traced in full: works by content-match
+on a tracked SoftGpu_Load upload into real VRAM; banks (ours, star icons,
+glyphs) have no tag-array equivalent at all, so not reachable without
+either claiming real VRAM (fragile, the contention problem banks exist to
+avoid) or extending texture_dump.c/texture_pack.c to be bank-aware (a real
+core-engine feature, out of scope here -- logged as a future direction,
+not pursued this session).
+
+tools/pc/measure_card_frame.py: flood-fills card_layout_frame.png's alpha
+cutouts + colour-matches its cream stat boxes, prints ART_X/Y/W/H,
+ICON_ROW_Y, ATTR_X, ATK_X, DEF_X, VALUES_ROW_Y. Run after swapping the
+frame template instead of hand-measuring. Validated against current
+constants (within 1px, rounding only).
+
+Not live-verified this round (token budget) -- build is clean.
