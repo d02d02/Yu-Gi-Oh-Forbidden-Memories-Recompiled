@@ -73,6 +73,8 @@ typedef struct {
     int card;      /* one-based card id; 0 when the entry is free */
     unsigned used; /* frame number of the last draw, for replacement */
     int bank;      /* its texture bank in the software GPU */
+    int w, h;      /* its shape: CARD_ART_WIDTH/HEIGHT for the disc's own art,
+                    * or CardArt_FieldArtShape's for a mod's own "field_art" */
 } Art;
 
 static Art cache[CACHE];
@@ -111,7 +113,9 @@ static int tunable(const char *key, int fallback)
 #define PIXELS_X 0
 #define PIXELS_Y 0
 #define CLUT_X 0
-#define CLUT_Y CARD_ART_HEIGHT
+/* The CLUT's own row: right after the pixel rows, so it moves with whatever
+ * shape this entry holds (CARD_ART_HEIGHT for the disc's own art, or
+ * CardArt_FieldArtShape's height for a mod's own "field_art"). */
 
 static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 {
@@ -123,7 +127,7 @@ static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 
 static int load_art(Art *art, int card)
 {
-    int base, sectors;
+    int base, sectors, w, h;
     u16 *bank;
     const unsigned char *field_art;
     const u16 *pixels, *clut;
@@ -154,13 +158,20 @@ static int load_art(Art *art, int card)
             return 0;
         }
         /* A mod's own "art" artwork over the base's, exactly as the
-         * card-detail panel gets it (func_800289BC). */
+         * card-detail panel gets it (func_800289BC). This is the disc's own
+         * record shape, always: CARD_ART_WIDTH/HEIGHT, never field_art's. */
         Cards_PatchArtRecord(card, record);
+        w = CARD_ART_WIDTH;
+        h = CARD_ART_HEIGHT;
         pixels = (const u16 *)(record + CARD_ART_PIXELS);
         clut = (const u16 *)(record + CARD_ART_CLUT);
     } else {
+        /* A mod's own "field_art" shape, possibly not CARD_ART_WIDTH/HEIGHT
+         * (CardArt_FieldArtShape, art.h): its CLUT sits right after its own
+         * pixels, not at the fixed CARD_ART_CLUT. */
+        CardArt_FieldArtShape(&w, &h);
         pixels = (const u16 *)(field_art + CARD_ART_PIXELS);
-        clut = (const u16 *)(field_art + CARD_ART_CLUT);
+        clut = (const u16 *)(field_art + (size_t)w * h);
     }
 
     bank = SoftGpu_Bank(art->bank);
@@ -168,9 +179,11 @@ static int load_art(Art *art, int card)
         say("no bank %d\n", art->bank);
         return 0;
     }
-    bank_put(bank, PIXELS_X, PIXELS_Y, CARD_ART_WIDTH / 2, CARD_ART_HEIGHT, pixels);
-    bank_put(bank, CLUT_X, CLUT_Y, 256, 1, clut);
+    bank_put(bank, PIXELS_X, PIXELS_Y, w / 2, h, pixels);
+    bank_put(bank, CLUT_X, h, 256, 1, clut);
     art->card = card;
+    art->w = w;
+    art->h = h;
     return 1;
 }
 
@@ -452,7 +465,7 @@ static void draw_one(int index, int world_height)
     if (height_px <= 0) {
         return; /* behind the camera, or degenerate */
     }
-    width_px = height_px * CARD_ART_WIDTH / CARD_ART_HEIGHT;
+    width_px = height_px * art->w / art->h;
     cx = (base_sx + top_sx) / 2;
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
@@ -460,23 +473,23 @@ static void draw_one(int index, int world_height)
     setPolyFT4(&prim);
     prim.r0 = prim.g0 = prim.b0 = 0x80;
     prim.tpage = GetTPage(1, 0, PIXELS_X, PIXELS_Y) | (u16)(art->bank << 11);
-    prim.clut = GetClut(CLUT_X, CLUT_Y);
+    prim.clut = GetClut(CLUT_X, art->h);
     prim.x0 = (short)(cx - width_px / 2);
     prim.y0 = (short)top_sy;
     prim.u0 = 0;
     prim.v0 = 0;
     prim.x1 = (short)(cx + width_px / 2);
     prim.y1 = (short)top_sy;
-    prim.u1 = CARD_ART_WIDTH - 1;
+    prim.u1 = art->w - 1;
     prim.v1 = 0;
     prim.x2 = (short)(cx - width_px / 2);
     prim.y2 = (short)base_sy;
     prim.u2 = 0;
-    prim.v2 = CARD_ART_HEIGHT - 1;
+    prim.v2 = art->h - 1;
     prim.x3 = (short)(cx + width_px / 2);
     prim.y3 = (short)base_sy;
-    prim.u3 = CARD_ART_WIDTH - 1;
-    prim.v3 = CARD_ART_HEIGHT - 1;
+    prim.u3 = art->w - 1;
+    prim.v3 = art->h - 1;
 
     /* D_800E9D90[0] (what this used to target) is a real, but tiny, table in
      * this state -- 4 depth slots, confirmed live (table_length 2) -- meant
