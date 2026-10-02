@@ -467,6 +467,18 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     tile = PRM->uv.b.lo;
     PRM->cxcy.h.cx = win->field_40.h.field_40 + tile;
     PRM->cxcy.h.cy = 0xFF;
+#ifdef MEMORIES_PC
+    /* Full-bleed stretches the attribute icon into its frame cutout
+     * (CARD_LAYOUT_ATTRIBUTE's own w/h, card_layout.c) the same way the
+     * card's own picture is enlarged above -- CardLayout_DrawArt already
+     * takes any fully-configured SpritePrim, not just the card picture,
+     * so it's reused here rather than duplicated. */
+    if (attr_layout.w != 0) {
+        CardLayout_DrawArt(PRM, win->field_30.h.field_30 + attr_layout.x,
+                           win->field_30.h.field_32 + attr_layout.y,
+                           attr_layout.w, attr_layout.h, arg1, arg, EXT);
+    } else
+#endif
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
 #ifdef MEMORIES_PC
     /* Last on purpose (CardLayout_DrawFrame's own comment explains why):
