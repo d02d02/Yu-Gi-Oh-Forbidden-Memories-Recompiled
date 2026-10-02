@@ -333,10 +333,36 @@ static void resample_alpha(const unsigned char *source, int sw, int sh, unsigned
 }
 
 #define FIELD_ART_ALPHA_CUTOFF 128
+#define FIELD_ART_SHAPE_MAX 256 /* a POLY_FT4's own u/v byte: 0-255 either axis */
+
+/* field_art's own on-field shape: 102x96 (CARD_ART_WIDTH/HEIGHT) by default,
+ * matching the retail card picture, but a mod's own art may read better at
+ * another ratio -- MEMORIES_FIELD_ART_WIDTH/MEMORIES_FIELD_ART_HEIGHT
+ * override it, one shape for every field_art in the run (read once, cached:
+ * every card's cutout still shares one height-fitting pass, field_art.c's
+ * own comment). Unlike "art", field_art's record is sized for this shape
+ * (CardArt_FieldArtFromImage below), not CARD_ART_RECORD, so its CLUT sits
+ * right after its own pixels rather than at the fixed CARD_ART_CLUT. */
+void CardArt_FieldArtShape(int *width, int *height)
+{
+    static int w = -1, h;
+    if (w < 0) {
+        const char *ws = getenv("MEMORIES_FIELD_ART_WIDTH"), *hs = getenv("MEMORIES_FIELD_ART_HEIGHT");
+        w = ws && atoi(ws) > 0 ? atoi(ws) : CARD_ART_WIDTH;
+        h = hs && atoi(hs) > 0 ? atoi(hs) : CARD_ART_HEIGHT;
+        if (w > FIELD_ART_SHAPE_MAX) w = FIELD_ART_SHAPE_MAX;
+        if (h > FIELD_ART_SHAPE_MAX) h = FIELD_ART_SHAPE_MAX;
+        w &= ~1; /* even: two 8bpp texels packed a VRAM word */
+        if (w < 2) w = 2;
+        if (h < 1) h = 1;
+    }
+    *width = w;
+    *height = h;
+}
 
 int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why, size_t why_size)
 {
-    int width, height, i;
+    int width, height, i, fw, fh;
     unsigned char *alpha;
     Rgb *source = load_png_rgba(path, &width, &height, &alpha), *art;
     unsigned char *art_alpha;
@@ -346,8 +372,9 @@ int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why
         snprintf(why, why_size, "%s is not a PNG it could read", path);
         return 0;
     }
-    art = malloc(CARD_ART_WIDTH * CARD_ART_HEIGHT * sizeof(*art));
-    art_alpha = malloc(CARD_ART_WIDTH * CARD_ART_HEIGHT);
+    CardArt_FieldArtShape(&fw, &fh);
+    art = malloc((size_t)fw * fh * sizeof(*art));
+    art_alpha = malloc((size_t)fw * fh);
     if (!art || !art_alpha) {
         free(source);
         free(alpha);
@@ -355,19 +382,19 @@ int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why
         free(art_alpha);
         return 0;
     }
-    resample(source, width, height, art, CARD_ART_WIDTH, CARD_ART_HEIGHT);
-    resample_alpha(alpha, width, height, art_alpha, CARD_ART_WIDTH, CARD_ART_HEIGHT);
-    quantize(art, CARD_ART_WIDTH * CARD_ART_HEIGHT, 255, clut, record + CARD_ART_PIXELS);
+    resample(source, width, height, art, fw, fh);
+    resample_alpha(alpha, width, height, art_alpha, fw, fh);
+    quantize(art, fw * fh, 255, clut, record + CARD_ART_PIXELS);
     /* A texel this transparent is written as index 0 (never quantize's own
      * output: every real pixel is 1-255), and its CLUT entry set to the
      * PS1's own transparent colour, 0x0000 (to555's own comment) -- unlike
      * quantize's own default for it, 0x8000, opaque black, since index 0
      * never reaches a real pixel anywhere else a card's art is drawn. */
     clut[0] = 0;
-    for (i = 0; i < CARD_ART_WIDTH * CARD_ART_HEIGHT; i++) {
+    for (i = 0; i < fw * fh; i++) {
         if (art_alpha[i] < FIELD_ART_ALPHA_CUTOFF) record[CARD_ART_PIXELS + i] = 0;
     }
-    put_clut(record + CARD_ART_CLUT, clut, 256);
+    put_clut(record + fw * fh, clut, 256);
 
     free(source);
     free(alpha);
