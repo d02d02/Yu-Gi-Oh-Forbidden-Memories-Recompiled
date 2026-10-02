@@ -84,7 +84,7 @@
  * card's own turn/reveal rotation while every other element (picture,
  * digits, stars, attribute) rotated with it; routed this way, the plaque
  * rotates too. */
-/* Shared by CardLayout_DrawPlaque and CardLayout_DrawRowBackdrop: a port-
+/* Shared by CardLayout_DrawPlaque and CardLayout_DrawFrame: a port-
  * owned textured quad (card_layout_art.h) in place of a hand-built flat
  * one, through the same case-5 projected dispatch CardLayout_DrawArt uses
  * (so it rotates with the card too). 1 if drawn, 0 if the asset isn't
@@ -214,15 +214,26 @@ static void CardLayout_DrawArt(SpritePrim *src, s32 x, s32 y, s32 w, s32 h,
                                ot, art_mode, EXT);
 }
 
-/* The icon/ATK-DEF row's own backdrop (card_layout.c's CARD_LAYOUT_ROW_
- * BACKDROP) -- CardLayout_DrawArtAsset above, or simply not drawn: unlike
- * the plaque there is no flat-fill fallback, since this is purely
- * decorative (nothing depends on it being there -- the row reads fine
- * with the duel field showing through, as it does today without this
- * asset). */
-static void CardLayout_DrawRowBackdrop(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, Func80028B08Extra *EXT)
+/* The unified card frame (card_layout.h's CARD_LAYOUT_WIN_W/H, the whole
+ * WIN box) -- CardLayout_DrawArtAsset above, or simply not drawn: unlike
+ * the plaque there is no flat-fill fallback, purely decorative. Unlike
+ * every other element here, this one is a *mask*, not a backdrop: its
+ * border and gold bottom section are opaque, but the art, attribute and
+ * both stat boxes are real alpha cutouts in the asset itself
+ * (src/pc/assets/card_layout_frame.png) -- so it has to be submitted
+ * *first*, the opposite of the retired row backdrop's own submitted-last
+ * (CardLayout_DrawPlaque's own comment explains why: this port's OT
+ * prepends to its bucket's head, so whatever is submitted first in code
+ * order ends up walked -- actually drawn, at the end of this frame,
+ * regardless of when this function returns -- last, on top of everything
+ * submitted after it). So this call has to come *before*
+ * art/digits/stars/attribute/plaque below, even though its own pixels end
+ * up painted over theirs: its opaque regions cover the duel field
+ * everywhere except the holes, which is where theirs end up still
+ * visible. */
+static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, Func80028B08Extra *EXT)
 {
-    CardLayout_DrawArtAsset(CARD_LAYOUT_ART_ROW, x, y, w, h, ot, mode, EXT);
+    CardLayout_DrawArtAsset(CARD_LAYOUT_ART_FRAME, x, y, w, h, ot, mode, EXT);
 }
 #endif
 
@@ -266,7 +277,6 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     CardLayoutPlacement star_layout = CardLayout_Get(CARD_LAYOUT_LEVEL_STARS);
     CardLayoutPlacement attr_layout = CardLayout_Get(CARD_LAYOUT_ATTRIBUTE);
     CardLayoutPlacement art_layout = CardLayout_Get(CARD_LAYOUT_ART);
-    CardLayoutPlacement row_layout = CardLayout_Get(CARD_LAYOUT_ROW_BACKDROP);
 #endif
 
     wrap = 0xFFFF;
@@ -303,6 +313,18 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
         CTX->field_3 = 9;
         CTX->field_7 = 0x2C;
     }
+
+#ifdef MEMORIES_PC
+    /* First on purpose -- CardLayout_DrawFrame's own comment above explains
+     * why this is the opposite of the plaque's/old row-backdrop's own
+     * submitted-last convention: this is a mask, not a backdrop, and has
+     * to paint over everything else submitted in this function, art
+     * included, to mask it everywhere except its own holes. */
+    if (CardLayout_FullBleed()) {
+        CardLayout_DrawFrame(win->field_30.h.field_30, win->field_30.h.field_32,
+                             CARD_LAYOUT_WIN_W, CARD_LAYOUT_WIN_H, arg1, arg, EXT);
+    }
+#endif
 
     PRM->attribute = obj->attribute;
     PRM->xy.h.x = win->field_30.h.field_30 + 0x13;
@@ -543,17 +565,5 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     PRM->cxcy.h.cx = win->field_40.h.field_40 + tile;
     PRM->cxcy.h.cy = 0xFF;
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
-#ifdef MEMORIES_PC
-    /* Last on purpose, like the plaque's own draw order (CardLayout_
-     * DrawPlaque's own comment): the most recently submitted primitive at
-     * a shared OT depth is drawn first, underneath everything submitted
-     * before it -- so this, submitted after the art/stars/attribute/ATK/
-     * DEF above, ends up behind all of them instead of painted over them. */
-    if (row_layout.w != 0) {
-        CardLayout_DrawRowBackdrop(win->field_30.h.field_30 + row_layout.x,
-                                   win->field_30.h.field_32 + row_layout.y,
-                                   row_layout.w, row_layout.h, arg1, arg, EXT);
-    }
-#endif
 }
 
