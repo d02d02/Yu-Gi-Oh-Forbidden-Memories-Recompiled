@@ -3,7 +3,7 @@
 #include "pc/debug/log.h"
 
 static const char *const element_names[CARD_LAYOUT_ELEMENT_COUNT] = {
-    "frame", "title", "description", "level_stars", "attribute", "atk", "def", "art"
+    "frame", "title", "description", "level_stars", "attribute", "atk", "def", "art", "row_backdrop"
 };
 
 /* Logged only on change (MEMORIES_TRACE=card_layout), not every frame:
@@ -125,6 +125,27 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
 #define ART_W (CARD_LAYOUT_BACKDROP_DX - CARD_LAYOUT_BACKDROP_INSET_X)
 #define ART_H (ICON_ROW_Y - ART_Y)
 
+/* The frame's own total box (this file's own derivation comment above,
+ * duel_effect_resource_setup.c's field_18/field_1A * 2) stated as named
+ * constants instead of only living inside that comment -- ART_W above
+ * happens to equal WIN_W (140 either way, since the art reaches the
+ * backdrop's edge which lines up with the frame's own edge), but the two
+ * are derived from unrelated facts, not the same one, so they stay
+ * separate constants rather than one reused. */
+#define CARD_LAYOUT_WIN_W 0x8C
+#define CARD_LAYOUT_WIN_H 0xC4
+
+/* The icon/ATK-DEF row's own backdrop (func_80028B08.c's CardLayout_
+ * DrawRowBackdrop, card_layout_art.c's CARD_LAYOUT_ART_ROW): the band
+ * below the art, full width, down to the frame's own bottom edge -- the
+ * same win-relative box the stars/attribute/ATK/DEF positions above
+ * already sit inside, just stated as its own rect instead of left
+ * implicit. */
+#define ROW_X 0
+#define ROW_Y ICON_ROW_Y
+#define ROW_W CARD_LAYOUT_WIN_W
+#define ROW_H (CARD_LAYOUT_WIN_H - ICON_ROW_Y)
+
 CardLayoutPlacement CardLayout_Get(CardLayoutElement element)
 {
     CardLayoutPlacement p = {1, 0, 0, 0, 0};
@@ -154,6 +175,9 @@ CardLayoutPlacement CardLayout_Get(CardLayoutElement element)
         break;
     case CARD_LAYOUT_ART:
         if (full_bleed) { p.x = ART_X; p.y = ART_Y; p.w = ART_W; p.h = ART_H; }
+        break;
+    case CARD_LAYOUT_ROW_BACKDROP:
+        if (full_bleed) { p.x = ROW_X; p.y = ROW_Y; p.w = ROW_W; p.h = ROW_H; }
         break;
     default:
         break;

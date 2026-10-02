@@ -526,47 +526,24 @@ int CardArt_Crop(const char *path, int w, int h, int *x, int *y, int *cw, int *c
     return 1;
 }
 
-/* A PNG with see-through parts as 8-bit texels (title_images.c): stretched
- * to `w` x `h`, each texel the average of the pixels under it, a texel under
- * half covered clear (entry 0, the PS1's transparent 0x0000) and the rest
- * reduced to 255 colours by median cut from entry 1. */
-int CardArt_IndexedImage(const char *path, int w, int h, unsigned char *indices, unsigned short *clut, char *why,
-                         size_t why_size)
+/* Shared by CardArt_IndexedImage and CardArt_IndexedImageFromMemory once
+ * each has its own decoded RGBA buffer and source size: stretched to `w` x
+ * `h`, each texel the average of the pixels under it, a texel under half
+ * covered clear (entry 0, the PS1's transparent 0x0000) and the rest
+ * reduced to 255 colours by median cut from entry 1. Takes ownership of
+ * `rgba` (frees it). */
+static int indexed_image_from_rgba(unsigned char *rgba, int sw, int sh, int w, int h, unsigned char *indices,
+                                   unsigned short *clut)
 {
-    png_image image;
-    FILE *file;
-    unsigned char *rgba;
     Rgb *opaque;
     unsigned char *opaque_indices;
-    int x, y, sw, sh, count = 0, k;
-    memset(&image, 0, sizeof(image));
-    image.version = PNG_IMAGE_VERSION;
-    file = fopen(path, "rb");
-    if (!file || !png_image_begin_read_from_stdio(&image, file)) {
-        if (file) fclose(file);
-        snprintf(why, why_size, "%s is not a PNG it could read", path);
-        return 0;
-    }
-    image.format = PNG_FORMAT_RGBA;
-    rgba = malloc(PNG_IMAGE_SIZE(image));
-    if (!rgba || !png_image_finish_read(&image, NULL, rgba, 0, NULL)) {
-        free(rgba);
-        fclose(file);
-        png_image_free(&image);
-        snprintf(why, why_size, "%s is not a PNG it could read", path);
-        return 0;
-    }
-    fclose(file);
-    sw = (int)image.width;
-    sh = (int)image.height;
-    png_image_free(&image);
+    int x, y, count = 0, k;
     opaque = malloc((size_t)w * h * sizeof(*opaque));
     opaque_indices = malloc((size_t)w * h);
     if (!opaque || !opaque_indices) {
         free(rgba);
         free(opaque);
         free(opaque_indices);
-        snprintf(why, why_size, "out of memory for %s", path);
         return 0;
     }
     for (y = 0; y < h; y++) {
@@ -603,6 +580,67 @@ int CardArt_IndexedImage(const char *path, int w, int h, unsigned char *indices,
     free(opaque);
     free(opaque_indices);
     return 1;
+}
+
+int CardArt_IndexedImage(const char *path, int w, int h, unsigned char *indices, unsigned short *clut, char *why,
+                         size_t why_size)
+{
+    png_image image;
+    FILE *file;
+    unsigned char *rgba;
+    int sw, sh;
+    memset(&image, 0, sizeof(image));
+    image.version = PNG_IMAGE_VERSION;
+    file = fopen(path, "rb");
+    if (!file || !png_image_begin_read_from_stdio(&image, file)) {
+        if (file) fclose(file);
+        snprintf(why, why_size, "%s is not a PNG it could read", path);
+        return 0;
+    }
+    image.format = PNG_FORMAT_RGBA;
+    rgba = malloc(PNG_IMAGE_SIZE(image));
+    if (!rgba || !png_image_finish_read(&image, NULL, rgba, 0, NULL)) {
+        free(rgba);
+        fclose(file);
+        png_image_free(&image);
+        snprintf(why, why_size, "%s is not a PNG it could read", path);
+        return 0;
+    }
+    fclose(file);
+    sw = (int)image.width;
+    sh = (int)image.height;
+    png_image_free(&image);
+    if (!indexed_image_from_rgba(rgba, sw, sh, w, h, indices, clut)) {
+        snprintf(why, why_size, "out of memory for %s", path);
+        return 0;
+    }
+    return 1;
+}
+
+/* Like CardArt_IndexedImage, but decodes a PNG already in memory -- a port-
+ * owned asset compiled in (src/pc/assets/), not a mod's file on disk, so
+ * there is nothing to fopen. Same shape otherwise: entry 0 transparent,
+ * stretched to w x h. */
+int CardArt_IndexedImageFromMemory(const unsigned char *data, size_t size, int w, int h, unsigned char *indices,
+                                   unsigned short *clut)
+{
+    png_image image;
+    unsigned char *rgba;
+    int sw, sh;
+    memset(&image, 0, sizeof(image));
+    image.version = PNG_IMAGE_VERSION;
+    if (!png_image_begin_read_from_memory(&image, data, size)) return 0;
+    image.format = PNG_FORMAT_RGBA;
+    rgba = malloc(PNG_IMAGE_SIZE(image));
+    if (!rgba || !png_image_finish_read(&image, NULL, rgba, 0, NULL)) {
+        free(rgba);
+        png_image_free(&image);
+        return 0;
+    }
+    sw = (int)image.width;
+    sh = (int)image.height;
+    png_image_free(&image);
+    return indexed_image_from_rgba(rgba, sw, sh, w, h, indices, clut);
 }
 
 /* The PNG's width and height, from its header. */
