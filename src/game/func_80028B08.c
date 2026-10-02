@@ -14,6 +14,7 @@
 #include "../psyq/libgpu.h"
 #include "pc/cards/tables.h"
 #include "pc/cards/card_layout.h"
+#include "pc/cards/card_layout_art.h"
 #endif
 /*
  * Duel card-detail panel: builds the scratchpad sprite parameters for the
@@ -83,6 +84,41 @@
  * card's own turn/reveal rotation while every other element (picture,
  * digits, stars, attribute) rotated with it; routed this way, the plaque
  * rotates too. */
+/* Shared by CardLayout_DrawPlaque and CardLayout_DrawRowBackdrop: a port-
+ * owned textured quad (card_layout_art.h) in place of a hand-built flat
+ * one, through the same case-5 projected dispatch CardLayout_DrawArt uses
+ * (so it rotates with the card too). 1 if drawn, 0 if the asset isn't
+ * available (bank allocation or decode failed) -- the caller's own
+ * fallback, a flat fill or simply nothing, is what runs then. */
+static int CardLayout_DrawArtAsset(CardLayoutArtAsset asset, s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
+                                   Func80028B08Extra *EXT)
+{
+    POLY_GT4 art;
+    s32 projected = ((u32)mode >> 16) == 0xF;
+    s32 attribute = projected ? 0x04000000 : 0;
+    s32 art_mode = (mode & 0xFFFF) | 0x50000;
+    int art_tpage, art_u, art_v, art_clut, art_w, art_h;
+
+    if (!CardLayoutArt_Cell(asset, &art_tpage, &art_u, &art_v, &art_clut, &art_w, &art_h)) return 0;
+
+    setPolyGT4(&art);
+    setRGB0(&art, 128, 128, 128);
+    setRGB1(&art, 128, 128, 128);
+    setRGB2(&art, 128, 128, 128);
+    setRGB3(&art, 128, 128, 128);
+    art.clut = (u16)art_clut;
+    art.tpage = (u16)art_tpage;
+    art.u0 = art.u2 = (u8)art_u;
+    art.u1 = art.u3 = (u8)(art_u + art_w - 1);
+    art.v0 = art.v1 = (u8)art_v;
+    art.v2 = art.v3 = (u8)(art_v + art_h - 1);
+    setXY4(&art, (short)x, (short)y, (short)(x + w), (short)y,
+           (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
+    DisplayObject_SubmitPacket((SpritePrim *)attribute, (Func80028B08Ctx *)&art,
+                               ot, art_mode, EXT);
+    return 1;
+}
+
 static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
                                    Func80028B08Extra *EXT)
 {
@@ -90,6 +126,11 @@ static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
     s32 projected = ((u32)mode >> 16) == 0xF;
     s32 attribute = projected ? 0x04000000 : 0;
     s32 plaque_mode = (mode & 0xFFFF) | 0x40000;
+
+    /* Real art (card_layout_art.h) when it decoded and found a bank;
+     * otherwise this flat fill is the fallback, not dead code -- a bank
+     * can fail to allocate, and the asset's own decode can fail. */
+    if (CardLayout_DrawArtAsset(CARD_LAYOUT_ART_PLAQUE, x, y, w, h, ot, mode, EXT)) return;
 
     setPolyG4(&plaque);
     setRGB0(&plaque, 220, 200, 150); /* parchment beige, per the reference art */
@@ -103,13 +144,11 @@ static void CardLayout_DrawPlaque(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode,
                                ot, plaque_mode, EXT);
 }
 
-/* Comfortably holds up to 5 digits (step 5px, glyph 6px wide: a 5-digit
- * row spans (5-1)*5+6 = 26px) plus a few pixels of padding on every side. */
-#define CARD_LAYOUT_PLAQUE_PAD_X 3
-#define CARD_LAYOUT_PLAQUE_PAD_TOP 2
-#define CARD_LAYOUT_PLAQUE_PAD_BOTTOM 2
-#define CARD_LAYOUT_PLAQUE_W (26 + 2 * CARD_LAYOUT_PLAQUE_PAD_X)
-#define CARD_LAYOUT_PLAQUE_H (0x0D + CARD_LAYOUT_PLAQUE_PAD_TOP + CARD_LAYOUT_PLAQUE_PAD_BOTTOM)
+/* CARD_LAYOUT_PLAQUE_PAD_X/TOP/BOTTOM/W/H: card_layout.h now (sized off
+ * the real plaque art's own aspect, card_layout_art.c), not here -- every
+ * other layout constant already lives there, this one shouldn't be the
+ * exception just because it started before the art existed to size it
+ * against. */
 
 /* Stretches the card's own picture to fill full-bleed's larger art rect
  * (card_layout.c's CARD_LAYOUT_ART) instead of retail's small 0x66x0x60
@@ -174,6 +213,17 @@ static void CardLayout_DrawArt(SpritePrim *src, s32 x, s32 y, s32 w, s32 h,
     DisplayObject_SubmitPacket((SpritePrim *)packet_attr, (Func80028B08Ctx *)&art,
                                ot, art_mode, EXT);
 }
+
+/* The icon/ATK-DEF row's own backdrop (card_layout.c's CARD_LAYOUT_ROW_
+ * BACKDROP) -- CardLayout_DrawArtAsset above, or simply not drawn: unlike
+ * the plaque there is no flat-fill fallback, since this is purely
+ * decorative (nothing depends on it being there -- the row reads fine
+ * with the duel field showing through, as it does today without this
+ * asset). */
+static void CardLayout_DrawRowBackdrop(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, Func80028B08Extra *EXT)
+{
+    CardLayout_DrawArtAsset(CARD_LAYOUT_ART_ROW, x, y, w, h, ot, mode, EXT);
+}
 #endif
 
 void func_80028B08(DisplayObject *obj, s32 arg1) {
@@ -216,6 +266,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     CardLayoutPlacement star_layout = CardLayout_Get(CARD_LAYOUT_LEVEL_STARS);
     CardLayoutPlacement attr_layout = CardLayout_Get(CARD_LAYOUT_ATTRIBUTE);
     CardLayoutPlacement art_layout = CardLayout_Get(CARD_LAYOUT_ART);
+    CardLayoutPlacement row_layout = CardLayout_Get(CARD_LAYOUT_ROW_BACKDROP);
 #endif
 
     wrap = 0xFFFF;
@@ -350,6 +401,21 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             step = digits == 5 ? 5 : 6;
             atk_left = digits == 5 ? atk_layout.x - 1 : atk_layout.x;
             def_left = digits == 5 ? def_layout.x - 1 : def_layout.x;
+            if (CardLayout_FullBleed()) {
+                /* Centers the digit row inside the plaque box instead of
+                 * the retail-stacked-layout left edge above: the plaque is
+                 * sized for the 5-digit case (CARD_LAYOUT_PLAQUE_W,
+                 * card_layout.h), so a shorter 4-digit row needs to move
+                 * right to stay centered rather than hug the same left
+                 * edge. Replaces the -1 nudge above rather than adding to
+                 * it -- this formula already gets the 5-digit case right
+                 * on its own (center=0 exactly, since the plaque's own
+                 * width was solved from the 5-digit span). */
+                s32 digit_width = (digits - 1) * step + 6;
+                s32 center = (CARD_LAYOUT_PLAQUE_W - digit_width) / 2 - CARD_LAYOUT_PLAQUE_PAD_X;
+                atk_left = atk_layout.x + center;
+                def_left = def_layout.x + center;
+            }
             Text_EncodeDecimalDigits(attack, digits, buf1);
             Text_EncodeDecimalDigits(defense, digits, buf2);
 
@@ -477,5 +543,17 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     PRM->cxcy.h.cx = win->field_40.h.field_40 + tile;
     PRM->cxcy.h.cy = 0xFF;
     DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
+#ifdef MEMORIES_PC
+    /* Last on purpose, like the plaque's own draw order (CardLayout_
+     * DrawPlaque's own comment): the most recently submitted primitive at
+     * a shared OT depth is drawn first, underneath everything submitted
+     * before it -- so this, submitted after the art/stars/attribute/ATK/
+     * DEF above, ends up behind all of them instead of painted over them. */
+    if (row_layout.w != 0) {
+        CardLayout_DrawRowBackdrop(win->field_30.h.field_30 + row_layout.x,
+                                   win->field_30.h.field_32 + row_layout.y,
+                                   row_layout.w, row_layout.h, arg1, arg, EXT);
+    }
+#endif
 }
 

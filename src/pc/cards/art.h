@@ -49,6 +49,11 @@ int CardArt_TitleFromImage(const char *path, unsigned char *plate, char *why, si
  * clear and 1-255 its colours in `clut` (256 BGR555 entries). */
 int CardArt_IndexedImage(const char *path, int w, int h, unsigned char *indices, unsigned short *clut, char *why,
                          size_t why_size);
+/* Like CardArt_IndexedImage, but decodes a PNG already in memory (a
+ * compiled-in port asset, src/pc/assets/) instead of a mod's file on disk.
+ * 1 on success, 0 otherwise -- there is no path to name in a message. */
+int CardArt_IndexedImageFromMemory(const unsigned char *data, size_t size, int w, int h, unsigned char *indices,
+                                   unsigned short *clut);
 /* The PNG's size; 0 when it is not one. */
 int CardArt_ImageSize(const char *path, int *width, int *height);
 /* PORTRAIT_RECORD bytes: a duelist's face for the Free Duel grid. */
