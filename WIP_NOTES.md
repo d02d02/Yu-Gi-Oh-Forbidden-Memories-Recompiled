@@ -125,63 +125,46 @@ but the save state drifted stale (below) before it could be checked; and
 it is about to be retired anyway (next section), so not chasing that
 confirmation now.
 
-## Next: unified card frame, retiring the separate row backdrop
+## Done 2026-10-02: unified card frame, row backdrop retired
 
-**Resource to import, not yet in the repo**: `animeframe.png` (local path
-`C:\Users\mdahh\OneDrive\Desktop\Perso\hacking\animeframe.png`, outside
-the repo -- same place the plaque/row PNGs were found before being copied
-in), 919x1319 RGBA, real alpha cutouts (confirmed). One continuous
-card-shaped frame: a grey/dark border around the art (which the current
-layout doesn't have at all -- full-bleed's art runs edge to edge today)
-plus the same gold/olive bottom section `card-background-bottom.png`
-already covers, as one piece instead of two.
+Adopted `animeframe.png` (imported as `src/pc/assets/card_layout_frame.png`
+-- found at 4.86MB, re-saved with proper PNG compression first, 419KB,
+pixel-identical, `zlib`/PIL `compress_level=9`; the original would have
+embedded as an 11.5MB header) as the single frame for the whole WIN box,
+replacing `card_layout_row.png`/`CARD_LAYOUT_ART_ROW`/
+`CardLayout_DrawRowBackdrop` entirely (both removed from the repo and the
+build) rather than layering both. The plaque (`atk-dfd-2-plaque.png`) is
+kept, drawn inside this frame's own two rectangular holes.
 
-User's call (2026-10-02): adopt this as the single frame for the whole
-WIN box, retiring `card_layout_row.png`/`CARD_LAYOUT_ART_ROW`/
-`CardLayout_DrawRowBackdrop` entirely rather than layering both. The
-plaque (`atk-dfd-2-plaque.png`) is kept -- confirmed its own two
-rectangular holes in `animeframe.png` are empty gold, not a plaque
-texture, so the plaque still draws inside them. **Two resources
-involved**: the frame (`animeframe.png`, new) and the plaque
-(`atk-dfd-2-plaque.png`, already imported) -- not the row background,
-which this replaces.
+**Recalibrated against the frame's own cutouts** (Python/PIL flood fill on
+the alpha channel, converted at the image's own 919x1319 -> 140x196 scale,
+~6.56x/6.73x a axis), replacing the original first-pass guesses in
+`card_layout.c`: `ART_X/Y/W/H` (4,3,132,138 -- a real ~3.5px matted margin
+on both sides of the art now, instead of edge-to-edge), `ICON_ROW_Y` (149),
+`VALUES_ROW_Y` (171), `ATTR_X` (114), `ATK_X` (25), `DEF_X` (89). `STAR_X`
+kept at its original value -- no cutout to measure it against, stars sit
+directly on the frame's gold. Full derivation is in `card_layout.c`'s own
+comments. The backdrop-flush derivation that used to size `ART_W`
+(`CARD_LAYOUT_BACKDROP_DX/DY/INSET_X/_Y`) is retired -- ART no longer
+reaches the description backdrop directly, the frame's own outer box
+(`CARD_LAYOUT_WIN_W/H`, now public in card_layout.h) does that job instead,
+unchanged from before.
 
-Measured (2026-10-02, same alpha-transition-scan method as the backdrop
-work above), image px at native-WIN-box scale (919x1319 -> 140x196,
-~6.56x/~6.73x a axis -- not quite uniform, ~2.5% aspect mismatch, same
-order as already accepted for the plaque/row assets):
+**Compositing flips, as expected**: the frame is a mask, not a backdrop --
+opaque border/gold, with the art/attribute/both stat boxes as real alpha
+cutouts in the asset itself. `CardLayout_DrawFrame` (func_80028B08.c) is
+submitted *first* (before art/digits/stars/attribute), the opposite of the
+plaque's/old row backdrop's submitted-last convention, so it ends up
+walked -- drawn -- last and paints over everything except its own holes.
+Reuses `CardLayout_DrawArtAsset` as-is for the draw call.
 
-- Art cutout: native x~[4,136] (a real ~4px matted margin each side,
-  unlike today's edge-to-edge art -- this is the "keep a left margin,
-  match it on the right" discussion resolved by the asset itself rather
-  than a hand-picked number), y~[3,141]. Shorter than today's art (which
-  runs to y=150): this frame's own gold section starts at native y~141,
-  ~9px above today's `ICON_ROW_Y`.
-- Attribute circle: x~[756,840] in image px (~84px wide) at image y~1038
-  -- not yet converted/cross-checked against `ATTR_X`/`_Y`.
-  Stat boxes: left x~[72,424], right x~[495,847] in image px, row at
-  image y~1180 -- not yet converted/cross-checked against `ATK_X`/`DEF_X`.
-
-**Not a drop-in**: every bottom-section constant (`ICON_ROW_Y`,
-`VALUES_ROW_Y`, `STAR_X`, `ATTR_X`, `ATK_X`, `DEF_X`, `ART_H`) needs
-rederiving against this asset's own cutouts, the same precision the
-backdrop-alignment work above used -- not eyeballed.
-
-**Compositing flips**: the row backdrop was deliberately submitted
-*last* (drawn underneath). A frame-with-holes needs the opposite --
-submitted *first*, so its opaque border/gold paints over the duel field
-everywhere except the holes, revealing the art/attribute/digits already
-drawn beneath it. `CardLayout_DrawArtAsset` (func_80028B08.c) is reusable
-as-is for the draw call itself; only where it's called from in the
-function changes.
-
-**Save state is stale for headless verification**: `slot1.state` has
-drifted past the hot-reload carry-over's tolerance (`N code addresses
-moved` growing with each rebuild since 13:17) -- `MEMORIES_LOAD_STATE`
-now fails and falls back to a fresh boot. Needs a fresh save (Triangle to
-open the viewer at the same spot, F5) before the headless pixel-exact
-repro (Workflow notes below) works again; until then, live user
-verification only.
+**Not yet live-verified**: `slot1.state` is stale for headless
+verification (drifted past the hot-reload carry-over's tolerance after
+this many rebuilds since 13:17 -- `MEMORIES_LOAD_STATE` fails, falls back
+to a fresh boot). Built clean, reviewed by hand against the measurements,
+but needs either a fresh save state (Triangle to open the viewer at the
+same spot, F5) or live user verification before trusting the numbers on
+screen.
 
 Why not a mod: this modifies retail's own byte-matched draw routine
 (`func_80028B08.c`) and object setup (`duel_effect_resource_setup.c`,
