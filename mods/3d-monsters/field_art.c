@@ -10,12 +10,15 @@
  * FieldArt_DrawFrame (below) instead of drawing a model, when the style
  * setting says to; this file has no MemoriesModInit of its own.
  *
- * Unlike a model, a cutout has no size of its own to measure: every card's
- * art is the same 102x96 record, so one world-space height serves every
- * zone, and perspective alone makes a farther card's cutout smaller -- the
- * fitting loop below (fit_height) finds that height once a frame, the same
- * way the 3D Monsters mod's fit() finds a model's scale, but by projecting
- * two points instead of measuring drawn packets.
+ * Unlike a model, a cutout has no size of its own to measure: the disc's own
+ * art is always the same 102x96 record, and even a mod's own "field_art"
+ * (its own shape, fit to its own PNG, art.h) is drawn at the same world-space
+ * height as any other -- only its width follows its own shape (draw_one) --
+ * so one world-space height serves every zone, and perspective alone makes a
+ * farther card's cutout smaller. The fitting loop below (fit_height) finds
+ * that height once a frame, the same way the 3D Monsters mod's fit() finds a
+ * model's scale, but by projecting two points instead of measuring drawn
+ * packets.
  *
  * Drawing is a single POLY_FT4 per face-up monster, its four corners placed
  * in screen space from two world points (the card's own field position, and
@@ -47,6 +50,7 @@
 #include "game/model.h"
 #include "game/card_constants.h"
 #include "pc/render/soft_gpu.h"
+#include "pc/render/texture_pack.h"
 #include "pc/mods/modapi.h"
 #include "pc/cards/cards.h"
 #include "pc/cards/art.h"
@@ -73,6 +77,8 @@ typedef struct {
     int card;      /* one-based card id; 0 when the entry is free */
     unsigned used; /* frame number of the last draw, for replacement */
     int bank;      /* its texture bank in the software GPU */
+    int w, h;      /* its shape: CARD_ART_WIDTH/HEIGHT for the disc's own art,
+                    * or a mod's own "field_art" record's own (CardArt_FieldArtShapeOf) */
 } Art;
 
 static Art cache[CACHE];
@@ -111,7 +117,9 @@ static int tunable(const char *key, int fallback)
 #define PIXELS_X 0
 #define PIXELS_Y 0
 #define CLUT_X 0
-#define CLUT_Y CARD_ART_HEIGHT
+/* The CLUT's own row: right after the pixel rows, so it moves with whatever
+ * shape this entry holds (CARD_ART_HEIGHT for the disc's own art, or a mod's
+ * own "field_art" record's own height). */
 
 static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 {
@@ -123,7 +131,7 @@ static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 
 static int load_art(Art *art, int card)
 {
-    int base, sectors;
+    int base, sectors, w, h;
     u16 *bank;
     const unsigned char *field_art;
     const u16 *pixels, *clut;
@@ -154,13 +162,20 @@ static int load_art(Art *art, int card)
             return 0;
         }
         /* A mod's own "art" artwork over the base's, exactly as the
-         * card-detail panel gets it (func_800289BC). */
+         * card-detail panel gets it (func_800289BC). This is the disc's own
+         * record shape, always: CARD_ART_WIDTH/HEIGHT, never field_art's. */
         Cards_PatchArtRecord(card, record);
+        w = CARD_ART_WIDTH;
+        h = CARD_ART_HEIGHT;
         pixels = (const u16 *)(record + CARD_ART_PIXELS);
         clut = (const u16 *)(record + CARD_ART_CLUT);
     } else {
-        pixels = (const u16 *)(field_art + CARD_ART_PIXELS);
-        clut = (const u16 *)(field_art + CARD_ART_CLUT);
+        /* A mod's own "field_art" shape, its own PNG's (CardArt_FieldArtFit,
+         * art.h), baked into the record's own header: its CLUT sits right
+         * after its pixels, not at the fixed CARD_ART_CLUT. */
+        CardArt_FieldArtShapeOf(field_art, &w, &h);
+        pixels = (const u16 *)(field_art + FIELD_ART_HEADER);
+        clut = (const u16 *)(field_art + FIELD_ART_HEADER + (size_t)w * h);
     }
 
     bank = SoftGpu_Bank(art->bank);
@@ -168,9 +183,15 @@ static int load_art(Art *art, int card)
         say("no bank %d\n", art->bank);
         return 0;
     }
-    bank_put(bank, PIXELS_X, PIXELS_Y, CARD_ART_WIDTH / 2, CARD_ART_HEIGHT, pixels);
-    bank_put(bank, CLUT_X, CLUT_Y, 256, 1, clut);
+    bank_put(bank, PIXELS_X, PIXELS_Y, w / 2, h, pixels);
+    bank_put(bank, CLUT_X, h, 256, 1, clut);
+    /* A mod's own picture for this exact content (TexturePack_AddMade,
+     * cards.c), drawn from its own PNG above the console's resolution
+     * (SoftGpu_SetBankPack, gl_picture.c); 0 when nothing registered it. */
+    SoftGpu_SetBankPack(art->bank, TexturePack_EntryForBytes(pixels, w / 2, h, 8, clut, 256));
     art->card = card;
+    art->w = w;
+    art->h = h;
     return 1;
 }
 
@@ -452,7 +473,7 @@ static void draw_one(int index, int world_height)
     if (height_px <= 0) {
         return; /* behind the camera, or degenerate */
     }
-    width_px = height_px * CARD_ART_WIDTH / CARD_ART_HEIGHT;
+    width_px = height_px * art->w / art->h;
     cx = (base_sx + top_sx) / 2;
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
@@ -460,23 +481,23 @@ static void draw_one(int index, int world_height)
     setPolyFT4(&prim);
     prim.r0 = prim.g0 = prim.b0 = 0x80;
     prim.tpage = GetTPage(1, 0, PIXELS_X, PIXELS_Y) | (u16)(art->bank << 11);
-    prim.clut = GetClut(CLUT_X, CLUT_Y);
+    prim.clut = GetClut(CLUT_X, art->h);
     prim.x0 = (short)(cx - width_px / 2);
     prim.y0 = (short)top_sy;
     prim.u0 = 0;
     prim.v0 = 0;
     prim.x1 = (short)(cx + width_px / 2);
     prim.y1 = (short)top_sy;
-    prim.u1 = CARD_ART_WIDTH - 1;
+    prim.u1 = art->w - 1;
     prim.v1 = 0;
     prim.x2 = (short)(cx - width_px / 2);
     prim.y2 = (short)base_sy;
     prim.u2 = 0;
-    prim.v2 = CARD_ART_HEIGHT - 1;
+    prim.v2 = art->h - 1;
     prim.x3 = (short)(cx + width_px / 2);
     prim.y3 = (short)base_sy;
-    prim.u3 = CARD_ART_WIDTH - 1;
-    prim.v3 = CARD_ART_HEIGHT - 1;
+    prim.u3 = art->w - 1;
+    prim.v3 = art->h - 1;
 
     /* D_800E9D90[0] (what this used to target) is a real, but tiny, table in
      * this state -- 4 depth slots, confirmed live (table_length 2) -- meant
