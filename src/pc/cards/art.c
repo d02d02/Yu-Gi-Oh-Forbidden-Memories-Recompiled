@@ -332,8 +332,6 @@ static void resample_alpha(const unsigned char *source, int sw, int sh, unsigned
     }
 }
 
-#define FIELD_ART_ALPHA_CUTOFF 128
-
 /* `path`'s own shape, fit within FIELD_ART_SHAPE_MAX either axis: downsampled
  * if it has to be (a POLY_FT4's own u/v byte caps either axis at 256), never
  * cropped, since nothing here needs a fixed ratio the way the card's own
@@ -420,8 +418,27 @@ int CardArt_FieldArtFromImage(const char *path, int fw, int fh, unsigned char *r
      * quantize's own default for it, 0x8000, opaque black, since index 0
      * never reaches a real pixel anywhere else a card's art is drawn. */
     clut[0] = 0;
+    /* A flat 50% cutoff drops a whole soft-edged region at once (an
+     * artist's gradient-faded wingtip, fully gone wherever its average
+     * alpha landed under half, no matter how large a part of the picture
+     * that was), since the PS1's own texture format has no per-texel
+     * translucency to fall back on -- a texel is either index 0 (fully
+     * clear) or fully opaque, nothing between. A much lower one keeps that
+     * region instead: even a mostly-faded texel reads as opaque, which
+     * matches a mod's art better than losing it outright.
+     * Tried dithering this first (an ordered Bayer pattern, a texel kept in
+     * proportion to its own alpha) to turn the loss into a soft fade rather
+     * than a hard edge; wrong call here -- a cutout this small on screen
+     * (field_art.c's own fit_height, tens of pixels tall) turns any
+     * dithered texel density into visible static, not a gradient, and a
+     * mod's art is not only edge antialiasing at low alpha: a deliberately
+     * translucent surface drawn at a steady medium alpha throughout (a
+     * wing membrane's own style, not a fade) dithered at its own true
+     * density reads as a sieve of holes over the whole surface. A low flat
+     * cutoff has no such failure mode: every texel is either in or out,
+     * same as the rest of this format, just a more forgiving line. */
     for (i = 0; i < fw * fh; i++) {
-        if (art_alpha[i] < FIELD_ART_ALPHA_CUTOFF) record[FIELD_ART_HEADER + i] = 0;
+        if (art_alpha[i] <= 32) record[FIELD_ART_HEADER + i] = 0;
     }
     put_clut(record + FIELD_ART_HEADER + fw * fh, clut, 256);
 
