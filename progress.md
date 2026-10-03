@@ -174,6 +174,7 @@ unpushed there).
 | 4 | Tests for HD text | Not started | — | One smoke case, name entry at 4x |
 | 5b | Trade: browse cards Up/Down | Done, branch pushed, **no PR open** (checked 2026-09-29), needs a live test | `feat/card-viewer-browse-trade` | Live session with an owned deck, when it is a priority |
 | 5c | Library: browse cards Up/Down | Not started, assessed (big) | — | Start with "replay retail steps" |
+| 5d | Pre-duel deck-edit: browse cards Up/Down | Found 2026-10-03, not started | `fix/card-browse-pre-duel` (branched off current `upstream/master`, pushed, no commits yet) | Find which main mode this screen runs under |
 | 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
 | 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
