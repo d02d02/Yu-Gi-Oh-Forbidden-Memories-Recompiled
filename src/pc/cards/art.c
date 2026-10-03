@@ -332,8 +332,6 @@ static void resample_alpha(const unsigned char *source, int sw, int sh, unsigned
     }
 }
 
-#define FIELD_ART_ALPHA_CUTOFF 128
-
 /* `path`'s own shape, fit within FIELD_ART_SHAPE_MAX either axis: downsampled
  * if it has to be (a POLY_FT4's own u/v byte caps either axis at 256), never
  * cropped, since nothing here needs a fixed ratio the way the card's own
@@ -420,8 +418,23 @@ int CardArt_FieldArtFromImage(const char *path, int fw, int fh, unsigned char *r
      * quantize's own default for it, 0x8000, opaque black, since index 0
      * never reaches a real pixel anywhere else a card's art is drawn. */
     clut[0] = 0;
+    /* A flat 50% cutoff would drop a whole soft-edged region at once (an
+     * artist's gradient-faded wingtip, fully gone wherever its average alpha
+     * landed under half, no matter how large a part of the picture that was),
+     * since the PS1's own texture format has no per-texel translucency to
+     * fall back on -- a texel is either index 0 (fully clear) or fully
+     * opaque, nothing between.
+     * An ordered (Bayer) dither instead keeps a texel in proportion to its
+     * own alpha: thin on screen where the source was barely there, dense
+     * where it was nearly opaque, so a gradient reads as a fade in texel
+     * density instead of vanishing outright at one threshold. */
     for (i = 0; i < fw * fh; i++) {
-        if (art_alpha[i] < FIELD_ART_ALPHA_CUTOFF) record[FIELD_ART_HEADER + i] = 0;
+        static const unsigned char bayer4x4[4][4] = {
+            {0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5},
+        };
+        int x = i % fw, y = i / fw;
+        int threshold = (bayer4x4[y & 3][x & 3] * 255 + 8) / 16;
+        if (art_alpha[i] <= threshold) record[FIELD_ART_HEADER + i] = 0;
     }
     put_clut(record + FIELD_ART_HEADER + fw * fh, clut, 256);
 
