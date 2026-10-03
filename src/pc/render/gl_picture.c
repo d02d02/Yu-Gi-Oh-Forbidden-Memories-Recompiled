@@ -474,12 +474,27 @@ static const char *fragment_source =
     "        vec3 t;\n"
     "        bool replaced = false;\n"
     "        if ((flags & 8) != 0) {\n"
-    /* The pack's image, where it paints this texel (texture_pack.c, sample). */
+    /* The pack's image, where it paints this texel (texture_pack.c, sample).
+     * A bank (mode.z != 0) is never uploaded or tagged, so entry_map/
+     * place_map have nothing on it; its words are the whole entry's own,
+     * from (0, 0), so u, v name the row and word directly -- trusted
+     * outright, since nothing else ever rewrites a bank mid-frame the way
+     * VRAM is (soft_gpu.h), unlike real VRAM's words, re-checked here
+     * because a primitive sorted earlier in the frame can be drawn after
+     * something else reused them. */
     "            int per = pack_size.z;\n"
-    "            int vx = (page.x + u / per) & 1023, vy = (page.y + v) & 511;\n"
-    "            if (int(texelFetch(entry_map, ivec2(vx, vy), 0).r) == pack_entry.x) {\n"
-    "                uint place = texelFetch(place_map, ivec2(vx, vy), 0).r;\n"
-    "                int row = int(place >> 16), word_in = int(place & 0xffffu);\n"
+    "            bool have = mode.z != 0;\n"
+    "            int row = v, word_in = u / per;\n"
+    "            if (!have) {\n"
+    "                int vx = (page.x + u / per) & 1023, vy = (page.y + v) & 511;\n"
+    "                have = int(texelFetch(entry_map, ivec2(vx, vy), 0).r) == pack_entry.x;\n"
+    "                if (have) {\n"
+    "                    uint place = texelFetch(place_map, ivec2(vx, vy), 0).r;\n"
+    "                    row = int(place >> 16);\n"
+    "                    word_in = int(place & 0xffffu);\n"
+    "                }\n"
+    "            }\n"
+    "            if (have) {\n"
     "                int texel_x = word_in * per + (u - (u / per) * per) - pack_entry.y;\n"
     "                if (texel_x >= 0 && texel_x < pack_entry.z) {\n"
     "                    int px = int(floor((float(texel_x) + fract(ub)) * float(pack_size.x) / float(pack_entry.z)));\n"
@@ -1152,10 +1167,14 @@ static size_t polygon(const uint32_t *words, size_t count)
     }
     /* Only a primitive sampling a bank can fade: retail never names one. */
     state.fade = textured && state.bank ? SoftGpu_FadeOf((uint32_t)state.fade) : 0;
-    state.pack = textured && !state.bank
-                     ? TexturePack_EntryFor(state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y,
-                                            v[0].u, v[0].v)
-                     : 0;
+    /* A bank's words are never uploaded or tagged (texture_dump.c), so
+     * entry_of has nothing on them; whatever last filled it registered its
+     * own match instead (SoftGpu_SetBankPack, field_art.c). */
+    state.pack = !textured ? 0
+                 : state.bank
+                     ? SoftGpu_BankPack(state.bank)
+                     : TexturePack_EntryFor(state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y,
+                                            v[0].u, v[0].v);
     if (quad && textured && hd_hud && !state.pack && !state.bank) {
         /* A digit or the panel drawn as a quad (a clip-tested field card):
          * a texture pack's image, where one paints it, comes first. */
