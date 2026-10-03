@@ -346,6 +346,16 @@ int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why
         snprintf(why, why_size, "%s is not a PNG it could read", path);
         return 0;
     }
+    /* Premultiplied before resample's box filter, undone after: an
+     * unweighted average would let a transparent texel's own colour (often
+     * an editor's white or black matte, never meant to be seen) bleed into
+     * an opaque neighbour's, visible as a fringe wherever the art's alpha
+     * fades out towards transparent. */
+    for (i = 0; i < width * height; i++) {
+        source[i].r = (unsigned char)(source[i].r * alpha[i] / 255);
+        source[i].g = (unsigned char)(source[i].g * alpha[i] / 255);
+        source[i].b = (unsigned char)(source[i].b * alpha[i] / 255);
+    }
     art = malloc(CARD_ART_WIDTH * CARD_ART_HEIGHT * sizeof(*art));
     art_alpha = malloc(CARD_ART_WIDTH * CARD_ART_HEIGHT);
     if (!art || !art_alpha) {
@@ -357,6 +367,18 @@ int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why
     }
     resample(source, width, height, art, CARD_ART_WIDTH, CARD_ART_HEIGHT);
     resample_alpha(alpha, width, height, art_alpha, CARD_ART_WIDTH, CARD_ART_HEIGHT);
+    /* Undo the premultiply: resample and resample_alpha average the same
+     * crop window over the same texel (resample_alpha's own comment), so
+     * each output texel's alpha is the exact weight its colour was summed
+     * with. Integer truncation only ever rounds a premultiplied channel
+     * down, never past its own alpha, so this never exceeds 255. */
+    for (i = 0; i < CARD_ART_WIDTH * CARD_ART_HEIGHT; i++) {
+        if (art_alpha[i] > 0) {
+            art[i].r = (unsigned char)((int)art[i].r * 255 / art_alpha[i]);
+            art[i].g = (unsigned char)((int)art[i].g * 255 / art_alpha[i]);
+            art[i].b = (unsigned char)((int)art[i].b * 255 / art_alpha[i]);
+        }
+    }
     quantize(art, CARD_ART_WIDTH * CARD_ART_HEIGHT, 255, clut, record + CARD_ART_PIXELS);
     /* A texel this transparent is written as index 0 (never quantize's own
      * output: every real pixel is 1-255), and its CLUT entry set to the
