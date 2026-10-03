@@ -88,8 +88,8 @@ static int last_set[CARD_LAYOUT_ELEMENT_COUNT];
  * then stepped down 20, 19) -- live sizing has more say than the
  * measured ratio once they're this close; stop re-deriving the "right"
  * number from pixels and trust the eye from here. */
-#define ATTR_W 19
-#define ATTR_H 19
+#define ATTR_W 17
+#define ATTR_H 17
 #define ATTR_X (122 - ATTR_W / 2)
 #define ATTR_Y (ICON_CENTER_Y - ATTR_H / 2)
 #define ATK_X 38
