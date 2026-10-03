@@ -29,6 +29,7 @@ static int shadow_on;
 static uint16_t *texture_source;
 
 static uint16_t *banks[SOFT_GPU_BANKS];
+static int bank_pack[SOFT_GPU_BANKS];
 
 /* How far the polygon being drawn fades into what is under it, 0 (not at
  * all) to 255 (SoftGpu_FadeWord, soft_gpu.h). */
@@ -88,6 +89,16 @@ uint16_t *SoftGpu_Bank(int bank)
 const uint16_t *SoftGpu_BankPixels(int bank)
 {
     return bank > 0 && bank < SOFT_GPU_BANKS ? banks[bank] : NULL;
+}
+
+void SoftGpu_SetBankPack(int bank, int entry)
+{
+    if (bank > 0 && bank < SOFT_GPU_BANKS) bank_pack[bank] = entry;
+}
+
+int SoftGpu_BankPack(int bank)
+{
+    return bank > 0 && bank < SOFT_GPU_BANKS ? bank_pack[bank] : 0;
 }
 
 static inline __attribute__((always_inline)) uint32_t expand(uint16_t c)

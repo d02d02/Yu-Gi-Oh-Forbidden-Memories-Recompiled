@@ -1608,6 +1608,36 @@ int TexturePack_EntryFor(int page_x, int page_y, int depth, int clut_x, int clut
     return chosen + 1;
 }
 
+/* Like prepare(), but straight from the bytes (recall) instead of a VRAM
+ * word's tag: a private bank (soft_gpu.h) is never uploaded or tagged, so
+ * entry_of has nothing to say about it. */
+int TexturePack_EntryForBytes(const void *pixels, int words, int rows, int bpp, const void *clut, int clut_entries)
+{
+    uint32_t disc, clut_disc = 0;
+    int index, row, word, head, i;
+    if (!entries || !resolved || words < 1 || rows < 1) return 0;
+    disc = recall((const uint16_t *)pixels, (size_t)words * rows);
+    if (!disc) return 0;
+    index = locate(disc - 1, &row, &word);
+    if (index < 0) return 0;
+    head = head_of(index);
+    if (clut_entries) clut_disc = recall((const uint16_t *)clut, (size_t)clut_entries);
+    for (i = head; i < entry_count && (i == head || sibling(&entries[head], &entries[i])); i++) {
+        Entry *entry = &entries[i];
+        if (entry->bpp != bpp) continue;
+        if (entry->clut_entries && (!clut_disc || clut_disc - 1 != entry->clut_offset)) continue;
+        if (!entry->image) {
+            if (!entry->failed && !entry->wanted) {
+                entry->wanted = 1;
+                wanted_images = 1;
+            }
+            return 0;
+        }
+        return i + 1;
+    }
+    return 0;
+}
+
 int TexturePack_EntryHead(int entry)
 {
     if (entry < 1 || entry > entry_count) return 0;

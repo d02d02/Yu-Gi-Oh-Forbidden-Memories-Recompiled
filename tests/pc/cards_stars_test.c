@@ -70,9 +70,15 @@ int CardArt_ThumbnailFromImage(const char *path, unsigned char *record, char *wh
     (void)path; (void)record; (void)why; (void)why_size;
     return 0;
 }
-int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why, size_t why_size)
+int CardArt_FieldArtFromImage(const char *path, int width, int height, unsigned char *record, char *why,
+                              size_t why_size)
 {
-    (void)path; (void)record; (void)why; (void)why_size;
+    (void)path; (void)width; (void)height; (void)record; (void)why; (void)why_size;
+    return 0;
+}
+int CardArt_FieldArtFit(const char *path, int *width, int *height)
+{
+    (void)path; (void)width; (void)height;
     return 0;
 }
 int CardArt_TitleFromImage(const char *path, unsigned char *plate, char *why, size_t why_size)

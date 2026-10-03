@@ -10,12 +10,15 @@
  * FieldArt_DrawFrame (below) instead of drawing a model, when the style
  * setting says to; this file has no MemoriesModInit of its own.
  *
- * Unlike a model, a cutout has no size of its own to measure: every card's
- * art is the same 102x96 record, so one world-space height serves every
- * zone, and perspective alone makes a farther card's cutout smaller -- the
- * fitting loop below (fit_height) finds that height once a frame, the same
- * way the 3D Monsters mod's fit() finds a model's scale, but by projecting
- * two points instead of measuring drawn packets.
+ * Unlike a model, a cutout has no size of its own to measure: the disc's own
+ * art is always the same 102x96 record, and even a mod's own "field_art"
+ * (its own shape, fit to its own PNG, art.h) is drawn at the same world-space
+ * height as any other -- only its width follows its own shape (draw_one) --
+ * so one world-space height serves every zone, and perspective alone makes a
+ * farther card's cutout smaller. The fitting loop below (fit_height) finds
+ * that height once a frame, the same way the 3D Monsters mod's fit() finds a
+ * model's scale, but by projecting two points instead of measuring drawn
+ * packets.
  *
  * Drawing is a single POLY_FT4 per face-up monster, its four corners placed
  * in screen space from two world points (the card's own field position, and
@@ -47,6 +50,7 @@
 #include "game/model.h"
 #include "game/card_constants.h"
 #include "pc/render/soft_gpu.h"
+#include "pc/render/texture_pack.h"
 #include "pc/mods/modapi.h"
 #include "pc/cards/cards.h"
 #include "pc/cards/art.h"
@@ -74,7 +78,7 @@ typedef struct {
     unsigned used; /* frame number of the last draw, for replacement */
     int bank;      /* its texture bank in the software GPU */
     int w, h;      /* its shape: CARD_ART_WIDTH/HEIGHT for the disc's own art,
-                    * or CardArt_FieldArtShape's for a mod's own "field_art" */
+                    * or a mod's own "field_art" record's own (CardArt_FieldArtShapeOf) */
 } Art;
 
 static Art cache[CACHE];
@@ -114,8 +118,8 @@ static int tunable(const char *key, int fallback)
 #define PIXELS_Y 0
 #define CLUT_X 0
 /* The CLUT's own row: right after the pixel rows, so it moves with whatever
- * shape this entry holds (CARD_ART_HEIGHT for the disc's own art, or
- * CardArt_FieldArtShape's height for a mod's own "field_art"). */
+ * shape this entry holds (CARD_ART_HEIGHT for the disc's own art, or a mod's
+ * own "field_art" record's own height). */
 
 static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 {
@@ -166,12 +170,12 @@ static int load_art(Art *art, int card)
         pixels = (const u16 *)(record + CARD_ART_PIXELS);
         clut = (const u16 *)(record + CARD_ART_CLUT);
     } else {
-        /* A mod's own "field_art" shape, possibly not CARD_ART_WIDTH/HEIGHT
-         * (CardArt_FieldArtShape, art.h): its CLUT sits right after its own
-         * pixels, not at the fixed CARD_ART_CLUT. */
-        CardArt_FieldArtShape(&w, &h);
-        pixels = (const u16 *)(field_art + CARD_ART_PIXELS);
-        clut = (const u16 *)(field_art + (size_t)w * h);
+        /* A mod's own "field_art" shape, its own PNG's (CardArt_FieldArtFit,
+         * art.h), baked into the record's own header: its CLUT sits right
+         * after its pixels, not at the fixed CARD_ART_CLUT. */
+        CardArt_FieldArtShapeOf(field_art, &w, &h);
+        pixels = (const u16 *)(field_art + FIELD_ART_HEADER);
+        clut = (const u16 *)(field_art + FIELD_ART_HEADER + (size_t)w * h);
     }
 
     bank = SoftGpu_Bank(art->bank);
@@ -181,6 +185,10 @@ static int load_art(Art *art, int card)
     }
     bank_put(bank, PIXELS_X, PIXELS_Y, w / 2, h, pixels);
     bank_put(bank, CLUT_X, h, 256, 1, clut);
+    /* A mod's own picture for this exact content (TexturePack_AddMade,
+     * cards.c), drawn from its own PNG above the console's resolution
+     * (SoftGpu_SetBankPack, gl_picture.c); 0 when nothing registered it. */
+    SoftGpu_SetBankPack(art->bank, TexturePack_EntryForBytes(pixels, w / 2, h, 8, clut, 256));
     art->card = card;
     art->w = w;
     art->h = h;

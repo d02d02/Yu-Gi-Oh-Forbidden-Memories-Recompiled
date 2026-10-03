@@ -1094,15 +1094,17 @@ static void add_full_picture(const char *path, const unsigned char *record, int 
         fprintf(stderr, "memories-pc: cards: %s is drawn at the console's size only\n", path);
 }
 
-/* Like add_full_picture, but for a "field_art" record: its shape is
- * CardArt_FieldArtShape's, not CARD_ART_WIDTH/HEIGHT (art.c), and its CLUT
- * sits right after its own pixels (w * h), not at the fixed CARD_ART_CLUT. */
-static void add_field_art_picture(const char *path, const unsigned char *record)
+/* Like add_full_picture, but for a "field_art" record: its shape is its own
+ * (w, h; CardArt_FieldArtFit, art.c), not CARD_ART_WIDTH/HEIGHT, and its CLUT
+ * sits right after its own pixels (w * h), not at the fixed CARD_ART_CLUT.
+ * Fit to the image's own ratio already, so this registers whenever the
+ * source is bigger than its own fitted shape (downsampled, never cropped). */
+static void add_field_art_picture(const char *path, const unsigned char *record, int w, int h)
 {
-    int w, h, x, y, cw, ch, width, height;
-    CardArt_FieldArtShape(&w, &h);
+    int x, y, cw, ch, width, height;
     if (!CardArt_Crop(path, w, h, &x, &y, &cw, &ch, &width, &height) || (cw <= w && ch <= h)) return;
-    if (!TexturePack_AddMade(record + CARD_ART_PIXELS, w / 2, h, 8, record + (size_t)w * h, 256, path, x, y, cw, ch))
+    if (!TexturePack_AddMade(record + FIELD_ART_HEADER, w / 2, h, 8, record + FIELD_ART_HEADER + (size_t)w * h, 256,
+                             path, x, y, cw, ch))
         fprintf(stderr, "memories-pc: cards: %s is drawn at the console's size only\n", path);
 }
 
@@ -1411,24 +1413,26 @@ static void add_entry(const char *mod, const char *directory, int index, const J
     {
         const char *file = Json_String(Json_Member(entry, "field_art"), NULL);
         char path[1200], why[1300];
+        int field_art_w, field_art_h;
         if (file && *file && count) {
             if (!Paths_Contained(file) || snprintf(path, sizeof(path), "%s/%s", directory, file) >= (int)sizeof(path)) {
                 Mods_Note(mod, "cards[%d]: \"field_art\": %s is outside the mod", index, file);
+            } else if (!CardArt_FieldArtFit(path, &field_art_w, &field_art_h)) {
+                Mods_Note(mod, "cards[%d]: \"field_art\": %s is not a PNG it could read", index, file);
             } else {
-                int field_art_w, field_art_h;
-                CardArt_FieldArtShape(&field_art_w, &field_art_h);
-                field_art_record = calloc(1, (size_t)field_art_w * field_art_h + 512);
+                field_art_record = calloc(1, FIELD_ART_HEADER + (size_t)field_art_w * field_art_h + 512);
                 if (!field_art_record) {
                     Mods_Note(mod, "cards[%d]: \"field_art\": out of memory", index);
-                } else if (!CardArt_FieldArtFromImage(path, field_art_record, why, sizeof(why))) {
+                } else if (!CardArt_FieldArtFromImage(path, field_art_w, field_art_h, field_art_record, why,
+                                                      sizeof(why))) {
                     Mods_Note(mod, "cards[%d]: \"field_art\": %s", index, why);
                     free(field_art_record);
                     field_art_record = NULL;
                 } else {
-                    /* A PNG bigger than field_art's own shape is drawn from
-                     * the PNG itself at an internal resolution above 1x,
+                    /* A PNG bigger than field_art's own fitted shape is drawn
+                     * from the PNG itself at an internal resolution above 1x,
                      * exactly as add_full_picture does for "art". */
-                    add_field_art_picture(path, field_art_record);
+                    add_field_art_picture(path, field_art_record, field_art_w, field_art_h);
                 }
             }
         }

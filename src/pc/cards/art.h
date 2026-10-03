@@ -34,12 +34,22 @@ int CardArt_ThumbnailFromImage(const char *path, unsigned char *record, char *wh
  * silhouette instead of flattening it to black: for "field_art"
  * (notes/more-cards.md), the 2D Monsters mod's cutout alone, never a
  * card's real record. A binary cutout (an alpha under 128 is fully out),
- * not a softly feathered edge. */
-int CardArt_FieldArtFromImage(const char *path, unsigned char *record, char *why, size_t why_size);
-/* field_art's own on-field shape (CARD_ART_WIDTH/HEIGHT by default; art.c's
- * own comment): read once from MEMORIES_FIELD_ART_WIDTH/_HEIGHT, cached.
- * Its record's CLUT sits at width * height, not the fixed CARD_ART_CLUT. */
-void CardArt_FieldArtShape(int *width, int *height);
+ * not a softly feathered edge. Unlike CardArt_FromImage, not cropped to a
+ * fixed shape: `width`/`height` (CardArt_FieldArtFit) are its own, baked
+ * into the record's header so field_art.c can read them back
+ * (CardArt_FieldArtShapeOf), and its CLUT sits right after its pixels
+ * (width * height), not at the fixed CARD_ART_CLUT. */
+#define FIELD_ART_HEADER 8 /* two ints: width, height, ahead of the pixels */
+#define FIELD_ART_SHAPE_MAX 256 /* a POLY_FT4's own u/v byte: 0-255 either axis */
+int CardArt_FieldArtFromImage(const char *path, int width, int height, unsigned char *record, char *why,
+                              size_t why_size);
+/* `path`'s own shape, fit within FIELD_ART_SHAPE_MAX either axis (no crop:
+ * the image is downsampled if it has to be, never cut) -- the shape
+ * CardArt_FieldArtFromImage should be called with. Width is even (two 8bpp
+ * texels a VRAM word). 0 when the file is not a PNG it could read. */
+int CardArt_FieldArtFit(const char *path, int *width, int *height);
+/* A field_art record's own shape, from its header. */
+void CardArt_FieldArtShapeOf(const unsigned char *record, int *width, int *height);
 /* The rectangle of the PNG those take a w x h picture from (the middle at
  * that shape), and the PNG's size: for the full-resolution picture a
  * texture pack draws above the console's resolution (cards.c). 0 when the
