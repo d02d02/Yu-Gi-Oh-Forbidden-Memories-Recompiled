@@ -1,0 +1,26 @@
+{
+    "id": "anime-card-frame",
+    "name": "Anime Card Frame",
+    "version": "1.0",
+    "author": "d02d02",
+    "description": "A Duel-Links-style full-bleed card presentation: the frame, title plate and separate ATK/DEF plaque are replaced by one unified frame, the card art is enlarged to fill it, and ATK/DEF, level stars and the attribute icon move into a band under the art.",
+    "enabled": false,
+    "legacy_setting": "card_layout",
+    "settings": [
+        {
+            "key": "full_bleed",
+            "label": "Full-bleed layout",
+            "type": "bool",
+            "default": 1,
+            "description": "Hides the small retail frame and title plate, enlarges the card art, and moves ATK/DEF, level stars and the attribute icon into a bottom band. Off: the card viewer and every other big-card screen look exactly like retail."
+        }
+    ],
+    "card_layout": {
+        "frame": {"image": "card_layout_frame.png", "width": 140, "height": 196},
+        "art": {"x": 4, "y": 3, "width": 134, "height": 138},
+        "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
+        "atk": {"x": 38, "y": 178},
+        "def": {"x": 104, "y": 178},
+        "stars": {"x": 80, "y": 153}
+    }
+}

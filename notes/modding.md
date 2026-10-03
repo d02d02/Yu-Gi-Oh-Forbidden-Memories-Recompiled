@@ -707,6 +707,67 @@ opens. How it is done: [`src/pc/platform/title_menu.c`](../src/pc/platform/title
 the labels in `menu_label.c`; the manifest is read by `title_config.c` and
 checked by `tests/pc/title_config_test.c`.
 
+## Card layout: repositioning or hiding the big-card display
+
+A mod may change where the elements of the "big card" display -- the card
+viewer, and every other screen that shows one full card -- sit, or leave
+some of them out, with a `"card_layout"` object, no code needed:
+
+```json
+"card_layout": {
+    "frame": {"image": "frame.png", "width": 140, "height": 196},
+    "art": {"x": 4, "y": 3, "width": 134, "height": 138},
+    "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
+    "atk": {"x": 38, "y": 178},
+    "def": {"x": 104, "y": 178},
+    "stars": {"x": 80, "y": 153}
+}
+```
+
+Retail draws a small frame with a title plate, the card's picture at its
+own fixed size, and ATK/DEF stacked under a separate plaque -- none of
+which `"card_layout"` can change on its own. What it does is answer a mod's
+own `full_bleed` setting (a `bool` the mod declares, as every setting is):
+while that setting is on, the frame and title plate are left out, and
+`art`, `attribute`, `atk`, `def` and `stars` each move to the place given,
+in the same pixel neighbourhood retail draws them in (`x`/`y`, with `width`/
+`height` on `art` and `attribute` stretching the picture there instead of
+drawing it at its own size). Any key left out -- the whole object included
+-- keeps retail's own place; a mod that only sets `full_bleed` and gives no
+positions gets retail's own layout with nothing hidden, which is a no-op,
+not a half-finished look. The description box is always shown -- its own
+backdrop panel is on screen either way, so there is nothing to gain by
+leaving its text out.
+
+`frame` names a PNG of the mod's own (`image`, relative to the mod's
+directory, as a `title` mod's pictures are) drawn as one textured quad
+behind everything else, at `width`/`height` (140x196 with neither given);
+without a `frame` key, nothing is drawn where the retail frame was, which
+is a deliberate, supported look (a mod may want the art and stats floating
+with no backing at all). The PNG is stretched to the texture's own
+resolution regardless of its native size, the same rule a `title` mod's
+`image` follows.
+
+Only one mod's `card_layout` is read at a time -- the last applied one that
+declares it, the same "a later mod wins" rule other singular keys follow --
+so two layout mods together is the last one's layout, not a merge of both.
+`mods/anime-card-frame` is the release's own, and a model for writing
+another: a pure data mod, no `library`, with one `full_bleed` setting and
+five positions plus a frame image.
+
+How it is done: the three retail call sites each ask one place
+(`src/pc/cards/card_layout.c`'s `CardLayout_Get`/`CardLayout_FullBleed`) for
+an element's place instead of carrying a mod's logic themselves --
+`src/game/func_80028B08.c` (title, stats, stars, attribute, art, frame),
+`src/game/func_800283F4.c` (the description box, always left visible today)
+and `src/game/duel_effect_resource_setup.c`'s `func_800291E0` (the frame's
+own list membership). None of those three change at all with no
+`card_layout` mod applied -- `CardLayout_Get` answers with retail's own
+constants, byte for byte. The frame texture is decoded once into a VRAM
+bank by `src/pc/cards/card_layout_art.c`, the same shape
+`src/pc/cards/star_icons.c` and `src/pc/text/glyphs.c` use for theirs; the
+manifest key itself is checked by `tests/pc/card_layout_test.c`.
+
 ## Rules: fusions, equips, rituals, drops, decks and more
 
 A mod may change what fuses into what, what an equip card may equip, what a
