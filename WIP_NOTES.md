@@ -243,3 +243,51 @@ user report of it "not working" -- confirmed not a regression: the
 setting is off by default and was off in the test profile
 (`card_browse=0`), `CardBrowse_Poll()` returns immediately when off.
 Not a code issue.
+
+## Done 2026-10-03: attribute-circle hole tightened
+
+User report: `card_layout_frame.png`'s attribute-circle cutout (the hole
+the icon shows through) is visibly wider than the icon's own drawn
+content, leaving a gap. Confirmed by measurement: the hole (flood-filled
+alpha=0 disc, image-space bbox (753,1012)-(842,1101), radius 44.5px ==
+~13.4-13.7 native units) vs. the icon's actual visible content (~9.5
+native units at the current `ATTR_W/H` -- see the ratio derivation in
+`card_layout.c`'s own comments above `ATTR_W`).
+
+Fix: a radial polar-resample of `card_layout_frame.png` around the hole's
+own centre (797.5,1056.5 image px) -- pulls the existing gold halo and
+the thin maroon ring edge inward by a smooth, seam-free falloff (identity
+beyond radius 60px, full `old_r -> new_r` shift at the new edge) rather
+than painting a flat fill, so the shrunk hole still looks like the same
+hand-painted inlay. New hole radius 37px (~11 native units). Re-measured
+with `tools/pc/measure_card_frame.py` after the edit: ART/ATK/DEF/centre
+all identical (the edit is concentric, doesn't touch anything else), so
+`card_layout.c`'s constants are unchanged. Re-embedded
+(`tools/pc/embed_png_asset.py card_layout_frame`), built clean.
+
+**Not yet live-verified** -- headless repro attempted
+(`MEMORIES_LOAD_STATE=1` + scripted Triangle, same method as the
+2026-10-02 art-alignment work) but `slot1.state` now lands in a campaign
+dialogue scene, not a duel with a card viewable, so no frame dump was
+possible this round. Needs the user's own live check (or a fresh
+mid-duel save state in slot 1) before calling this done.
+
+## Next (separate branch, not this one): pre-duel deck-edit Up/Down
+
+User confirmed `SET_CARD_BROWSE` *does* work in Build Deck (main menu),
+Free Duel's deck-edit, and Campaign's Build Deck -- but not in the
+deck-edit screen that auto-opens right before a duel starts. Root cause
+not yet investigated, but the shape of it is already clear from
+`card_browse.c`: `screens[]` (card_browse.c:136-141) has exactly one
+entry, keyed on `MAIN_MODE_BUILD_DECK` -- the pre-duel deck-edit screen
+almost certainly runs under a different `D_8009B26C` main-mode value, so
+`CardBrowse_Poll` never matches it and returns 0 immediately, same as any
+other out-of-scope screen. Confirmed `card_browse=1` is set in the
+debug profile, so this isn't a repeat of the earlier off-by-default
+finding -- a real, separate gap.
+
+**User's call (2026-10-03): own branch, based on current upstream
+`master`, not mixed into this `feat/custom-card-art` branch.** Not
+started yet -- sequenced after this branch's attribute-hole fix is
+live-verified. Needs `upstream` fetched and any drift reported first, per
+this repo's own git-workflow convention, before branching off it.
