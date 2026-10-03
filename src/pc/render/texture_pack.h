@@ -56,6 +56,12 @@ int TexturePack_AddMadeSeeThrough(const void *pixels, int words, int rows, int b
  * whenever a word of the maps does. */
 #include <stdint.h>
 int TexturePack_EntryFor(int page_x, int page_y, int depth, int clut_x, int clut_y, int u, int v);
+/* The same, for a reading that is not VRAM words at all (a private texture
+ * bank, soft_gpu.h -- a mod's own cache, never uploaded or tagged): straight
+ * from these exact bytes (recall, texture_dump.h) to the entry they match,
+ * with no VRAM coordinate involved. 0 when they match no made entry, or the
+ * image is not loaded yet. */
+int TexturePack_EntryForBytes(const void *pixels, int words, int rows, int bpp, const void *clut, int clut_entries);
 /* Readings of the same words (one geometry, several depths or palettes)
  * are entries in a row; the maps name the first, the head, whichever the
  * primitive's palette picks. */

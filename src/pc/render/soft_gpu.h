@@ -32,6 +32,13 @@ uint16_t *SoftGpu_Bank(int bank);
 /* The bank's pixels if it has been made, NULL otherwise (a primitive naming
  * a bank that was never made samples VRAM). */
 const uint16_t *SoftGpu_BankPixels(int bank);
+/* The texture pack entry (TexturePack_EntryForBytes) the bank's current
+ * content matches, 0 none: a bank's words are never real VRAM, so the usual
+ * entry_of lookup (texture_pack.c) has nothing to find there; whatever last
+ * filled the bank (field_art.c) sets this once instead, by content, and the
+ * renderer reads it in the bank's place (gl_picture.c). */
+void SoftGpu_SetBankPack(int bank, int entry);
+int SoftGpu_BankPack(int bank);
 /* A textured polygon that samples a bank can also fade into what is under
  * it: the upper half of its third texture-coordinate word, which the hardware
  * ignores, is SOFT_GPU_FADE | amount, amount 0 (opaque) to 255 (gone). Both
