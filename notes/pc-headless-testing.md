@@ -79,8 +79,100 @@ confuse:
 
 A known-good path from cold boot into a real campaign duel with a monster
 placed face-up on the field: replay `tests/pc/smoke/duel-3d-monsters.json`'s
-own `input` field verbatim (reaches frame 6760). Combine with
-`MEMORIES_DEBUG_DECK` to control which card ends up on the field.
+own `input` field verbatim. Dumping frame 6760 of that replay consistently
+shows a monster already placed and face-up (glow effect active, if the 3D
+Monsters mod's Card art style is on) — confirmed repeatedly this session,
+though whether 6760 lands exactly at a final "placed" state or a
+still-interactive "reticle/preview" state that already renders the model
+(`progress.md` calls it "a card-placement reticle screen") was not
+rigorously pinned down; treat it as "a monster is visibly on the field and
+face-up here", not as a precise phase boundary.
+
+**This is one fixed recorded trace, not a general "get into any duel"
+tool.** It's someone's real play session, captured as raw button presses;
+reusing it verbatim reliably reaches the same screens in the same order
+every time (that's the whole point — determinism), but it does not let you
+choose a different path through the menus, a different opponent, or a
+different moment to act at. See "Reaching other points in a duel" and
+"Choosing a specific card" below for what varying it safely does and
+doesn't give you.
+
+## Choosing a specific card
+
+`MEMORIES_DEBUG_DECK` (see above) takes the exact same syntax `set_deck()`
+in `src/pc/debug/cheats.c` parses: comma-separated ids and/or `first-last`
+ranges, repeated to fill the 40-card deck if shorter than that.
+
+```
+MEMORIES_DEBUG_DECK="5"          # all 40 slots: card 5 (Ryukishin)
+MEMORIES_DEBUG_DECK="1-40"       # one copy each of cards 1 through 40
+MEMORIES_DEBUG_DECK="5,22,82"    # cycles 5, 22, 82, 5, 22, 82, ... to fill 40
+```
+
+This controls which card(s) are *available to place* (the whole deck is
+one card, so a scripted "place whatever's highlighted" input reliably picks
+that card) — it does not by itself choose which hand slot gets selected if
+the deck has more than one distinct card; see below for that.
+
+## Reaching other points in a duel
+
+Two tools, two very different reliability levels:
+
+- **`MEMORIES_MODE_AT=<frame>:3`** (jump straight to `MAIN_MODE_DUEL`) only
+  reaches `Main_RunDuel`'s own step 0, the pre-duel chest screen (see
+  `card_browse.c`'s own doc comment on `move_duel_chest_cursor`) — **not** a
+  live duel with a real hand, field, or opponent. Scene setup
+  (`Duel_InitScene`, the opponent's AI data, the hand) never runs; there is
+  nothing to place. Confirmed this session: this path is only good for the
+  chest/deck-prep screen, not the duel itself.
+- **A real recorded replay** (like `duel-3d-monsters.json`) is therefore
+  the only reliable way to reach a live duel headlessly right now. To see
+  an *earlier* point in the same duel than its own target frame, just dump
+  an earlier frame of the same replay — the whole prefix of button presses
+  up to that point still ran, so the state at frame 6200 (say) is whatever
+  that recorded session was actually doing at frame 6200. This was not
+  exhaustively mapped out this session: the input's own shape (a long run
+  of repeated Cross presses from ~1800 to ~5780, then a short, more varied
+  burst from 6000-6700) suggests the long stretch is mashing through
+  campaign intro dialogue and the short burst at the end is the actual
+  duel-engagement/placement input, but dump a handful of frames in that
+  range yourself to confirm before relying on a specific one.
+
+## Choosing which hand card to place, and placing traps/rituals face-down
+
+**Not verified this session — here's where to start, not a working
+recipe.** The duel's hand-navigation/card-play phase is scene-state 4,
+`DuelScene_UpdateHandActions` in `src/game/duel_scene_hand_actions.c` (see
+that file's own header comment for the state's layout). A recorded
+replay's own button presses during that phase are specific to whatever hand
+the original session had — they do not generalize to "press X to pick the
+3rd card" for an arbitrary hand, since which physical button press lands on
+which card depends on cursor position, which depends on hand order, which
+depends on what's in the deck.
+
+The practical way to get a specific, repeatable "my hand, I choose this
+card, placed this way (attack/defense/face-down)" scenario is almost
+certainly: pair `MEMORIES_DEBUG_DECK` (so the hand's contents are known and
+controlled) with **building your own save state once, live**, then
+replaying cheaply from it — this is the project's own established pattern
+for exactly this kind of iteration (see `progress.md`'s PGXP section, "A
+save state made by..."):
+
+```powershell
+# Once, interactively (drop MEMORIES_HEADLESS so you have a real window,
+# no MEMORIES_DUMP_FRAME): play by hand up to the exact moment you want
+# (hand visible, your chosen card highlighted, trap/ritual menu open,
+# whatever), then press F5. Or script it once with MEMORIES_SAVE_STATE
+# ="<frame>:<path>" if you already know the frame.
+
+# From then on, reload that exact moment in ~60 frames instead of
+# replaying thousands of scripted button presses:
+$env:MEMORIES_LOAD_STATE = "<path or slot>"
+```
+
+A state only loads in the exact build it was saved from (compiled
+checksums differ build to build, and definitely release vs. debug) — save
+a fresh one per build you're iterating on, not once and reused forever.
 
 ## Capturing a screenshot
 
