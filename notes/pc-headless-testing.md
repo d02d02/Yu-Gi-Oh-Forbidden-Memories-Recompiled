@@ -237,6 +237,51 @@ the engine than needed. The toolchain/libs under `tmp/pc/tools` and
 `tmp/pc/win32-deps` are already fetched once by the normal
 `python tools/pc/build_game32.py` build — reuse them, never refetch.
 
+## Known pitfalls (things that went wrong this session, and why)
+
+**`MEMORIES_HEADLESS=1` + `MEMORIES_DETERMINISTIC=1` + `MEMORIES_INTERNAL_SCALE=4`
+can hang indefinitely.** Tried combining all three (to capture the HD
+texture-pack path headlessly) twice; both times the process never produced
+its dump and had to be killed after several minutes, versus the same test
+at `MEMORIES_INTERNAL_SCALE=1` (or without `MEMORIES_DETERMINISTIC`)
+reliably finishing in seconds. Not root-caused this session. Dropping
+`MEMORIES_HEADLESS` for a real window at scale 4 *did* run to completion,
+but:
+
+**A real (non-headless) window can dump an all-black frame.** Same
+scripted run, same frame number, `MEMORIES_HEADLESS` dropped and
+`MEMORIES_INTERNAL_SCALE=4` kept — completed without hanging, but
+`MEMORIES_DUMP_PATH` came out solid black. Not root-caused either; maybe
+the window needing focus, maybe a timing difference versus the
+`MEMORIES_DETERMINISTIC` path. **Net effect: this session found no reliable
+scripted way to capture the HD/internal-scale-above-1x rendering path.** If
+you need to confirm something only visible there, check it in a real
+interactive session (no `MEMORIES_HEADLESS`, no dump variables, just play)
+rather than trust a headless/scripted capture of it.
+
+**A stale `memories-pc.exe` process blocks the next build.** Rebuilding
+while any previous run (especially a backgrounded one you forgot about) is
+still holding the exe open fails the link step with a plain
+`Permission denied` — easy to misread as a real compile error. Always
+`Get-Process -Name memories-pc | Stop-Process -Force` before rebuilding if
+you've launched anything since the last build.
+
+**PowerShell can flag a successful run as an error.** The game prints some
+startup lines to stderr even on a totally normal run (e.g. its own RAM-
+mirror notice). PowerShell's native-command handling surfaces that as a
+`NativeCommandError`/non-zero-looking exit even though the process is fine
+and still produces its dump — check whether the expected output file
+actually exists before concluding a run failed.
+
+**A worktree can be checked out on the wrong branch, and everything still
+"works" except the one thing you're testing.** Spent real time debugging a
+feature as "not working" live before realizing the worktree being tested
+in was still on an older branch that never had the fix — the build
+succeeded, the game ran fine, nothing errored, it just silently wasn't
+running the code being changed. Before trusting a "still broken" report
+from live testing, confirm `git log --oneline -1` in the exact worktree
+being launched from matches the commit you think you just built.
+
 ## Reusing a worktree's fetched toolchain in a new worktree
 
 A fresh `git worktree add` has no `tmp/` at all — the first build would
