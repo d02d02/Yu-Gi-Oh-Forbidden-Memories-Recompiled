@@ -61,7 +61,8 @@ int CardLayoutArt_FrameCell(int *tpage, int *u, int *v, int *clut, int *w, int *
 {
     uint16_t *bank;
     const char *path = CardLayout_FramePath();
-    if (!path || !*path) return 0;
+    LOG(LOG_CARD_LAYOUT, "FrameCell: path=\"%s\" made=%d made_path=\"%s\"", path ? path : "(null)", made, made_path);
+    if (!path || !*path) { LOG(LOG_CARD_LAYOUT, "FrameCell: no path"); return 0; }
     if (strcmp(path, made_path)) {
         /* A different mod's frame art (or the same mod's art changed under
          * it) than whatever is cached: decode again, same as the first
@@ -71,9 +72,10 @@ int CardLayoutArt_FrameCell(int *tpage, int *u, int *v, int *clut, int *w, int *
         made = 0;
         snprintf(made_path, sizeof(made_path), "%s", path);
     }
-    if (made == 2) return 0;
-    if (!(bank = SoftGpu_Bank(FRAME_BANK))) return 0;
+    if (made == 2) { LOG(LOG_CARD_LAYOUT, "FrameCell: made==2 (decode failed earlier)"); return 0; }
+    if (!(bank = SoftGpu_Bank(FRAME_BANK))) { LOG(LOG_CARD_LAYOUT, "FrameCell: no bank"); return 0; }
     if (!made) made = make(bank, path) ? 1 : 2;
+    LOG(LOG_CARD_LAYOUT, "FrameCell: after make(), made=%d", made);
     if (made != 1) return 0;
     *tpage = 0x80 | (FRAME_BANK << 11);   /* getTPage(1, 0, 0, 0) | bank<<11: 8bpp, page (0,0) in the bank */
     *u = 0;
@@ -81,5 +83,6 @@ int CardLayoutArt_FrameCell(int *tpage, int *u, int *v, int *clut, int *w, int *
     *clut = (FRAME_CLUT_Y << 6) | 0;   /* getClut(0, FRAME_CLUT_Y) */
     *w = FRAME_W;
     *h = FRAME_H;
+    LOG(LOG_CARD_LAYOUT, "FrameCell: ok tpage=0x%x clut=0x%x w=%d h=%d", *tpage, *clut, *w, *h);
     return 1;
 }

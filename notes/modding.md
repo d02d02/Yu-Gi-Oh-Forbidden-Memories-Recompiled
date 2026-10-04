@@ -715,12 +715,21 @@ some of them out, with a `"card_layout"` object, no code needed:
 
 ```json
 "card_layout": {
-    "frame": {"image": "frame.png", "width": 140, "height": 196},
+    "frame": {
+        "monster": {"image": "anime_frame_monster.png", "width": 140, "height": 196},
+        "magic": {"image": "anime_frame_magic.png", "width": 140, "height": 196},
+        "trap": {"image": "anime_frame_trap.png", "width": 140, "height": 196},
+        "ritual": {"image": "anime_frame_ritual.png", "width": 140, "height": 196}
+    },
     "art": {"x": 4, "y": 3, "width": 134, "height": 138},
     "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
     "atk": {"x": 38, "y": 178},
     "def": {"x": 104, "y": 178},
-    "stars": {"x": 80, "y": 153}
+    "stars": {"x": 80, "y": 153},
+    "spell": {
+        "art": {"x": 4, "y": 3, "width": 133, "height": 138},
+        "icon": {"x": 62, "y": 163, "width": 18, "height": 18}
+    }
 }
 ```
 
@@ -728,44 +737,77 @@ Retail draws a small frame with a title plate, the card's picture at its
 own fixed size, and ATK/DEF stacked under a separate plaque -- none of
 which `"card_layout"` can change on its own. What it does is answer a mod's
 own `full_bleed` setting (a `bool` the mod declares, as every setting is):
-while that setting is on, the frame and title plate are left out, and
-`art`, `attribute`, `atk`, `def` and `stars` each move to the place given,
-in the same pixel neighbourhood retail draws them in (`x`/`y`, with `width`/
-`height` on `art` and `attribute` stretching the picture there instead of
-drawing it at its own size). Any key left out -- the whole object included
--- keeps retail's own place; a mod that only sets `full_bleed` and gives no
-positions gets retail's own layout with nothing hidden, which is a no-op,
-not a half-finished look. The description box is always shown -- its own
-backdrop panel is on screen either way, so there is nothing to gain by
-leaving its text out.
+while that setting is on, the frame and title plate are left out, and the
+rest move to the place given, in the same pixel neighbourhood retail draws
+them in (`x`/`y`, with `width`/`height` on `art` and `attribute` stretching
+the picture there instead of drawing it at its own size). Any key left out
+-- the whole object included -- keeps retail's own place; a mod that only
+sets `full_bleed` and gives no positions gets retail's own layout with
+nothing hidden, which is a no-op, not a half-finished look. The description
+box is always shown -- its own backdrop panel is on screen either way, so
+there is nothing to gain by leaving its text out.
 
-`frame` names a PNG of the mod's own (`image`, relative to the mod's
-directory, as a `title` mod's pictures are) drawn as one textured quad
-behind everything else, at `width`/`height` (140x196 with neither given);
-without a `frame` key, nothing is drawn where the retail frame was, which
-is a deliberate, supported look (a mod may want the art and stats floating
-with no backing at all). The PNG is stretched to the texture's own
-resolution regardless of its native size, the same rule a `title` mod's
-`image` follows.
+`frame` names a PNG per card kind (`image`, relative to the mod's directory,
+as a `title` mod's pictures are), drawn as one textured quad behind
+everything else, at `width`/`height` (140x196 with neither given) --
+monster's own key, and `magic`/`trap`/`ritual`/`purple`/`orange`
+(`cards.h`'s `CARD_FRAME_*`, the same six a card's own explicit frame
+colour picks from -- `Cards_FrameColor`, read whatever a card's real type
+is). A kind with no key of its own falls back to `monster`'s frame, not
+none -- a mod that has only drawn one frame still gets a frame for every
+kind, the same "missing stays retail-shaped, not half-finished" rule the
+rest of this object follows. With no `frame` key at all, nothing is drawn
+where the retail frame was, which is a deliberate, supported look (a mod may want the art
+and stats floating with no backing at all). The PNG is stretched to the
+texture's own resolution regardless of its native size, the same rule a
+`title` mod's `image` follows.
+
+Magic, trap, ritual and equip cards have no level, ATK or DEF to draw --
+`art`/`atk`/`def`/`stars` keep monster's (and purple's and orange's, the
+monster frame recoloured) layout, and `CARD_LAYOUT_ART`/`CARD_LAYOUT_
+ATTRIBUTE` instead answer from `spell`'s `art`/`icon` for those four kinds:
+a different place for the same elements, not different ones --
+func_80028B08.c still draws retail's own art/attribute textures there,
+unchanged, just stretched into `spell`'s box instead of `art`'s/
+`attribute`'s. Retail's elemental-attribute texture is not meaningful for
+a non-monster card, so what actually shows in `icon`'s box today is
+whatever that read happens to be -- a mod wanting something deliberate
+there (a card-kind badge, say) has nowhere resident to read one from yet;
+`CardLayout_TypeIconCell` (Build Deck's own badge sheet) and a
+duel-resident alternative (`src/game/duel_card_frame_draw.c`'s card-kind
+word, tpage 0x1E) were both tried and backed out -- see the branch's
+`WIP_NOTES.md`.
 
 Only one mod's `card_layout` is read at a time -- the last applied one that
 declares it, the same "a later mod wins" rule other singular keys follow --
 so two layout mods together is the last one's layout, not a merge of both.
-`mods/anime-card-frame` is the release's own, and a model for writing
-another: a pure data mod, no `library`, with one `full_bleed` setting and
-five positions plus a frame image.
+Forbidden Memories HD carries the release's own
+(`tools/pc/hd_assets_pack.py --anime-frame-monster
+tools/pc/hd_recipes/anime_frame_monster.png --anime-frame-magic
+tools/pc/hd_recipes/anime_frame_magic.png --anime-frame-trap
+tools/pc/hd_recipes/anime_frame_trap.png` folds it in as that mod's
+`full_bleed` setting, no code of its own needed; ritual has no art of its
+own yet and borrows magic's) -- a model for writing another: a pure data
+mod, no `library`, with one `full_bleed` setting, a frame per kind and the
+positions above.
 
 How it is done: the three retail call sites each ask one place
-(`src/pc/cards/card_layout.c`'s `CardLayout_Get`/`CardLayout_FullBleed`) for
-an element's place instead of carrying a mod's logic themselves --
-`src/game/func_80028B08.c` (title, stats, stars, attribute, art, frame),
-`src/game/func_800283F4.c` (the description box, always left visible today)
-and `src/game/duel_effect_resource_setup.c`'s `func_800291E0` (the frame's
-own list membership). None of those three change at all with no
-`card_layout` mod applied -- `CardLayout_Get` answers with retail's own
-constants, byte for byte. The frame texture is decoded once into a VRAM
-bank by `src/pc/cards/card_layout_art.c`, the same shape
-`src/pc/cards/star_icons.c` and `src/pc/text/glyphs.c` use for theirs; the
+(`src/pc/cards/card_layout.c`'s `CardLayout_Get`/`CardLayout_FullBleed`/
+`CardLayout_IsSpell`) for an element's place instead of carrying a mod's
+logic themselves -- `src/game/func_80028B08.c` (title, stats, stars,
+attribute, art, frame), `src/game/func_800283F4.c` (the description box,
+always left visible today) and `src/game/duel_effect_resource_setup.c`'s
+`func_800291E0` (the frame's own list membership). Each of the first two
+call `CardLayout_SetCard` with the card it is about to draw before asking
+for anything else -- its frame kind is `Cards_FrameColor` if a mod gave the
+card one (whatever its real type), else bucketed from `Cards_Type` (equip
+takes magic's), monster with no card named yet. None of those three change
+at all with no `card_layout` mod applied -- `CardLayout_Get` answers with
+retail's own constants, byte for byte. The frame texture is decoded once
+into a VRAM bank by `src/pc/cards/card_layout_art.c`, the same shape
+`src/pc/cards/star_icons.c` and `src/pc/text/glyphs.c` use for theirs,
+re-decoding whenever `CardLayout_FramePath` answers a different file --
+which a kind change already does, nothing further to invalidate. The
 manifest key itself is checked by `tests/pc/card_layout_test.c`.
 
 ## Rules: fusions, equips, rituals, drops, decks and more

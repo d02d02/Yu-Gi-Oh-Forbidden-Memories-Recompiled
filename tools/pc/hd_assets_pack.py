@@ -49,8 +49,25 @@ pack's entries as they are (a portraits mod). The result is one mod, in
 parts the player can switch off in the Mods window (PARTS; each merged pack
 is a part of its own, named as that mod is).
 
+--anime-frame-<kind> (monster/magic/trap/ritual) each take a PNG for the
+full-bleed "card_layout" presentation (the former standalone anime-card-frame
+mod, its art kept at tools/pc/hd_recipes/anime_frame_<kind>.png): folded in
+as the mod's own "full_bleed" setting, no code of its own, read by
+src/pc/cards/card_layout.c from whichever mod declares a "card_layout" key
+(notes/modding.md, "Card layout") for whichever kind the card being drawn
+is (monster, magic and equip, trap, or ritual -- card_layout.c's own
+CardLayout_SetCard). --anime-frame-ritual defaults to --anime-frame-magic's
+PNG until its own art exists -- a content choice, not a fallback this tool
+or the engine would make for a kind actually given its own file; a kind
+given neither falls back to --anime-frame-monster's at read time
+(card_layout.c), not here.
+
 Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
                          [--base <pack> ...] [--merge <pack> ...] [--thumb-crops crops.json]
+                         [--anime-frame-monster tools/pc/hd_recipes/anime_frame_monster.png]
+                         [--anime-frame-magic tools/pc/hd_recipes/anime_frame_magic.png]
+                         [--anime-frame-trap tools/pc/hd_recipes/anime_frame_trap.png]
+                         [--anime-frame-ritual tools/pc/hd_recipes/anime_frame_ritual.png]
                          [--id forbidden-memories-hd] [--name "Forbidden Memories HD"]
 """
 import argparse
@@ -81,6 +98,24 @@ PARTS = {
     "build_deck": ("Build Deck screen", "The Build Deck and Trade screen's panels, icons and labels."),
     "duel": ("Duel arena and HUD", "The platform of all seven fields, the cards' frames in the hand, their labels "
              "and numbers, the FIELD box and the life points."),
+}
+# --anime-frame-<kind>'s "card_layout" (notes/modding.md): the full-bleed
+# presentation's positions, measured once against its own art -- monster's
+# against anime_frame_monster.png (its own frame, art box and stat band),
+# "spell"'s against anime_frame_magic.png/anime_frame_trap.png (identical
+# between the two: only the frame image differs, not where anything sits).
+# Unaffected by anything else this tool draws (its own manifest key, not a
+# texture-pack entry).
+ANIME_FRAME_MONSTER_LAYOUT = {
+    "art": {"x": 4, "y": 3, "width": 134, "height": 138},
+    "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
+    "atk": {"x": 38, "y": 178},
+    "def": {"x": 104, "y": 178},
+    "stars": {"x": 80, "y": 153},
+}
+ANIME_FRAME_SPELL_LAYOUT = {
+    "art": {"x": 4, "y": 3, "width": 133, "height": 138},
+    "icon": {"x": 62, "y": 163, "width": 18, "height": 18},
 }
 FRAMES = {8: "frame_monster.png", 9: "frame_magic.png", 10: "frame_trap.png", 11: "frame_ritual.png"}
 ATTRIBUTES = ("light", "dark", "earth", "water", "fire", "wind", "magic", "trap")
@@ -487,6 +522,12 @@ def main():
     parser.add_argument("--base", action="append", help="a hd_screen_pack.py pack (repeat for several)")
     parser.add_argument("--merge", action="append")
     parser.add_argument("--thumb-crops")
+    parser.add_argument("--anime-frame-monster", help="a full-bleed card_layout frame PNG for monster cards, "
+                         "folded in as the mod's own \"full_bleed\" setting")
+    parser.add_argument("--anime-frame-magic", help="the same, for magic (and equip) cards")
+    parser.add_argument("--anime-frame-trap", help="the same, for trap cards")
+    parser.add_argument("--anime-frame-ritual", help="the same, for ritual cards; defaults to "
+                         "--anime-frame-magic's PNG until it has its own")
     parser.add_argument("--id", default="forbidden-memories-hd")
     parser.add_argument("--name", default="Forbidden Memories HD")
     parser.add_argument("--author", default="Unchiga, X@nder")
@@ -504,6 +545,27 @@ def main():
                     {"key": key, "label": label, "type": "bool", "default": 1, "description": help}
                     for key, (label, help) in sorted(pack.parts.items(), key=lambda part: (
                         list(PARTS).index(part[0]) if part[0] in PARTS else len(PARTS)))]}
+    anime_frame_sources = {
+        "monster": args.anime_frame_monster,
+        "magic": args.anime_frame_magic,
+        "trap": args.anime_frame_trap,
+        "ritual": args.anime_frame_ritual or args.anime_frame_magic,
+    }
+    if any(anime_frame_sources.values()):
+        frame = {}
+        for kind, source in anime_frame_sources.items():
+            if not source:
+                continue
+            filename = f"anime_frame_{kind}.png"
+            shutil.copyfile(source, os.path.join(args.out, "textures", filename))
+            frame[kind] = {"image": f"textures/{filename}", "width": 140, "height": 196}
+        manifest["card_layout"] = dict(frame=frame, spell=ANIME_FRAME_SPELL_LAYOUT, **ANIME_FRAME_MONSTER_LAYOUT)
+        manifest["settings"].append({
+            "key": "full_bleed", "label": "Anime card layout", "type": "bool", "default": 1,
+            "description": "A Duel-Links-style full-bleed card presentation: the frame, title plate and separate "
+                            "ATK/DEF plaque are replaced by one unified frame, the card art is enlarged to fill "
+                            "it, and ATK/DEF, level stars and the attribute icon (magic/trap/ritual: the card-kind "
+                            "badge) move into a band under the art."})
     with open(os.path.join(args.out, "mod.json"), "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=4)
     print(f"{args.out}: {len(pack.entries)} entries, {len(pack.images)} images")

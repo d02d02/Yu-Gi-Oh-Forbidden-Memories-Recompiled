@@ -16,6 +16,7 @@
 #include "pc/cards/pack_shop.h"
 #include "pc/cards/card_layout.h"
 #include "pc/cards/card_layout_art.h"
+#include "pc/debug/log.h"
 #endif
 /*
  * Duel card-detail panel: builds the scratchpad sprite parameters for the
@@ -133,31 +134,46 @@ static void CardLayout_DrawArt(SpritePrim *src, s32 x, s32 y, s32 w, s32 h,
  * genuine cutout in the mod's own art (for the card picture, say) works
  * exactly the same as painted matching background would -- whatever is
  * drawn after this submission paints over it either way, hole or not. */
-static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, Func80028B08Extra *EXT)
+/* The quad both CardLayout_DrawFrame and a full-bleed spell card's type-icon
+ * badge need: cell_w x cell_h texels from (tpage, u, v) through clut,
+ * stretched to w x h at x,y -- no src object to inherit blend bits from
+ * (neither has a real card sprite behind it), so attribute is built fresh
+ * here rather than through CardLayout_DrawArt's src->attribute, which ORs
+ * its own extra tpage/blend bits in from whatever that src was last
+ * configured for (wrong, and silently so, for an unrelated tpage like the
+ * type-icon sheet's 0xB -- confirmed by research after the badge drew
+ * nothing). */
+static void CardLayout_DrawCell(s32 x, s32 y, s32 w, s32 h, s32 tpage, s32 u, s32 v, s32 clut,
+                                s32 cell_w, s32 cell_h, s32 ot, s32 mode, Func80028B08Extra *EXT)
 {
     POLY_GT4 art;
     s32 projected = ((u32)mode >> 16) == 0xF;
     s32 attribute = projected ? 0x04000000 : 0;
     s32 art_mode = (mode & 0xFFFF) | 0x50000;
-    int art_tpage, art_u, art_v, art_clut, art_w, art_h;
-
-    if (!CardLayoutArt_FrameCell(&art_tpage, &art_u, &art_v, &art_clut, &art_w, &art_h)) return;
 
     setPolyGT4(&art);
     setRGB0(&art, 128, 128, 128);
     setRGB1(&art, 128, 128, 128);
     setRGB2(&art, 128, 128, 128);
     setRGB3(&art, 128, 128, 128);
-    art.clut = (u16)art_clut;
-    art.tpage = (u16)art_tpage;
-    art.u0 = art.u2 = (u8)art_u;
-    art.u1 = art.u3 = (u8)(art_u + art_w - 1);
-    art.v0 = art.v1 = (u8)art_v;
-    art.v2 = art.v3 = (u8)(art_v + art_h - 1);
+    art.clut = (u16)clut;
+    art.tpage = (u16)tpage;
+    art.u0 = art.u2 = (u8)u;
+    art.u1 = art.u3 = (u8)(u + cell_w - 1);
+    art.v0 = art.v1 = (u8)v;
+    art.v2 = art.v3 = (u8)(v + cell_h - 1);
     setXY4(&art, (short)x, (short)y, (short)(x + w), (short)y,
            (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
     DisplayObject_SubmitPacket((SpritePrim *)attribute, (Func80028B08Ctx *)&art,
                                ot, art_mode, EXT);
+}
+
+static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, Func80028B08Extra *EXT)
+{
+    int art_tpage, art_u, art_v, art_clut, art_w, art_h;
+
+    if (!CardLayoutArt_FrameCell(&art_tpage, &art_u, &art_v, &art_clut, &art_w, &art_h)) return;
+    CardLayout_DrawCell(x, y, w, h, art_tpage, art_u, art_v, art_clut, art_w, art_h, ot, mode, EXT);
 }
 #endif
 
@@ -195,6 +211,13 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
      * independent draw size, confirmed by research -- a bigger extent
      * would sample past the art's real texture block, not just stretch
      * it. */
+    /* The record isn't loaded as `rec` until further down (its own
+     * assignment stays where retail has it) -- D_800EA0E8[obj->field_67] is
+     * read again here, a plain read with no effect on that assignment,
+     * only so every CardLayout_Get call below already answers for the
+     * right card's frame (cards.h's CARD_FRAME_*), not the previous one
+     * this object happened to draw. */
+    CardLayout_SetCard((s32)(s16)D_800EA0E8[obj->field_67].field_30);
     CardLayoutPlacement frame_layout = CardLayout_Get(CARD_LAYOUT_FRAME);
     CardLayoutPlacement title_layout = CardLayout_Get(CARD_LAYOUT_TITLE);
     CardLayoutPlacement atk_layout = CardLayout_Get(CARD_LAYOUT_ATK);
@@ -490,11 +513,13 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     PRM->cxcy.h.cx = win->field_40.h.field_40 + tile;
     PRM->cxcy.h.cy = 0xFF;
 #ifdef MEMORIES_PC
-    /* A full-bleed mod stretches the attribute icon into its own frame
-     * cutout (CARD_LAYOUT_ATTRIBUTE's own w/h) the same way the card's own
-     * picture is enlarged above -- CardLayout_DrawArt already takes any
-     * fully-configured SpritePrim, not just the card picture, so it's
-     * reused here rather than duplicated. */
+    /* A full-bleed mod stretches whatever this slot already draws
+     * (retail's own elemental-attribute texture, rec->field_3B/PRM, set up
+     * just above -- unchanged, not swapped for anything else) into its own
+     * frame cutout (CARD_LAYOUT_ATTRIBUTE's own w/h), the same way the
+     * card's own picture is enlarged above. Magic/trap/ritual answer with
+     * "spell"."icon" there instead of "attribute" (card_layout.c): same
+     * mechanism, just the mod's other position for it. */
     if (attr_layout.w != 0) {
         CardLayout_DrawArt(PRM, win->field_30.h.field_30 + attr_layout.x,
                            win->field_30.h.field_32 + attr_layout.y,
@@ -507,6 +532,9 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
      * submitted after art/digits/stars/attribute above, so it ends up
      * drawn before them -- underneath. */
     if (CardLayout_FullBleed()) {
+        LOG(LOG_CARD_LAYOUT, "DrawFrame: x=%d y=%d w=%d h=%d ot=%d mode=0x%x",
+            win->field_30.h.field_30, win->field_30.h.field_32, frame_layout.w, frame_layout.h,
+            (int)arg1, (unsigned)arg);
         CardLayout_DrawFrame(win->field_30.h.field_30, win->field_30.h.field_32,
                              frame_layout.w, frame_layout.h, arg1, arg, EXT);
     }

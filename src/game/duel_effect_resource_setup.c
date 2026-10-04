@@ -69,6 +69,13 @@ u8 *func_800291E0(s32 index, s32 x, s32 y)
     variant = (gDuel_adwCardStats[card_id - 1] >> 26) & 0x1F;
     object->field_67 = index;
     object->field_68 = (u8)variant;
+#ifdef MEMORIES_PC
+    /* Ahead of CARD_LAYOUT_FRAME below: harmless for that one call
+     * (visibility there is full_bleed-only, not kind-specific), but keeps
+     * this object's card_layout.c state from reading as whatever card
+     * func_80028B08.c last drew instead of its own. */
+    CardLayout_SetCard(card_id);
+#endif
 
     if (variant == 0x15) {
         goto disp_15;

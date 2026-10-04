@@ -58,4 +58,21 @@ int CardLayout_FullBleed(void);
  * through CardLayoutArt_FrameCell) simply does not draw a frame. */
 const char *CardLayout_FramePath(void);
 
+/* Which card the next CardLayout_Get/CardLayout_FramePath/CardLayout_IsSpell
+ * answer for: its frame (monster/magic/trap/ritual/purple/orange, cards.h
+ * CARD_FRAME_*) comes from its own Cards_FrameColor if a mod set one, else
+ * its Cards_Type (equip takes magic's). Monster (id 0, invalid) until a
+ * call site sets a real one -- every retail call site draws a real card,
+ * so this only matters for the three that now call it, not for anything
+ * that never does. */
+void CardLayout_SetCard(int card_id);
+/* True when the current card's frame is magic/trap/ritual's: no ATK/DEF/
+ * level stars to draw (none of those three cards have them), and
+ * CARD_LAYOUT_ART/CARD_LAYOUT_ATTRIBUTE answer from the mod's "spell"
+ * object instead of its "art"/"attribute" (monster/purple/orange keep
+ * today's keys) -- a different place for the same elements, not different
+ * ones; func_80028B08.c still draws retail's own art/attribute textures
+ * there unchanged. */
+int CardLayout_IsSpell(void);
+
 #endif

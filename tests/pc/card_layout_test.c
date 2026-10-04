@@ -38,6 +38,16 @@ int Paths_Contained(const char *relative)
 int Log_Wanted(LogChannel channel) { (void)channel; return 0; }
 void Log_Printf(LogChannel channel, const char *format, ...) { (void)channel; (void)format; }
 
+/* cards.c stand-ins: a handful of ids CardLayout_SetCard's tests name, each
+ * either an explicit frame colour (cards.h's "whatever its type") or a
+ * type to bucket (card_constants.h). -1/CARD_TYPE_DRAGON ("monster") is
+ * every id's default until a test sets otherwise. */
+#define FAKE_CARD_COUNT 8
+static int fake_frame_color[FAKE_CARD_COUNT];
+static int fake_card_type[FAKE_CARD_COUNT];
+int Cards_FrameColor(int id) { return (unsigned)id < FAKE_CARD_COUNT ? fake_frame_color[id] : -1; }
+int Cards_Type(int id) { return (unsigned)id < FAKE_CARD_COUNT ? fake_card_type[id] : CARD_TYPE_DRAGON; }
+
 #define MAX_MODS 4
 static struct {
     const char *id;
@@ -73,6 +83,11 @@ static void reset(void)
     fake_mod_count = 0;
     notes = 0;
     note[0] = 0;
+    for (i = 0; i < FAKE_CARD_COUNT; i++) {
+        fake_frame_color[i] = -1;
+        fake_card_type[i] = CARD_TYPE_DRAGON;
+    }
+    CardLayout_SetCard(0);   /* back to the monster bucket between tests */
 }
 
 static void add_mod(const char *id, const char *directory, const char *text, int active,
@@ -94,11 +109,14 @@ static void add_mod(const char *id, const char *directory, const char *text, int
 
 static const char *const FULL_MANIFEST =
     "{\"id\": \"x\", \"card_layout\": {"
-    "\"frame\": {\"image\": \"frame.png\", \"width\": 140, \"height\": 196},"
+    "\"frame\": {\"monster\": {\"image\": \"frame.png\", \"width\": 140, \"height\": 196},"
+             "\"magic\": {\"image\": \"frame_magic.png\"}, \"trap\": {\"image\": \"frame_trap.png\"}},"
     "\"art\": {\"x\": 4, \"y\": 3, \"width\": 134, \"height\": 138},"
     "\"attribute\": {\"x\": 114, \"y\": 149, \"width\": 17, \"height\": 17},"
     "\"atk\": {\"x\": 38, \"y\": 178}, \"def\": {\"x\": 104, \"y\": 178},"
-    "\"stars\": {\"x\": 80, \"y\": 153}}}";
+    "\"stars\": {\"x\": 80, \"y\": 153},"
+    "\"spell\": {\"art\": {\"x\": 4, \"y\": 3, \"width\": 133, \"height\": 138},"
+               "\"icon\": {\"x\": 62, \"y\": 163, \"width\": 16, \"height\": 15}}}}";
 
 static void retail_defaults(void)
 {
@@ -210,6 +228,75 @@ static void inactive_mod_ignored(void)
     CHECK(CardLayout_Get(CARD_LAYOUT_LEVEL_STARS).x == 0x77);
 }
 
+/* A magic card: no elemental attribute or ATK/DEF to draw, so CARD_LAYOUT_ART
+ * and CARD_LAYOUT_ATTRIBUTE answer from "spell" instead of "art"/"attribute",
+ * and the frame is "frame"."magic". */
+static void spell_frame_magic(void)
+{
+    CardLayoutPlacement p;
+    reset();
+    add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
+    fake_card_type[1] = CARD_TYPE_MAGIC;
+    CardLayout_SetCard(1);
+    CHECK(CardLayout_IsSpell());
+    p = CardLayout_Get(CARD_LAYOUT_ART);
+    CHECK(p.x == 4 && p.y == 3 && p.w == 133 && p.h == 138);
+    p = CardLayout_Get(CARD_LAYOUT_ATTRIBUTE);
+    CHECK(p.x == 62 && p.y == 163 && p.w == 16 && p.h == 15);
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_magic.png"));
+}
+
+/* A trap card: its own frame image. */
+static void spell_frame_trap(void)
+{
+    reset();
+    add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
+    fake_card_type[1] = CARD_TYPE_TRAP;
+    CardLayout_SetCard(1);
+    CHECK(CardLayout_IsSpell());
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_trap.png"));
+}
+
+/* An equip card takes magic's frame, same as duel_effect_resource_setup.c's
+ * own retail row mapping (CARD_TYPE_EQUIP falls into disp_14, magic's
+ * setup, there). */
+static void spell_frame_equip_uses_magic(void)
+{
+    reset();
+    add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
+    fake_card_type[1] = CARD_TYPE_EQUIP;
+    CardLayout_SetCard(1);
+    CHECK(CardLayout_IsSpell());
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_magic.png"));
+}
+
+/* FULL_MANIFEST gives "frame" no "ritual" of its own: a ritual card's frame
+ * falls back to "monster"'s, same as any kind a mod has not drawn yet --
+ * still a real frame, not none. */
+static void spell_frame_ritual_falls_back_to_monster_frame(void)
+{
+    reset();
+    add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
+    fake_card_type[1] = CARD_TYPE_RITUAL;
+    CardLayout_SetCard(1);
+    CHECK(CardLayout_IsSpell());
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame.png"));
+}
+
+/* Cards_FrameColor is an explicit per-card override "whatever its type"
+ * (cards.h): a monster card a mod recoloured to the trap frame is still
+ * drawn as the trap frame under full-bleed, not its real monster type. */
+static void frame_color_override_wins_over_type(void)
+{
+    reset();
+    add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
+    fake_card_type[1] = CARD_TYPE_DRAGON;
+    fake_frame_color[1] = CARD_FRAME_TRAP;
+    CardLayout_SetCard(1);
+    CHECK(CardLayout_IsSpell());
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_trap.png"));
+}
+
 int main(void)
 {
     retail_defaults();
@@ -219,6 +306,11 @@ int main(void)
     frame_outside_mod_refused();
     later_mod_wins();
     inactive_mod_ignored();
+    spell_frame_magic();
+    spell_frame_trap();
+    spell_frame_equip_uses_magic();
+    spell_frame_ritual_falls_back_to_monster_frame();
+    frame_color_override_wins_over_type();
     reset();
     printf("card layout: ok\n");
     return 0;
