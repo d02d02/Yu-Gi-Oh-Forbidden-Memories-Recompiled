@@ -719,19 +719,32 @@ some of them out, with a `"card_layout"` object, no code needed:
         "monster": {"image": "anime_frame_monster.png", "width": 140, "height": 196},
         "magic": {"image": "anime_frame_magic.png", "width": 140, "height": 196},
         "trap": {"image": "anime_frame_trap.png", "width": 140, "height": 196},
-        "ritual": {"image": "anime_frame_ritual.png", "width": 140, "height": 196}
+        "ritual": {"image": "anime_frame_ritual.png", "width": 140, "height": 196},
+        "orange": {"image": "anime_frame_orange.png", "width": 140, "height": 196}
     },
     "art": {"x": 4, "y": 3, "width": 134, "height": 138},
-    "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
+    "attribute": {"x": 114, "y": 149},
     "atk": {"x": 38, "y": 178},
     "def": {"x": 104, "y": 178},
     "stars": {"x": 80, "y": 153},
     "spell": {
         "art": {"x": 4, "y": 3, "width": 133, "height": 138},
-        "icon": {"x": 62, "y": 163, "width": 18, "height": 18}
+        "icon": {"x": 62, "y": 163}
     }
 }
 ```
+
+`attribute`/`spell`'s `icon` give a position but no `width`/`height` above:
+unlike `art`, these frames cut no hole for that element, so there is
+nothing to stretch it to fit -- leaving `width`/`height` out keeps it at
+its own native size, the same rule `art` follows when a mod leaves *that*
+out. The position still has to move, though: retail's own default (what
+leaving the whole key out falls back to) sits in the title plate, above
+the art, which full-bleed's stretched art rect now covers entirely -- a
+mod that leaves `attribute` out completely gets a hidden icon, not a
+retail-placed one, as soon as its art rect is bigger than retail's. Keeping
+it in the stat band below the art, clear of `art`'s own rect, is what
+avoids that.
 
 Retail draws a small frame with a title plate, the card's picture at its
 own fixed size, and ATK/DEF stacked under a separate plaque -- none of
@@ -785,7 +798,8 @@ Forbidden Memories HD carries the release's own
 (`tools/pc/hd_assets_pack.py --anime-frame-monster
 tools/pc/hd_recipes/anime_frame_monster.png --anime-frame-magic
 tools/pc/hd_recipes/anime_frame_magic.png --anime-frame-trap
-tools/pc/hd_recipes/anime_frame_trap.png` folds it in as that mod's
+tools/pc/hd_recipes/anime_frame_trap.png --anime-frame-orange
+tools/pc/hd_recipes/anime_frame_orange.png` folds it in as that mod's
 `full_bleed` setting, no code of its own needed; ritual has no art of its
 own yet and borrows magic's) -- a model for writing another: a pure data
 mod, no `library`, with one `full_bleed` setting, a frame per kind and the

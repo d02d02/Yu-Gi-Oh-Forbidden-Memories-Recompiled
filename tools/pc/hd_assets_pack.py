@@ -49,17 +49,19 @@ pack's entries as they are (a portraits mod). The result is one mod, in
 parts the player can switch off in the Mods window (PARTS; each merged pack
 is a part of its own, named as that mod is).
 
---anime-frame-<kind> (monster/magic/trap/ritual) each take a PNG for the
-full-bleed "card_layout" presentation (the former standalone anime-card-frame
-mod, its art kept at tools/pc/hd_recipes/anime_frame_<kind>.png): folded in
-as the mod's own "full_bleed" setting, no code of its own, read by
+--anime-frame-<kind> (monster/magic/trap/ritual/orange) each take a PNG for
+the full-bleed "card_layout" presentation (the former standalone
+anime-card-frame mod, its art kept at tools/pc/hd_recipes/anime_frame_<kind>.png):
+folded in as the mod's own "full_bleed" setting, no code of its own, read by
 src/pc/cards/card_layout.c from whichever mod declares a "card_layout" key
 (notes/modding.md, "Card layout") for whichever kind the card being drawn
-is (monster, magic and equip, trap, or ritual -- card_layout.c's own
-CardLayout_SetCard). --anime-frame-ritual defaults to --anime-frame-magic's
-PNG until its own art exists -- a content choice, not a fallback this tool
-or the engine would make for a kind actually given its own file; a kind
-given neither falls back to --anime-frame-monster's at read time
+is (monster, magic and equip, trap, ritual, or orange -- card_layout.c's own
+CardLayout_SetCard; orange is a monster with its own effects, Cards_FrameColor's
+own automatic pick, no per-card manifest entry needed). --anime-frame-ritual
+defaults to --anime-frame-magic's PNG until its own art exists, and
+--anime-frame-orange to --anime-frame-monster's -- a content choice, not a
+fallback this tool or the engine would make for a kind actually given its own
+file; a kind given neither falls back to --anime-frame-monster's at read time
 (card_layout.c), not here.
 
 Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
@@ -68,6 +70,7 @@ Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
                          [--anime-frame-magic tools/pc/hd_recipes/anime_frame_magic.png]
                          [--anime-frame-trap tools/pc/hd_recipes/anime_frame_trap.png]
                          [--anime-frame-ritual tools/pc/hd_recipes/anime_frame_ritual.png]
+                         [--anime-frame-orange tools/pc/hd_recipes/anime_frame_orange.png]
                          [--id forbidden-memories-hd] [--name "Forbidden Memories HD"]
 """
 import argparse
@@ -106,16 +109,29 @@ PARTS = {
 # between the two: only the frame image differs, not where anything sits).
 # Unaffected by anything else this tool draws (its own manifest key, not a
 # texture-pack entry).
+#
+# "attribute"/"icon" give a position but no width/height: these frames cut
+# no hole for that element (unlike art's, a real transparent window,
+# flood-filled to get the numbers below), so there is nothing to stretch it
+# to fit -- retail's own texture draws at its own native size, same as
+# "art" does when a mod leaves it unstretched. The *position* still has to
+# move, though, and cannot be left at retail's default (card_layout.c's own
+# fallback, meant for retail's small title plate): full-bleed's art is
+# stretched to fill that whole area, so retail's title-plate position for
+# the attribute sits *under* the now much bigger art and is drawn over
+# entirely. Keeping it in the stat band below the art (where the old
+# hole-matched version already measured it, next to the ATK/DEF boxes)
+# keeps it clear of the art rect instead.
 ANIME_FRAME_MONSTER_LAYOUT = {
     "art": {"x": 4, "y": 3, "width": 134, "height": 138},
-    "attribute": {"x": 114, "y": 149, "width": 17, "height": 17},
+    "attribute": {"x": 114, "y": 149},
     "atk": {"x": 38, "y": 178},
     "def": {"x": 104, "y": 178},
     "stars": {"x": 80, "y": 153},
 }
 ANIME_FRAME_SPELL_LAYOUT = {
     "art": {"x": 4, "y": 3, "width": 133, "height": 138},
-    "icon": {"x": 62, "y": 163, "width": 18, "height": 18},
+    "icon": {"x": 62, "y": 163},
 }
 FRAMES = {8: "frame_monster.png", 9: "frame_magic.png", 10: "frame_trap.png", 11: "frame_ritual.png"}
 ATTRIBUTES = ("light", "dark", "earth", "water", "fire", "wind", "magic", "trap")
@@ -528,6 +544,9 @@ def main():
     parser.add_argument("--anime-frame-trap", help="the same, for trap cards")
     parser.add_argument("--anime-frame-ritual", help="the same, for ritual cards; defaults to "
                          "--anime-frame-magic's PNG until it has its own")
+    parser.add_argument("--anime-frame-orange", help="the same, for a monster with its own effects "
+                         "(Cards_FrameColor's automatic CARD_FRAME_ORANGE -- no manifest wiring needed per card); "
+                         "falls back to --anime-frame-monster's PNG, same as any kind given no file of its own")
     parser.add_argument("--id", default="forbidden-memories-hd")
     parser.add_argument("--name", default="Forbidden Memories HD")
     parser.add_argument("--author", default="Unchiga, X@nder")
@@ -550,6 +569,7 @@ def main():
         "magic": args.anime_frame_magic,
         "trap": args.anime_frame_trap,
         "ritual": args.anime_frame_ritual or args.anime_frame_magic,
+        "orange": args.anime_frame_orange or args.anime_frame_monster,
     }
     if any(anime_frame_sources.values()):
         frame = {}
