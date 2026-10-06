@@ -122,12 +122,22 @@ PARTS = {
 # entirely. Keeping it in the stat band below the art (where the old
 # hole-matched version already measured it, next to the ATK/DEF boxes)
 # keeps it clear of the art rect instead.
+#
+# "stars"."x" is the row's own *centre* (func_80028B08.c centres the count
+# of stars a card actually has around it, the same convention "atk"/"def"
+# already use for their own boxes), not a first-star anchor: a monster can
+# carry up to 12 (Blue-eyes Ultimate Dragon), each a fixed 9px with no gap,
+# so a fixed anchor would push the row past the frame's own left edge past
+# about 9. 59 centres a 12-star row (108px) between the frame's own left
+# margin (~4) and the attribute ball's own left edge (114) with a px or two
+# to spare on each side -- the widest a base-game card gets, with a little
+# headroom for a mod pushing the 4-bit field further (up to 15).
 ANIME_FRAME_MONSTER_LAYOUT = {
     "art": {"x": 4, "y": 3, "width": 134, "height": 138},
     "attribute": {"x": 114, "y": 149},
     "atk": {"x": 38, "y": 178},
     "def": {"x": 104, "y": 178},
-    "stars": {"x": 80, "y": 153},
+    "stars": {"x": 59, "y": 153},
 }
 ANIME_FRAME_SPELL_LAYOUT = {
     "art": {"x": 4, "y": 3, "width": 133, "height": 138},

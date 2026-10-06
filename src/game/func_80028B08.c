@@ -482,6 +482,19 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
 #ifdef MEMORIES_PC
         PRM->xy.h.x = sa + star_layout.x;
         PRM->xy.h.y = win->field_30.h.field_32 + star_layout.y;
+        if (CardLayout_FullBleed()) {
+            /* star_layout.x is this row's own centre (the same convention
+             * atk_layout.x/def_layout.x take above), not retail's
+             * right-anchored first-star position: a monster can carry up
+             * to 12 stars (Blue-eyes Ultimate Dragon; the field itself is
+             * 4 bits, so a mod could push it to 15) and each is a fixed
+             * 9px with no gap between, so retail's fixed-right-edge anchor
+             * would run the row's left end past the frame's own edge
+             * anywhere past about 9. Centring the whole row keeps any
+             * count inside the same box instead of just moving the
+             * overflow around. */
+            PRM->xy.h.x = sa + star_layout.x + 9 * (s32)rec->field_3A / 2 - 9;
+        }
 #endif
         *(u32 *)&PRM->extent = sb;
         PRM->uv.b.lo = 0;

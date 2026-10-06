@@ -726,7 +726,7 @@ some of them out, with a `"card_layout"` object, no code needed:
     "attribute": {"x": 114, "y": 149},
     "atk": {"x": 38, "y": 178},
     "def": {"x": 104, "y": 178},
-    "stars": {"x": 80, "y": 153},
+    "stars": {"x": 59, "y": 153},
     "spell": {
         "art": {"x": 4, "y": 3, "width": 133, "height": 138},
         "icon": {"x": 62, "y": 163}
@@ -745,6 +745,16 @@ mod that leaves `attribute` out completely gets a hidden icon, not a
 retail-placed one, as soon as its art rect is bigger than retail's. Keeping
 it in the stat band below the art, clear of `art`'s own rect, is what
 avoids that.
+
+`stars`'s `x`/`y` is the whole row's own *centre*, not retail's own
+right-anchored first-star position -- `atk`/`def` already give a box
+centre rather than a corner under full-bleed (above), and the stars row
+follows the same convention. A monster can carry up to 12 stars
+(Blue-eyes Ultimate Dragon; the field is 4 bits, so a mod could reach 15),
+each a fixed 9px with no gap between -- a fixed edge the way retail
+anchors it would push the row's other end past the frame's own side for
+anything much past 9. func_80028B08.c centres the row the card actually
+has around `stars`'s point instead, so any count stays inside the same box.
 
 Retail draws a small frame with a title plate, the card's picture at its
 own fixed size, and ATK/DEF stacked under a separate plaque -- none of
