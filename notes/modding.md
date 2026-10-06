@@ -785,24 +785,26 @@ unchanged, just stretched into `spell`'s box instead of `art`'s/
 a non-monster card, so what actually shows in `icon`'s box today is
 whatever that read happens to be -- a mod wanting something deliberate
 there (a card-kind badge, say) has nowhere resident to read one from yet;
-`CardLayout_TypeIconCell` (Build Deck's own badge sheet) and a
-duel-resident alternative (`src/game/duel_card_frame_draw.c`'s card-kind
-word, tpage 0x1E) were both tried and backed out -- see the branch's
-`WIP_NOTES.md`.
+a Build Deck badge sheet and a duel-resident word texture were both tried
+and backed out (wrong VRAM residency and wrong shape, respectively).
 
 Only one mod's `card_layout` is read at a time -- the last applied one that
 declares it, the same "a later mod wins" rule other singular keys follow --
 so two layout mods together is the last one's layout, not a merge of both.
-Forbidden Memories HD carries the release's own
-(`tools/pc/hd_assets_pack.py --anime-frame-monster
-tools/pc/hd_recipes/anime_frame_monster.png --anime-frame-magic
-tools/pc/hd_recipes/anime_frame_magic.png --anime-frame-trap
-tools/pc/hd_recipes/anime_frame_trap.png --anime-frame-orange
-tools/pc/hd_recipes/anime_frame_orange.png` folds it in as that mod's
-`full_bleed` setting, no code of its own needed; ritual has no art of its
-own yet and borrows magic's) -- a model for writing another: a pure data
-mod, no `library`, with one `full_bleed` setting, a frame per kind and the
-positions above.
+Forbidden Memories HD carries this as its own `full_bleed` setting, no code
+of its own needed: `tools/pc/hd_assets_pack.py`'s `--anime-frame-<kind>`
+flags default to `tools/pc/hd_recipes/anime_frame_<kind>.png` if present,
+so a normal build picks this up with nothing extra to pass. A kind with no
+art of its own yet (`ritual`, `orange`) borrows another's at read time. A
+model for writing another: a pure data mod, no `library`, with one
+`full_bleed` setting, a frame per kind and the positions above.
+
+**Known limitation**: the frame image itself does not render in the duel's
+own card viewer (opened from the hand) -- `CardLayout_DrawFrame` submits
+through a raw depth value that bypasses this codebase's usual depth-sorting,
+so it silently draws at the wrong depth there. Everything else (art, stats,
+attribute, description) renders correctly in every viewer; only the
+decorative backdrop is affected, and only in that one screen.
 
 How it is done: the three retail call sites each ask one place
 (`src/pc/cards/card_layout.c`'s `CardLayout_Get`/`CardLayout_FullBleed`/
