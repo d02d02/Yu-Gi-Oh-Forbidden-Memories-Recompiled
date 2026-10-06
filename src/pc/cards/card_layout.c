@@ -108,14 +108,9 @@ static LayoutSource find_source(void)
 
 static int full_bleed_of(const LayoutSource *source)
 {
-    /* Off until the player turns it on (or a mod's own "settings" entry's
-     * "default" does -- that field is the Mods window's own display only,
-     * read nowhere near here; this fallback is what actually answers a
-     * player who has never touched the setting). hd_assets_pack.py's own
-     * "default": 0 for Forbidden Memories HD's copy of this setting
-     * matches this on purpose, not the other way around -- the engine
-     * fallback is the one that counts; keep them in sync if either one
-     * changes without the other. */
+    /* Off until the player turns it on. A mod's own "settings" entry's
+     * "default" is the Mods window's display only -- this fallback is the
+     * one that actually answers; keep both in sync if either changes. */
     return source->mod >= 0 && Mods_Setting(Mods_Id(source->mod), "full_bleed", 0) != 0;
 }
 

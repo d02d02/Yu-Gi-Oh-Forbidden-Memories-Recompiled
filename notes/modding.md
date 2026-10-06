@@ -734,27 +734,16 @@ some of them out, with a `"card_layout"` object, no code needed:
 }
 ```
 
-`attribute`/`spell`'s `icon` give a position but no `width`/`height` above:
-unlike `art`, these frames cut no hole for that element, so there is
-nothing to stretch it to fit -- leaving `width`/`height` out keeps it at
-its own native size, the same rule `art` follows when a mod leaves *that*
-out. The position still has to move, though: retail's own default (what
-leaving the whole key out falls back to) sits in the title plate, above
-the art, which full-bleed's stretched art rect now covers entirely -- a
-mod that leaves `attribute` out completely gets a hidden icon, not a
-retail-placed one, as soon as its art rect is bigger than retail's. Keeping
-it in the stat band below the art, clear of `art`'s own rect, is what
-avoids that.
+`attribute`/`spell`'s `icon` give a position but no `width`/`height`: those
+frames cut no hole for them, so they draw at native size. Leave `attribute`
+out entirely, though, and it inherits retail's title-plate spot -- now
+covered by full-bleed's bigger art -- so it ends up hidden; giving it a
+position in the stat band keeps it clear of `art`'s own rect.
 
-`stars`'s `x`/`y` is the whole row's own *centre*, not retail's own
-right-anchored first-star position -- `atk`/`def` already give a box
-centre rather than a corner under full-bleed (above), and the stars row
-follows the same convention. A monster can carry up to 12 stars
-(Blue-eyes Ultimate Dragon; the field is 4 bits, so a mod could reach 15),
-each a fixed 9px with no gap between -- a fixed edge the way retail
-anchors it would push the row's other end past the frame's own side for
-anything much past 9. func_80028B08.c centres the row the card actually
-has around `stars`'s point instead, so any count stays inside the same box.
+`stars`'s `x`/`y` is the row's *centre*, like `atk`/`def`'s box centre
+above, not retail's right-anchored first-star position: a card can carry
+up to 12 stars at a fixed 9px each, and `func_80028B08.c` centres however
+many a card has around this point so a wide row never runs past the frame.
 
 Retail draws a small frame with a title plate, the card's picture at its
 own fixed size, and ATK/DEF stacked under a separate plaque -- none of

@@ -8,6 +8,20 @@ commit(s) touching this file behind.
 Kept short on purpose: resolved items get rolled out of here once they're
 committed; this file is only what's still in flight.
 
+## Done 2026-10-06: a PR branch, and auto-picked-up anime frame art
+
+`feat/assets-hd-anime-frame-pr` (pushed) is the clean branch for upstream:
+this branch's real commits minus this file, one squashed commit. User will
+open the PR themselves.
+
+`--anime-frame-<kind>` now default to `tools/pc/hd_recipes/anime_frame_
+<kind>.png` if present, else `<assets>/anime_frame_<kind>.png`, else
+nothing (`anime_frame_default`, `hd_assets_pack.py`) -- any existing HD
+pack build command picks this up with no changes, instead of silently
+shipping without it until someone remembers to add the new flags. Also
+trimmed several over-long comments this branch had accumulated, per
+feedback.
+
 ## Goal
 
 Fold the full-bleed "anime card frame" presentation into **Forbidden
