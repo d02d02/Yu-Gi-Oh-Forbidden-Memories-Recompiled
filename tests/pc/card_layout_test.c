@@ -177,6 +177,21 @@ static void setting_off(void)
     CHECK(p.x == 0x61 && p.y == 0x9D);
 }
 
+/* A player who has never touched the setting (no key at all, not even an
+ * explicit 0): off, same as setting_off's explicit case -- a mod's own
+ * manifest "default" (hd_assets_pack.py's "default": 0, notes/modding.md)
+ * is display-only, read nowhere near this file; this engine-level fallback
+ * (full_bleed_of's own Mods_Setting(..., 0)) is what a fresh install
+ * actually gets, and it is this, not the manifest, that must change if the
+ * answer should ever be different. */
+static void setting_unset(void)
+{
+    reset();
+    add_mod("anime-card-frame", "/mods/anime-card-frame", FULL_MANIFEST, 1, NULL, 0);
+    CHECK(!CardLayout_FullBleed());
+    CHECK(CardLayout_Get(CARD_LAYOUT_FRAME).visible);
+}
+
 /* A manifest that only gives one element keeps retail's place for every
  * other one, and no frame at all -- a half-written "card_layout" is not an
  * error, each key stands on its own. */
@@ -302,6 +317,7 @@ int main(void)
     retail_defaults();
     full_bleed_mod();
     setting_off();
+    setting_unset();
     partial_manifest_falls_back();
     frame_outside_mod_refused();
     later_mod_wins();

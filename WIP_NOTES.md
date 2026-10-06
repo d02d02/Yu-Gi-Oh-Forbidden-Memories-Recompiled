@@ -54,12 +54,80 @@ both carry an explanation now so this isn't rediscovered blind next time.
 icon now visible and correctly positioned in each: Blue-Eyes White Dragon
 (monster, id 1), Raigeki (magic, id 337), Bear Trap (trap, id 683), Black
 Luster Ritual (ritual spell, id 670, correctly falls back to magic's
-frame), Sangan (effect monster -> automatic orange frame, id 48).
+frame), Sangan (effect monster -> automatic orange frame, id 48). Also
+Black Luster Soldier (an actual ritual *monster*, id 364 -- plain
+`monster` frame, as expected per the deferred-`purple`-slot decision
+above) dealt in a real two-card deck alongside its ritual spell (id 670),
+both correct.
 
-**Not yet committed** -- working tree only:
-- `tools/pc/hd_recipes/anime_frame_{monster,magic,trap}.png` (replaced),
-  `anime_frame_orange.png` (new)
-- `tools/pc/hd_assets_pack.py`, `notes/modding.md`
+Committed and pushed: `ff79f7dd0` (frame art/orange/attribute fix),
+`c1630d72f` (stars centering, below).
+
+## Done 2026-10-06: the anime card frame is off by default
+
+User's call: the feature stays, but a fresh install should look like retail
+until a player opts in -- the eventual plan is to move this toggle into
+the FM Editor rather than the Mods window, but that is later, not now.
+
+**The real fix is in the engine, not the manifest.** The obvious-looking
+change (`hd_assets_pack.py`'s `"default": 0` on the `full_bleed` setting
+entry) only changes what the Mods window *shows* a player who has never
+touched the setting -- it is not read anywhere near `card_layout.c`.
+What actually answers a player with no saved setting is
+`full_bleed_of`'s own `Mods_Setting(..., "full_bleed", 1)` call -- a
+hardcoded fallback baked into the C code, independent of any manifest.
+Changed `1` -> `0` there (`src/pc/cards/card_layout.c`); since `"full_bleed"`
+is a generic key any `card_layout` mod can declare (not HD-specific), this
+is the right place for it regardless -- HD is just the only mod using it
+today. Also fixed the manifest's `"default"` to match (so the Mods window
+doesn't lie about it) and trimmed its label/description per the user
+("not a lot of description in it"): `"Anime card frame"`, one short line.
+
+Added `tests/pc/card_layout_test.c`'s `setting_unset()`: a mod applied
+with *no* explicit `full_bleed` key at all (not even `0` -- the test
+harness's `add_mod(..., NULL, 0)` exercises the real fallback path, unlike
+every existing case here which sets the key explicitly) now asserts
+`!CardLayout_FullBleed()`. Not yet run through `ctest` (no `cmake` on
+this machine's PATH, see below) -- verified instead by reading the
+assertion against the fallback change directly, and by two live runs
+through `tools/pc/yfm_control.py` (`tmp/pc/control/default-off/` with the
+mod on and no `full_bleed` override: retail's small frame; `.../explicit-on/`
+with `"mod.forbidden-memories-hd.full_bleed": 1` forced on through `Game`'s
+`settings=`: full-bleed, unchanged from before this entry) -- both match
+what the engine-level fix should do, but the C unit test itself is unverified
+by a real compiler/test run, only by inspection. **Worth running
+`setting_unset` for real the next time `cmake` is reachable.**
+
+`cmake`/`ctest` are not on PATH here (checked `which`, `shutil.which`,
+common install folders -- not found), even though `tools/pc/build_game32.py`
+builds fine (confirmed by `.exe` mtime moving past each source edit,
+including this one). Unexplained: `build_game32.py` also just calls
+`shutil.which(CC)` and would exit if it failed, with no PATH trick visible
+in it or `build_process.py` -- so something resolves `i686-w64-mingw32-clang`
+for that script's own process that a fresh `python -c "shutil.which(...)"`
+in the same shell does not. Not chased further; the game build (the thing
+actually shipped) works, which is what mattered for live verification.
+
+## Done 2026-10-06: centre the level-stars row instead of right-anchoring it
+
+A monster can carry up to 12 stars (Blue-eyes Ultimate Dragon; the field
+is 4 bits, so a mod could reach 15), each a fixed 9px native sprite with
+no gap. The stars row reused retail's own convention -- a fixed anchor for
+the *first* star, walking left for the rest, unbounded -- which at the old
+position (`x:80`) would put 12 stars' left edge at `x:-19`, 19px past the
+frame's own left edge.
+
+`func_80028B08.c` now centres the row the card actually has around
+`star_layout.x` instead (`sa + star_layout.x + 9*count/2 - 9`), the same
+convention `atk_layout.x`/`def_layout.x` already use for their own box
+centre under full-bleed -- not new territory, just extended to stars.
+`"stars"."x"` moved from `80` to `59` (`hd_assets_pack.py`,
+`notes/modding.md`) to keep a 12-star row centred between the frame's own
+left margin and the attribute ball's left edge (`x:114`) with a px or two
+to spare. Verified live at 1 (Left Arm of the Forbidden One, id 20), 8
+(Blue-Eyes White Dragon), 11 (Gate Guardian, id 374) and 12 stars
+(Blue-Eyes Ultimate Dragon, id 380, the base game's widest) -- no
+overflow at any count.
 
 **Local test rig** (NOT part of the branch/PR, lives outside the repo at
 `...\Documents\My Games\YFM Re-Decomp\mods\assets-hd`, actually a symlink
@@ -86,9 +154,43 @@ that bypasses this codebase's normal depth-offset mechanism. User
 deprioritized this (cosmetic polish, the functional core already works);
 unchanged this entry, not investigated further.
 
-## Self-testing method (headless-scripted, no live player needed)
+## Self-testing method: the control channel, not raw MEMORIES_INPUT
 
-Real campaign duel, deterministic, reusable for any card by id:
+**Superseded 2026-10-06** -- `notes/agent-control.md` documents a proper
+scripted client (`tools/pc/yfm_control.py`'s `Game`) that this entry had
+been missing; the raw-`MEMORIES_INPUT`-hex method below still works but is
+strictly worse (slower, no deck/hand control, frame numbers guessed by
+hand) and should not be reached for first. Use this instead:
+
+```python
+import sys; sys.path.insert(0, "tools/pc")
+from yfm_control import Game
+
+with Game(mods_dir="tmp/pc/shared-mods",                    # the real, already-built HD pack (see below)
+          settings={"mod.forbidden-memories-hd": 1}) as game:
+    game.goto("duel", opponent=1, deck="364,670")            # any two (or more) card ids, real draw order
+    game.duel_ready(before_deal=lambda g: g.arrange_deck(0, [364, 670]))  # guarantees hand slots 0/1
+    game._hand_to(0)                                         # move the cursor to a known slot
+    game.press("circle", hold=6, after=30)                   # select
+    game.press("triangle", hold=6, after=60)                 # open the big viewer
+    game.shot("card.ppm")                                    # raw .ppm; PIL to view/share
+    game.press("circle", hold=6, after=30); game.press("circle", hold=6, after=30)  # back to the hand
+```
+Seconds per run (not ~115s), fully deterministic (`MEMORIES_DETERMINISTIC=1`,
+which `Game` sets), and gives a *real* mixed deck/hand instead of
+`MEMORIES_DEBUG_DECK` forcing all 40 cards to one id -- needed for anything
+that depends on two specific cards coexisting (a ritual monster + its
+ritual spell, tested this way 2026-10-06: `tmp/pc/control/ritual-view/`).
+`mods_dir`/`settings` are needed because `Game` otherwise only loads the
+mods shipped beside the executable (`tmp/pc/game32/mods/`), not the local
+test rig mod at `tmp/pc/shared-mods/assets-hd` (see below) -- without
+them you get retail's own small-frame view, not full-bleed, with no error.
+`game._hand_to(slot)` is "private" (leading underscore) but the clean way
+to reach a known hand slot; `game.duel()[0]["hand"]` confirms what's
+actually there by id before relying on slot order.
+
+### Older method (raw MEMORIES_INPUT), kept for reference only
+
 ```
 BASE=$(python -c "import json;print(json.load(open('tests/pc/smoke/duel-hand-camera.json'))['input'])")
 INPUT="${BASE},6600:2000,6606:0000,6650:1000,6656:0000"   # Circle then Triangle: open the big viewer on the selected hand card
@@ -96,12 +198,11 @@ MEMORIES_DEBUG_DECK=<card id>   # forces the whole 40-card deck to one id
 MEMORIES_INPUT="$INPUT" MEMORIES_DUMP_FRAME=6750 MEMORIES_DUMP_PATH=<out.ppm> tmp/pc/game32/memories-pc.exe
 ```
 Real-time, ~115s wall-clock per run. `MEMORIES_LOAD_STATE` does not work
-post-rebuild (symbol table changes every build) -- do not use it; this
-method doesn't need it, `MEMORIES_DEBUG_DECK` populates a fresh boot's
-save in-memory once `Cheats_SaveLoaded()` is true, which the normal title
--> campaign flow reaches fine on its own. Card ids: `notes/card-catalog.csv`.
-Dump is a raw `.ppm` -- convert with PIL (`Image.open(...).resize(...,
-Image.NEAREST)`) before sharing/viewing.
+post-rebuild (symbol table changes every build) -- the control-channel
+method above doesn't need save states at all, so this limitation doesn't
+carry over. Card ids: `notes/card-catalog.csv`. Dump is a raw `.ppm` --
+convert with PIL (`Image.open(...).resize(..., Image.NEAREST)`) before
+sharing/viewing, same as the newer method.
 
 ## Known, not yet done
 
@@ -109,11 +210,12 @@ Image.NEAREST)`) before sharing/viewing.
   `src/pc/cards/card_layout_art.c`'s `CardLayoutArt_FrameCell` and
   `src/game/func_80028B08.c`'s `DrawFrame` call site (both predate this
   entry). **Remove before this branch is PR-ready.**
-- Monster's `art`/`atk`/`def`/`stars` positions are still the old
-  standalone mod's numbers -- confirmed by pixel-measuring the *new* art's
-  own art-hole and ATK/DEF plaque-box bounds (2026-10-06): they already
-  match the new art closely (within ~2px), so no change was needed, but
-  they haven't been independently re-derived from scratch.
+- Monster's `art`/`atk`/`def` positions are still the old standalone mod's
+  numbers -- confirmed by pixel-measuring the *new* art's own art-hole and
+  ATK/DEF plaque-box bounds (2026-10-06): they already match the new art
+  closely (within ~2px), so no change was needed, but they haven't been
+  independently re-derived from scratch. `stars` *has* been redone (centred,
+  see above) -- not in this bucket anymore.
 - `monster-ritual-animeframe.png`/`monster-obelisk-animeframe.png`
   (`hacking/asset/frame/`, outside this repo) are drawn but **intentionally
   unused**: the engine's `CARD_FRAME_*` enum has exactly one free slot
@@ -122,7 +224,6 @@ Image.NEAREST)`) before sharing/viewing.
   wiring either in needs per-card `Cards_FrameColor` overrides added to
   the HD pack's card data, deferred by user decision (2026-10-06) rather
   than picking one arbitrarily.
-- Not committed, not pushed.
 
 ## Found along the way: a related, separate branch exists
 

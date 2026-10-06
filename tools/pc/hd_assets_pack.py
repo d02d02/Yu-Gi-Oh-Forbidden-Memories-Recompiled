@@ -591,11 +591,8 @@ def main():
             frame[kind] = {"image": f"textures/{filename}", "width": 140, "height": 196}
         manifest["card_layout"] = dict(frame=frame, spell=ANIME_FRAME_SPELL_LAYOUT, **ANIME_FRAME_MONSTER_LAYOUT)
         manifest["settings"].append({
-            "key": "full_bleed", "label": "Anime card layout", "type": "bool", "default": 1,
-            "description": "A Duel-Links-style full-bleed card presentation: the frame, title plate and separate "
-                            "ATK/DEF plaque are replaced by one unified frame, the card art is enlarged to fill "
-                            "it, and ATK/DEF, level stars and the attribute icon (magic/trap/ritual: the card-kind "
-                            "badge) move into a band under the art."})
+            "key": "full_bleed", "label": "Anime card frame", "type": "bool", "default": 0,
+            "description": "A Duel-Links-style full-bleed card presentation."})
     with open(os.path.join(args.out, "mod.json"), "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=4)
     print(f"{args.out}: {len(pack.entries)} entries, {len(pack.images)} images")
