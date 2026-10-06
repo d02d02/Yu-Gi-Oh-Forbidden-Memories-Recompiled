@@ -176,6 +176,7 @@ static int load_art(Art *art, int card)
         CardArt_FieldArtShapeOf(field_art, &w, &h);
         pixels = (const u16 *)(field_art + FIELD_ART_HEADER);
         clut = (const u16 *)(field_art + FIELD_ART_HEADER + (size_t)w * h);
+        say("DEBUG load_art card %d: field_art shape %dx%d\n", card, w, h);
     }
 
     bank = SoftGpu_Bank(art->bank);
@@ -475,6 +476,10 @@ static void draw_one(int index, int world_height)
     }
     width_px = height_px * art->w / art->h;
     cx = (base_sx + top_sx) / 2;
+
+    say("DEBUG card %d: art %dx%d, base (%d,%d) top (%d,%d), height_px %d width_px %d cx %d, quad x0=%d x1=%d y0=%d y1=%d\n",
+        id, art->w, art->h, base_sx, base_sy, top_sx, top_sy, height_px, width_px, cx,
+        cx - width_px / 2, cx + width_px / 2, top_sy, base_sy);
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
     memset(&prim, 0, sizeof(prim));
