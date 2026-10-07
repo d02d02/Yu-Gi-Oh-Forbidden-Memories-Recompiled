@@ -161,17 +161,29 @@ shared_tail:
 
     object = DisplayObject_AcquireSlot(DisplayObject_FindFreeGeneralSlot(),
 #ifdef MEMORIES_PC
-        /* A "card_layout" mod (card_layout.h) with no frame. List 2 is what
-         * actually draws a sprite-sheet object's own graphic
-         * (DisplayObject_RenderSpriteSheetList); list 0 only ever runs its
-         * update callback (DisplayObject_RunUpdateCallbackList), never
-         * submits one. func_80028B08 does not care which list this object
-         * is in -- it reaches it directly through field_54, below -- so
-         * this is invisible to it either way; only the frame's own drawn
-         * graphic goes. Its flags (DISPLAY_OBJECT_RENDERABLE_MASK, which
-         * func_80028B08 does check) come from AcquireSlot itself and are
-         * the same regardless of the list argument. */
-        CardLayout_Get(CARD_LAYOUT_FRAME).visible ? 2 : 0
+        /* List 2 is what actually draws a sprite-sheet object's own
+         * graphic (DisplayObject_RenderSpriteSheetList); list 0 only ever
+         * runs its update callback (DisplayObject_RunUpdateCallbackList),
+         * never submits one. func_80028B08 does not care which list this
+         * object is in -- it reaches it directly through field_54, below
+         * -- so this is invisible to it either way; only the frame's own
+         * drawn graphic goes. Its flags (DISPLAY_OBJECT_RENDERABLE_MASK,
+         * which func_80028B08 does check) come from AcquireSlot itself
+         * and are the same regardless of the list argument.
+         *
+         * Hiding this the instant full_bleed was on used to leave a real
+         * gap: CardLayout_DrawFrame's own replacement does not start
+         * drawing until this object is renderable, which the open
+         * animation reaches several frames after this one is created, and
+         * nothing filled that window -- confirmed live, the frame/art/
+         * stats area sat empty through the slide-in where retail always
+         * has this sprite showing. A mod with its own frame image always
+         * ends up fully covering this by the time it settles (checked:
+         * no seam or double-frame), so keep it as a stopgap. Only a mod
+         * that configures no frame image at all for this card's kind
+         * (notes/modding.md's "art and stats floating with no backing at
+         * all") hides it immediately, since nothing will ever cover it. */
+        !CardLayout_Get(CARD_LAYOUT_FRAME).visible && !*CardLayout_FramePath() ? 0 : 2
 #else
         2
 #endif

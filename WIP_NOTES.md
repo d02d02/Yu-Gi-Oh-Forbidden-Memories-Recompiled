@@ -8,6 +8,42 @@ commit(s) touching this file behind.
 Kept short on purpose: resolved items get rolled out of here once they're
 committed; this file is only what's still in flight.
 
+## Done 2026-10-07: two real bugs found and fixed via parallel agents
+
+User reported the frame backdrop looked "flat" AND that it wasn't showing
+at all during the card viewer's open animation -- two different things.
+Spun up agents in isolated worktrees to chase both in parallel (one
+reviewer-style: independently re-verify, don't trust the first finding):
+
+- **Contrast**: confirmed NOT a code bug two independent ways (a faithful
+  Python reimplementation of `CardArt_IndexedImage`'s resize/quantize
+  showed no fidelity loss beyond the unavoidable 919x1319->177x254
+  downsample; a bold checkerboard swapped in for the real art rendered
+  perfectly crisp through the same pipeline). Fixed anyway at the asset
+  level: `tools/pc/hd_recipes/anime_frame_*.png` got an HSV-space contrast
+  boost (unsharp mask + a small hue-neutral marbling layer, alpha/geometry
+  untouched) so the real art's low-amplitude marbling survives the forced
+  downsample. Verified live, stddev roughly doubled in the stat band.
+- **The real "not showing" bug**: found by watching the open animation
+  frame by frame (not just the settled end state) and diffing against
+  retail mode at the same tick count -- full_bleed's frame/art region sat
+  completely blank for the first ~10+ frames where retail already shows
+  its own placeholder swirl. Root cause:
+  `duel_effect_resource_setup.c`'s `func_800291E0` hid retail's small
+  frame sprite the instant `CardLayout_Get(CARD_LAYOUT_FRAME).visible` was
+  false, but `CardLayout_DrawFrame`'s own replacement doesn't start
+  drawing until several frames later (once the object becomes
+  renderable), leaving that window empty. Fix: keep retail's sprite as a
+  stopgap whenever a replacement frame image exists (`CardLayout_FramePath()`
+  non-empty) -- it ends up fully covered once the replacement draws, no
+  seam at settle -- and only hide it immediately for a mod that
+  deliberately configures no frame at all (notes/modding.md's documented
+  "no backing" case). Verified live across all four kinds (monster/magic/
+  trap/orange): the gap is gone, settled state unchanged.
+
+Both fixes are in on `feat/assets-hd-anime-frame-pr` too (amended into its
+single commit).
+
 ## Done 2026-10-06: a PR branch, and auto-picked-up anime frame art
 
 `feat/assets-hd-anime-frame-pr` (pushed) is the clean branch for upstream:
