@@ -774,6 +774,21 @@ and stats floating with no backing at all). The PNG is stretched to the
 texture's own resolution regardless of its native size, the same rule a
 `title` mod's `image` follows.
 
+Whatever size the source art is, it lands on a fixed 177x254 texture
+(`src/pc/cards/card_layout_art.c`'s `FRAME_W`/`FRAME_H`, the largest size
+POLY_GT4's own UV coordinates can address) -- 919x1319, the size
+`tools/pc/hd_recipes/anime_frame_*.png` are drawn at, is already a ~27x
+reduction in area by the time it's on screen. That's a plain box-filter
+average, which is lossless of whatever contrast is actually there (not a
+quantizer bug -- checked by reimplementing the exact algorithm and by
+running a bold checkerboard through the same pipeline, which stayed
+perfectly crisp), but low-amplitude texture -- fine marbling, a soft
+gradient a few pixels wide -- is exactly what that average erases first,
+no matter how good it looks at full size. Draw frame art bolder than
+looks necessary up close; `anime_frame_*.png` needed a contrast pass
+(HSV-space unsharp mask plus a touch of marbling) after the first version
+read as a flat colour once actually in the game.
+
 Magic, trap, ritual and equip cards have no level, ATK or DEF to draw --
 `art`/`atk`/`def`/`stars` keep monster's (and purple's and orange's, the
 monster frame recoloured) layout, and `CARD_LAYOUT_ART`/`CARD_LAYOUT_

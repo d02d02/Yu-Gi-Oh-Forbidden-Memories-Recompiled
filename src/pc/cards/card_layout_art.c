@@ -25,7 +25,21 @@
  * headroom at Internal 2x/4x: 919x1319 (the feature's first frame art) at
  * the largest divisor keeping the taller axis under 255 gives 5.19, so
  * 177x254 (919/5.19=177.1, 1319/5.19=254.1) is kept as a fixed, generous
- * texel budget for any mod's own frame art, not re-derived per asset. */
+ * texel budget for any mod's own frame art, not re-derived per asset.
+ *
+ * At 919x1319 that is a ~27x reduction in area (the source's own pixels
+ * per output texel), a plain box-filter average (CardArt_IndexedImage),
+ * then a 255-colour median-cut on top. Both steps are lossless of
+ * whatever contrast is actually there (checked two ways: a faithful
+ * reimplementation of both steps loses nothing beyond the forced
+ * downsample itself, and a bold checkerboard survives the same pipeline
+ * perfectly crisp) -- but low-amplitude texture (fine marbling, soft
+ * gradients a few pixels wide in the source) is exactly what a ~27x area
+ * average erases first, regardless of how good the source looks at full
+ * resolution. Draw new frame art bolder than looks necessary up close --
+ * tools/pc/hd_recipes/anime_frame_*.png were re-contrasted for exactly
+ * this (an HSV-space unsharp mask plus a small marbling layer) after the
+ * first version read as a flat colour once actually in the game. */
 #define FRAME_W 177
 #define FRAME_H 254
 #define FRAME_CLUT_Y FRAME_H   /* right after the last pixel row, same bank, no overlap */
