@@ -5,7 +5,8 @@
 - **Headless/scripted testing of the native PC port** (reaching a specific
   screen, forcing owned cards, scripting controller input, capturing a
   reproducible screenshot, testing a single C function standalone without a
-  full game rebuild): `notes/pc-headless-testing.md`. Read it before
+  full game rebuild): `C:\Users\mdahh\.claude\shared\yfm-notes\pc-headless-testing.md`
+  (shared copy; `notes/pc-headless-testing.md` is only a pointer). Read it before
   reaching for a live/interactive session to verify a change — most of what
   you need is scriptable.
 - Building: `tools/pc/build_game32.py` (what `play.bat`/`play.sh` call).
