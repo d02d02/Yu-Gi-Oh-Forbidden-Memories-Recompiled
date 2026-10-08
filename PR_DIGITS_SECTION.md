@@ -24,8 +24,9 @@ through the same path as the frame (`card_layout_art.c`), and
 
 1. Merge: the engine change is compiled into `memories-pc.exe` and ships with
    the next regular engine release; nothing extra.
-2. Rebuild the HD mod zip with the font:
-   `hd_assets_pack.py ... --digit-font <path to the .ttf>`
+2. Rebuild the HD mod zip with the font: the usual `hd_assets_pack.py`
+   command plus `--digit-font <path to the .ttf>` (the full command is in
+   `notes/image-remaster.md`, "Building the Forbidden Memories HD mod")
    The font used for the shipped look is Yu-Gi-Oh! Matrix Regular Small Caps
    (the second of the two files), stretched 1.4x wide; digits are centred on
    the stat boxes. (`--digit-stretch` changes how wide the digits are drawn; default 1.4).

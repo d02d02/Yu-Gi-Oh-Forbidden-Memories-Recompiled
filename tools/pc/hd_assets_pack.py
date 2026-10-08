@@ -65,7 +65,17 @@ Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
                          [--anime-frame-trap tools/pc/hd_recipes/anime_frame_trap.png]
                          [--anime-frame-ritual tools/pc/hd_recipes/anime_frame_ritual.png]
                          [--anime-frame-orange tools/pc/hd_recipes/anime_frame_orange.png]
+                         [--digit-font <Matrix Regular Small Caps .ttf>] [--digit-stretch 1.4]
                          [--id forbidden-memories-hd] [--name "Forbidden Memories HD"]
+
+--digit-font draws the anime frame's ATK/DFD digits from a font
+(tools/pc/card_digits.py): a 256x210 strip, textures/anime_digits.png, and the
+card_layout "digits" key that points at it (notes/modding.md). The font is
+read here and never committed or shipped, only its pictures are. Without it
+the retail digits stay. --digit-stretch is how much wider than the font's own
+shape they are drawn (default 1.4, the look chosen for Matrix Regular Small
+Caps). The digits are centred on the stat boxes measured from the monster
+frame's corner studs (card_frame_window.stat_box_centres).
 """
 import argparse
 import json
