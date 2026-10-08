@@ -37,12 +37,14 @@
  * 512 halfwords, two pages down. The palette row, FRAME_TILE_H, is free in
  * every page (a tile is FRAME_TILE_H tall). Keep FRAME_TEXELS in
  * tools/pc/card_frame_window.py in sync with FRAME_W/FRAME_H. */
-#define FRAME_COLS 3
-#define FRAME_ROWS 3
+#define FRAME_COLS CARD_LAYOUT_FRAME_COLS   /* card_layout_art.h: the one place the grid is set */
+#define FRAME_ROWS CARD_LAYOUT_FRAME_ROWS
 #define FRAME_TILE_W 177
 #define FRAME_TILE_H 254
 #define FRAME_W (FRAME_COLS * FRAME_TILE_W)
 #define FRAME_H (FRAME_ROWS * FRAME_TILE_H)
+/* The tiles take pages 0 to FRAME_COLS * FRAME_ROWS - 1 of the bank; the digit strip is on page 9. */
+typedef char frame_tiles_fit_before_the_digits[FRAME_COLS * FRAME_ROWS <= 9 ? 1 : -1];
 #define FRAME_CLUT_Y FRAME_TILE_H   /* right after the first tile's last pixel row, same bank, no overlap */
 
 /* Each frame image's built texels (FRAME_W x FRAME_H palette indices and its
