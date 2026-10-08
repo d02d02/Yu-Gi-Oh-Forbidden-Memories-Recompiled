@@ -1,7 +1,8 @@
 """The anime frame's ATK/DFD digits, drawn from a font.
 
 One PNG for the engine (src/pc/cards/card_layout_art.h's digit strip):
-5 x 2 cells of 40 x 44 texels, digit d in column d % 5, row d / 5, in the
+4 x 3 cells of 64 x 70 texels (256 x 210, one texture page), digit d in
+column d % 4, row d / 4, in the
 same 10 x 11 unit proportion the layout draws a digit at ("digits" in
 card_layout). The font is the maker's own file (a Yu-Gi-Oh. Matrix Regular
 Small Caps .ttf, the card game's ATK/DEF font): it is read from --digit-font
@@ -9,16 +10,16 @@ and never committed.
 """
 from PIL import Image, ImageDraw, ImageFont
 
-COLS, ROWS = 5, 2
-CELL_W, CELL_H = 40, 44
-GLYPH_H = 34          # the digits' height in texels: 8.5 of the box's 17 units
+COLS, ROWS = 4, 3
+CELL_W, CELL_H = 64, 70
+GLYPH_H = 54          # the digits' height in texels: 8.5 of the box's 17 units (6.4 texels a unit)
 INK = (22, 14, 6)
 PAPER = (242, 226, 169)   # what the stat box is, for the edge pixels
 SUPER = 8
 STRETCH = 1.4         # the game draws these digits wide: a zero is about as wide as it is tall
 
 
-def render(font_path, out_path):
+def render(font_path, out_path, stretch=STRETCH):
     probe = ImageFont.truetype(font_path, 200)
     boxes = [probe.getbbox(str(d), anchor="ls") for d in range(10)]
     top, bottom = min(b[1] for b in boxes), max(b[3] for b in boxes)
@@ -32,7 +33,7 @@ def render(font_path, out_path):
         x = (CELL_W * SUPER - (box[2] - box[0])) // 2 - box[0]
         base = (CELL_H * SUPER - GLYPH_H * SUPER) // 2 - round(top * size / 200)
         draw.text((x, base), str(d), font=font, fill=255, anchor="ls")
-        wide = mask.resize((round(mask.width * STRETCH), mask.height), Image.LANCZOS)
+        wide = mask.resize((round(mask.width * stretch), mask.height), Image.LANCZOS)
         left = (wide.width - mask.width) // 2
         alpha = wide.crop((left, 0, left + mask.width, mask.height)).resize((CELL_W, CELL_H), Image.BOX)
         cell = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))

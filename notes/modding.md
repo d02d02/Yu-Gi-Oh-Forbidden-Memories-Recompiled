@@ -918,8 +918,8 @@ position in the stat band keeps it clear of `art`'s own rect.
 
 `digits` (optional) replaces the ATK/DFD numbers with the mod's own while the
 layout is on: `{"image": "digits.png", "width": 10, "height": 11, "step": 10}`.
-The image is a strip of 5 x 2 cells of 40 x 44 texels, digit d in column
-`d % 5` and row `d / 5` (200 x 88, `tools/pc/card_digits.py` draws one from a
+The image is a strip of 4 x 3 cells of 64 x 70 texels, digit d in column
+`d % 4` and row `d / 4` (256 x 210, `tools/pc/card_digits.py` draws one from a
 font); `width`/`height` are one digit's size on the card, `step` the distance
 between two digits' left edges (default `width`). Each number is centred on
 its `atk`/`def` point. The strip has one colour, so a raised or lowered stat

@@ -197,7 +197,8 @@ static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, F
 
 /* A full-bleed mod's own digits (card_layout.h's CardLayout_Digits): the
  * visible digits of `buf` (least significant first, a value past 9 is a
- * blank), at the mod's size, centred on (cx, cy) in the card's own units.
+ * blank), at the mod's size, centred on (cx, cy) in the card's own units:
+ * one to four digits always centred on the box.
  * 0, nothing drawn, when the strip is not there. */
 static int CardLayout_DrawDigits(s32 base_x, s32 base_y, s32 cx, s32 cy, const u8 *buf, s32 count,
                                  s32 ot, s32 mode, Func80028B08Extra *EXT)
@@ -209,6 +210,10 @@ static int CardLayout_DrawDigits(s32 base_x, s32 base_y, s32 cx, s32 cy, const u
     if (!CardLayoutArt_DigitCell(0, &tpage, &u, &v, &clut, &cw, &ch)) return 0;
     for (i = 0; i < count; i++) {
         if (buf[i] < 10) shown = i + 1;
+    }
+    if (shown > 4) {   /* a stat past 9999 (a mod's cap): squeezed to the width of four */
+        dw = dw * 4 / shown;
+        step = step * 4 / shown;
     }
     x = base_x + cx - ((shown - 1) * step + dw) / 2;
     for (i = shown - 1; i >= 0; i--) {

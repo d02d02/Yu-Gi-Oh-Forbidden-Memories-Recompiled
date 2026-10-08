@@ -542,6 +542,8 @@ def main():
     parser.add_argument("--anime-frame-orange", help="the same, for an effect monster")
     parser.add_argument("--digit-font", help="a .ttf (Yu-Gi-Oh. Matrix Regular Small Caps) the anime frame's "
                         "ATK/DFD digits are drawn from; read, never committed. Without it the retail digits stay")
+    parser.add_argument("--digit-stretch", type=float, default=card_digits.STRETCH,
+                        help="how much wider than the font's own shape the digits are drawn (default %(default)s)")
     parser.add_argument("--id", default="forbidden-memories-hd")
     parser.add_argument("--name", default="Forbidden Memories HD")
     parser.add_argument("--author", default="Unchiga, X@nder")
@@ -599,7 +601,8 @@ def main():
             monster["art"] = art
         manifest["card_layout"] = dict(frame=frame, spell=spell, **monster)
         if args.digit_font:
-            card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"))
+            card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"),
+                               args.digit_stretch)
             # One digit's draw size and step, in the card's own units (10 x 11 is the strip's cell shape).
             manifest["card_layout"]["digits"] = {"image": "textures/anime_digits.png", "width": 10,
                                                  "height": 11, "step": 10}
