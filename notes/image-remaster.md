@@ -254,11 +254,11 @@ python tools/pc/hd_assets_pack.py \
 ```
 
 - The anime frame needs no flag. Its frames (`anime_frame_<kind>.png`) and its
-  ATK/DFD digits (`anime_digits.png`, one 256x210 picture) are in
+  ATK/DFD digits (`anime_digits.png`, one 200x88 picture) are in
   `tools/pc/hd_recipes/` and are copied in. No font is needed to build.
 - `--digit-font <file.ttf>` draws a new digit picture from a font instead
   (the card game's ATK/DFD font, Yu-Gi-Oh! Matrix Regular Small Caps), with
-  `--digit-stretch <n>` (default 1.4) for how wide; the font is read, never
+  `--digit-stretch <n>` (default 1.25) for how wide; the font is read, never
   shipped. `--digit-font none` leaves the digits retail's.
 - To look at a font's digits alone: `python tools/pc/card_digits.py <font.ttf>
   <out.png>`; commit the result as `tools/pc/hd_recipes/anime_digits.png` to

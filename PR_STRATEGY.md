@@ -25,7 +25,7 @@ The PR itself is never pushed to from here: its commits are cherry-picked onto i
 |---|---|
 | `63665d0` | A ritual spell wears magic's frame colour only when the layout has no ritual frame of its own (`CardLayout_RitualWearsMagic`), with a test and test stubs. Answers the review on #302. |
 | `99656ce` | HD pack: no `ritual` frame without a ritual PNG, so the hand's small frame and the card view's big one agree. Needs `63665d0`. |
-| `bf50ab9`, `c096cc7`, `9caae8a` | ATK/DFD digits from a font (strip, engine draw, 64x70 cells, centred on the measured stat boxes). In this order, after the two above. |
+| `bf50ab9`, `c096cc7`, `9caae8a` | ATK/DFD digits from a font (strip of 40x48 texel cells, engine draw, centred on the measured stat boxes; stars fix). In this order, after the two above. |
 
 ## Frame rule these commits follow
 
@@ -35,7 +35,7 @@ Designated: both sizes use the ritual frame. Not designated: both use magic's. A
 
 ## Milestone: ATK/DEF digits (done, untested in game)
 
-Font chosen by the owner: Yu-Gi-Oh! Matrix Regular Small Caps (file "2"), stretch 1.4. Build with `--digit-font <that .ttf>`.
+Font chosen by the owner: Yu-Gi-Oh! Matrix Regular Small Caps (file "2"), stretch 1.25. Build with `--digit-font <that .ttf>`.
 
 
 Goal: the digits fill the stat box and use the card game's font (a thin,

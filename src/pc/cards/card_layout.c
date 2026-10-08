@@ -158,7 +158,7 @@ int CardLayout_Digits(char *path, size_t size, int *w, int *h, int *step)
     mod_file(source.mod, Json_String(Json_Member(digits, "image"), NULL), "\"digits\"", path, size);
     if (!path[0]) return 0;
     *w = (int)Json_Number(Json_Member(digits, "width"), 10);
-    *h = (int)Json_Number(Json_Member(digits, "height"), 11);
+    *h = (int)Json_Number(Json_Member(digits, "height"), 12);
     *step = (int)Json_Number(Json_Member(digits, "step"), *w);
     return *w > 0 && *h > 0 && *step > 0;
 }

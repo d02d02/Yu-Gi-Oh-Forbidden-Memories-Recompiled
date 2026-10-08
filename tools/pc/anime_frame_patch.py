@@ -53,10 +53,10 @@ def main():
         layout.update(centres)
     digits = os.path.join(args.mod, "textures", "anime_digits.png")
     if args.digit_font:
-        card_digits.render(args.digit_font, digits, args.digit_stretch)
+        card_digits.render(args.digit_font, digits, args.digit_stretch, card_digits.paper_of(monster))
     else:
         shutil.copyfile(os.path.join(HERE, "hd_recipes", "anime_digits.png"), digits)
-    layout["digits"] = {"image": "textures/anime_digits.png", "width": 10, "height": 11, "step": 10}
+    layout["digits"] = {"image": "textures/anime_digits.png", "width": 10, "height": 12, "step": 10}
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=4, ensure_ascii=False)
     print(f"{path}: kinds {layout['kinds']}, atk {layout['atk']}, def {layout['def']}, digits {digits}")

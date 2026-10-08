@@ -456,6 +456,9 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
              * raised or lowered stat (rec->field_3C's 0x80/0x40): the retail
              * digits' other palette rows tint those, and the strip has one
              * colour, so they stay retail's. */
+            /* The retail digit code below sets the texture row (uv.b.hi) the
+             * level stars are drawn from, too: set it whichever digits draw. */
+            PRM->uv.b.hi = (PRM->uv.b.hi & 0x80) + 0x10;
             if (CardLayout_FullBleed() && !(rec->field_3C & 0xC0) &&
                 CardLayout_DrawDigits(win->field_30.h.field_30, win->field_30.h.field_32,
                                       atk_layout.x, atk_layout.y, buf1, digits, arg1, arg, EXT)) {

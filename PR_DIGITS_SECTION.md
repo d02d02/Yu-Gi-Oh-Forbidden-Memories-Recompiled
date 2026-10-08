@@ -13,7 +13,7 @@ the retail digits are drawn, as before.
 
 No, and it is not needed to build either. The engine never reads a font. The
 digits are one picture, `tools/pc/hd_recipes/anime_digits.png` (ten digits,
-256x210), drawn once from the card game's ATK/DFD font by
+200x88), drawn once from the card game's ATK/DFD font by
 `tools/pc/card_digits.py` and committed like the frame PNGs. `hd_assets_pack.py`
 copies it into the mod (`textures/anime_digits.png`) and writes the manifest's
 `card_layout.digits`. The engine loads it through the same path as the frame
