@@ -52,7 +52,7 @@ void CardLayout_SetCard(int card_id)
     int color = Cards_FrameColor(card_id);
     int type;
     if (color >= 0) {
-        current_kind = color;
+        current_kind = CardLayout_KindFor(color);
         return;
     }
     type = Cards_Type(card_id);
@@ -60,6 +60,7 @@ void CardLayout_SetCard(int card_id)
     else if (type == CARD_TYPE_TRAP) current_kind = CARD_FRAME_TRAP;
     else if (type == CARD_TYPE_RITUAL) current_kind = CARD_FRAME_RITUAL;
     else current_kind = CARD_FRAME_MONSTER;
+    current_kind = CardLayout_KindFor(current_kind);
 }
 
 int CardLayout_IsSpell(void)
@@ -162,19 +163,35 @@ int CardLayout_Digits(char *path, size_t size, int *w, int *h, int *step)
     return *w > 0 && *h > 0 && *step > 0;
 }
 
-int CardLayout_RitualWearsMagic(void)
+int CardLayout_KindFor(int kind)
 {
     LayoutSource source = find_source();
-    const JsonValue *frame_set, *ritual;
-    const char *own, *magic;
+    const JsonValue *kinds, *frame_set, *ritual;
+    const char *target, *own, *magic;
+    int t;
 
-    if (!full_bleed_of(&source)) return 0;
+    if (kind < 0 || kind >= CARD_FRAME_COUNT || !full_bleed_of(&source)) return kind;
+    /* "kinds": {"<kind>": "<kind it wears>"} -- the layout says, for a kind
+     * it has no frame of its own for, which one it borrows: its picture and
+     * its colour in the hand alike. One hop: the target wears its own. */
+    kinds = Json_Member(source.layout, "kinds");
+    target = Json_String(Json_Member(kinds, frame_kind_names[kind]), NULL);
+    if (target) {
+        for (t = 0; t < CARD_FRAME_COUNT; t++) {
+            if (!strcmp(target, frame_kind_names[t])) return t;
+        }
+        Mods_Note(Mods_Id(source.mod), "card_layout: \"kinds\" \"%s\" names no frame kind", target);
+        return kind;
+    }
+    /* A layout that says nothing about ritual (an older one): a ritual
+     * spell borrows magic's unless the layout has a ritual frame of its own. */
+    if (kind != CARD_FRAME_RITUAL) return kind;
     frame_set = Json_Member(source.layout, "frame");
     ritual = Json_Member(frame_set, frame_kind_names[CARD_FRAME_RITUAL]);
     own = Json_String(Json_Member(ritual, "image"), NULL);
-    if (!own || !*own) return 1;
+    if (!own || !*own) return CARD_FRAME_MAGIC;
     magic = Json_String(Json_Member(frame_for_kind(source.layout, CARD_FRAME_MAGIC), "image"), NULL);
-    return magic && !strcmp(own, magic);
+    return magic && !strcmp(own, magic) ? CARD_FRAME_MAGIC : kind;
 }
 
 int CardLayout_FullBleed(void)

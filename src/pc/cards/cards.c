@@ -110,20 +110,27 @@ static int retail_monster(int id);
 int Cards_HasModel(int id) { return Cards_Valid(id) && retail_monster(Cards_ModelId(id)); }
 int Cards_FrameColor(int id)
 {
-    if (!Cards_Valid(id) || frames[id] == FRAME_TYPE) return -1;
-    /* Left out, a monster with effects of its own is drawn orange, as an
-     * effect monster is in the card game. */
-    if (!frames[id]) {
+    int kind, worn;
+    if (!Cards_Valid(id)) return -1;
+    if (frames[id] == FRAME_TYPE) {
+        kind = Cards_Type(id) == CARD_TYPE_RITUAL ? CARD_FRAME_RITUAL : -1;
+    } else if (frames[id]) {
+        kind = frames[id] - 1;
+    } else {
         const MonsterEffect *effects;
-        /* With the anime frame on (card_layout.h's CardLayout_FullBleed) a
-         * ritual spell wears the magic frame's colour, as the card viewer's
-         * frame does (hd_assets_pack.py draws no ritual frame of its own), so
-         * its hand card and the viewer agree -- unless the layout ships its
-         * own ritual frame, which keeps it. */
-        if (Cards_Type(id) == CARD_TYPE_RITUAL && CardLayout_RitualWearsMagic()) return CARD_FRAME_MAGIC;
-        return Cards_Type(id) < CARD_TYPE_MAGIC && Cards_MonsterEffects(id, &effects) ? CARD_FRAME_ORANGE : -1;
+        /* Left out, a monster with effects of its own is drawn orange, as an
+         * effect monster is in the card game. */
+        if (Cards_Type(id) == CARD_TYPE_RITUAL) kind = CARD_FRAME_RITUAL;
+        else kind = Cards_Type(id) < CARD_TYPE_MAGIC && Cards_MonsterEffects(id, &effects) ? CARD_FRAME_ORANGE : -1;
     }
-    return frames[id] - 1;
+    if (kind < 0) return -1;
+    /* With the anime frame on, a kind the layout has no frame for wears
+     * another's (card_layout.h's CardLayout_KindFor), so a ritual spell's
+     * hand card and its card view agree. */
+    worn = CardLayout_KindFor(kind);
+    if (worn != kind) return worn;
+    /* The type's own ritual is "the type's", not a frame of its own. */
+    return kind == CARD_FRAME_RITUAL && (!frames[id] || frames[id] == FRAME_TYPE) ? -1 : kind;
 }
 int Cards_ExodiaPiece(int id)
 {

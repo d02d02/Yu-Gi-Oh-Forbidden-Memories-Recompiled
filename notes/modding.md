@@ -996,11 +996,15 @@ Forbidden Memories HD carries this as its own `full_bleed` setting, no code
 of its own needed: `tools/pc/hd_assets_pack.py`'s `--anime-frame-<kind>`
 flags default to `tools/pc/hd_recipes/anime_frame_<kind>.png` if present,
 so a normal build picks this up with nothing extra to pass. A kind with no
-art of its own yet borrows another's at read time: `orange` the monster's,
-and a ritual card, the magic's -- its colour too, so the hand's small frame
-and the card view's big one agree. Give `ritual` a frame image different from
-`magic`'s and a ritual card keeps both its own frame and the ritual (blue)
-small one (`CardLayout_RitualWearsMagic`). A
+art of its own yet borrows another's, and the manifest says whose with
+`"kinds": {"ritual": "magic", "orange": "monster", "purple": "monster"}`
+(`CardLayout_KindFor`): a card of that kind is drawn in the other's frame in
+the card view *and* in its colour in the hand, so a ritual spell is green in
+both and an effect monster gold. A kind named in `kinds` ignores any frame
+image of its own; a kind left out keeps its own (and, for ritual with no
+image of its own or magic's, a layout with no `kinds` at all borrows
+magic's). Forbidden Memories HD writes `kinds` for every kind it has no PNG
+for (`--anime-frame-<kind> none` drops one that has). A
 model for writing another: a pure data mod, no `library`, with one
 `full_bleed` setting, a frame per kind and the positions above.
 

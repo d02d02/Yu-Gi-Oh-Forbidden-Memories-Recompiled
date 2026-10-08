@@ -285,17 +285,17 @@ static void spell_frame_equip_uses_magic(void)
     CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_magic.png"));
 }
 
-/* FULL_MANIFEST gives "frame" no "ritual" of its own: a ritual card's frame
- * falls back to "monster"'s, same as any kind a mod has not drawn yet --
- * still a real frame, not none. */
-static void spell_frame_ritual_falls_back_to_monster_frame(void)
+/* FULL_MANIFEST gives "frame" no "ritual" of its own: a ritual card wears
+ * magic's frame (CardLayout_KindFor), the picture its colour in the hand
+ * matches. */
+static void spell_frame_ritual_wears_magic_frame(void)
 {
     reset();
     add_mod("x", "/mods/x", FULL_MANIFEST, 1, "full_bleed", 1);
     fake_card_type[1] = CARD_TYPE_RITUAL;
     CardLayout_SetCard(1);
     CHECK(CardLayout_IsSpell());
-    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame.png"));
+    CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_magic.png"));
 }
 
 /* Cards_FrameColor is an explicit per-card override "whatever its type"
@@ -312,22 +312,35 @@ static void frame_color_override_wins_over_type(void)
     CHECK(!strcmp(CardLayout_FramePath(), "/mods/x/frame_trap.png"));
 }
 
-static void ritual_wears_magic_unless_own_frame(void)
+static void kinds_wear_another(void)
 {
     reset();
-    CHECK(!CardLayout_RitualWearsMagic());   /* no layout */
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_RITUAL);   /* no layout */
     add_mod("a", "/mods/a", FULL_MANIFEST, 1, "full_bleed", 1);
-    CHECK(CardLayout_RitualWearsMagic());   /* no ritual image of its own */
-    reset();
-    add_mod("a", "/mods/a",
-            "{\"id\": \"x\", \"card_layout\": {\"frame\": {\"monster\": {\"image\": \"m.png\"},"
-            "\"magic\": {\"image\": \"g.png\"}, \"ritual\": {\"image\": \"g.png\"}}}}", 1, "full_bleed", 1);
-    CHECK(CardLayout_RitualWearsMagic());   /* same file as magic's */
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_MAGIC);    /* an older layout, no ritual image */
+    CHECK(CardLayout_KindFor(CARD_FRAME_ORANGE) == CARD_FRAME_ORANGE);
     reset();
     add_mod("a", "/mods/a",
             "{\"id\": \"x\", \"card_layout\": {\"frame\": {\"monster\": {\"image\": \"m.png\"},"
             "\"magic\": {\"image\": \"g.png\"}, \"ritual\": {\"image\": \"r.png\"}}}}", 1, "full_bleed", 1);
-    CHECK(!CardLayout_RitualWearsMagic());  /* its own ritual frame stays */
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_RITUAL);   /* its own ritual frame stays */
+    reset();
+    add_mod("a", "/mods/a",
+            "{\"id\": \"x\", \"card_layout\": {\"frame\": {\"monster\": {\"image\": \"m.png\"},"
+            "\"magic\": {\"image\": \"g.png\"}, \"ritual\": {\"image\": \"r.png\"}},"
+            "\"kinds\": {\"ritual\": \"magic\", \"orange\": \"monster\", \"purple\": \"monster\"}}}", 1, "full_bleed", 1);
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_MAGIC);    /* "kinds" wins over an image */
+    CHECK(CardLayout_KindFor(CARD_FRAME_ORANGE) == CARD_FRAME_MONSTER);
+    CHECK(CardLayout_KindFor(CARD_FRAME_PURPLE) == CARD_FRAME_MONSTER);
+    CHECK(CardLayout_KindFor(CARD_FRAME_TRAP) == CARD_FRAME_TRAP);
+    CHECK(notes == 0);
+    reset();
+    add_mod("a", "/mods/a",
+            "{\"id\": \"x\", \"card_layout\": {\"kinds\": {\"ritual\": \"nonsense\"}}}", 1, "full_bleed", 1);
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_RITUAL && notes == 1);
+    reset();
+    add_mod("a", "/mods/a", "{\"id\": \"x\", \"card_layout\": {\"kinds\": {\"ritual\": \"magic\"}}}", 1, "full_bleed", 0);
+    CHECK(CardLayout_KindFor(CARD_FRAME_RITUAL) == CARD_FRAME_RITUAL);   /* full-bleed off */
 }
 
 static void digits_from_mod(void)
@@ -368,9 +381,9 @@ int main(void)
     spell_frame_magic();
     spell_frame_trap();
     spell_frame_equip_uses_magic();
-    spell_frame_ritual_falls_back_to_monster_frame();
+    spell_frame_ritual_wears_magic_frame();
     frame_color_override_wins_over_type();
-    ritual_wears_magic_unless_own_frame();
+    kinds_wear_another();
     digits_from_mod();
     reset();
     printf("card layout: ok\n");

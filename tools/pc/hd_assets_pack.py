@@ -53,10 +53,13 @@ is a part of its own, named as that mod is).
 the full-bleed "card_layout" presentation (notes/modding.md, "Card layout"),
 folded in as the mod's own "full_bleed" setting. Each defaults to
 tools/pc/hd_recipes/anime_frame_<kind>.png if present, else
-<assets>/anime_frame_<kind>.png, else nothing for that kind. Orange then
-falls back to monster's file. A ritual with no PNG gets no "ritual" frame
-at all: the game then draws a ritual spell in magic's frame colour, both in
-the card view and in the hand (CardLayout_RitualWearsMagic).
+<assets>/anime_frame_<kind>.png, else nothing for that kind. A kind with no PNG
+wears another's, in the card view and in the hand alike (orange the monster
+frame, a ritual spell the magic one): the mod's card_layout
+"kinds" says so ({"ritual": "magic", "orange": "monster", "purple":
+"monster"}, CardLayout_KindFor). "none" as a flag's value gives a kind no PNG
+even where tools/pc/hd_recipes has one (--anime-frame-orange none: effect
+monsters wear the monster frame).
 
 Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
                          [--base <pack> ...] [--merge <pack> ...] [--thumb-crops crops.json]
@@ -528,7 +531,7 @@ def build(args):
 def anime_frame_default(kind, explicit, assets):
     """explicit, else tools/pc/hd_recipes/, else <assets>/, else None."""
     if explicit:
-        return explicit
+        return None if explicit.lower() == "none" else explicit
     for folder in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "hd_recipes"), assets):
         candidate = os.path.join(folder, f"anime_frame_{kind}.png")
         if os.path.isfile(candidate):
@@ -580,8 +583,7 @@ def main():
     # would read as a ritual frame of its own (card_layout.c), and the hand's
     # small ritual frame would stay blue beside a green big one.
     anime_frame_sources["ritual"] = anime_frame_default("ritual", args.anime_frame_ritual, args.assets)
-    anime_frame_sources["orange"] = anime_frame_default(
-        "orange", args.anime_frame_orange, args.assets) or anime_frame_sources["monster"]
+    anime_frame_sources["orange"] = anime_frame_default("orange", args.anime_frame_orange, args.assets)
     if any(anime_frame_sources.values()):
         frame = {}
         for kind, source in anime_frame_sources.items():
@@ -613,7 +615,12 @@ def main():
             centres = W.stat_box_centres(os.path.join(args.out, "textures", "anime_frame_monster.png"))
             if centres:
                 monster.update(centres)
-        manifest["card_layout"] = dict(frame=frame, spell=spell, **monster)
+        # A kind with no frame of its own wears another's, in the card view and in the hand
+        # alike (card_layout "kinds"): ritual spells the magic frame (green), effect and purple
+        # monsters the monster frame. Nothing is a copy of another's file under a new name.
+        kinds = {kind: wears for kind, wears in (("ritual", "magic"), ("orange", "monster"), ("purple", "monster"))
+                 if kind not in frame}
+        manifest["card_layout"] = dict(frame=frame, spell=spell, kinds=kinds, **monster)
         if args.digit_font:
             card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"),
                                args.digit_stretch)

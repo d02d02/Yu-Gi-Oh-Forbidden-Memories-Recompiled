@@ -74,10 +74,12 @@ int CardLayout_FramePaths(char (*paths)[1024], int max);
  * the retail digits are drawn then. */
 int CardLayout_Digits(char *path, size_t size, int *w, int *h, int *step);
 
-/* True when the full-bleed layout has no ritual frame image of its own, or
- * it is the same file as magic's: a ritual spell then wears magic's colour
- * (Cards_FrameColor). A layout with its own ritual frame keeps it. */
-int CardLayout_RitualWearsMagic(void);
+/* The frame kind (cards.h CARD_FRAME_*) a card of `kind` wears with the
+ * full-bleed layout on: the layout's own "kinds" entry for it
+ * ({"ritual": "magic"}: its picture and its colour in the hand alike), else
+ * itself -- and, for a layout that says nothing, a ritual with no frame image
+ * of its own (or magic's file) wears magic. Always `kind` with it off. */
+int CardLayout_KindFor(int kind);
 
 /* Which card the next CardLayout_Get/CardLayout_FramePath/CardLayout_IsSpell
  * answer for: its frame (monster/magic/trap/ritual/purple/orange, cards.h
