@@ -21,6 +21,8 @@
  * (win->field_30's own position, or a per-star cursor), never an
  * independent origin. */
 
+#include <stddef.h>
+
 typedef enum {
     CARD_LAYOUT_FRAME,
     CARD_LAYOUT_TITLE,
@@ -63,6 +65,14 @@ const char *CardLayout_FramePath(void);
  * directory, into `paths`; 0 when no mod's layout is on. For
  * CardLayoutArt_Prewarm. */
 int CardLayout_FramePaths(char (*paths)[1024], int max);
+
+/* The full-bleed layout's own ATK/DFD digits ("digits": {"image", "width",
+ * "height", "step"}): `path` is the image (joined with the mod's directory,
+ * card_layout_art.h's digit strip), `w`x`h` one digit's draw size in the
+ * card's own units, `step` the distance between two digits' left edges.
+ * 0, with `path` empty, when the layout gives none (or full-bleed is off):
+ * the retail digits are drawn then. */
+int CardLayout_Digits(char *path, size_t size, int *w, int *h, int *step);
 
 /* True when the full-bleed layout has no ritual frame image of its own, or
  * it is the same file as magic's: a ritual spell then wears magic's colour

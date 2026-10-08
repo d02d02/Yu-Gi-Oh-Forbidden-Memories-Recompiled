@@ -194,6 +194,30 @@ static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, F
         }
     }
 }
+
+/* A full-bleed mod's own digits (card_layout.h's CardLayout_Digits): the
+ * visible digits of `buf` (least significant first, a value past 9 is a
+ * blank), at the mod's size, centred on (cx, cy) in the card's own units.
+ * 0, nothing drawn, when the strip is not there. */
+static int CardLayout_DrawDigits(s32 base_x, s32 base_y, s32 cx, s32 cy, const u8 *buf, s32 count,
+                                 s32 ot, s32 mode, Func80028B08Extra *EXT)
+{
+    char path[1024];
+    s32 dw, dh, step, tpage, u, v, clut, cw, ch, i, shown = 0, x;
+
+    if (!CardLayout_Digits(path, sizeof(path), &dw, &dh, &step)) return 0;
+    if (!CardLayoutArt_DigitCell(0, &tpage, &u, &v, &clut, &cw, &ch)) return 0;
+    for (i = 0; i < count; i++) {
+        if (buf[i] < 10) shown = i + 1;
+    }
+    x = base_x + cx - ((shown - 1) * step + dw) / 2;
+    for (i = shown - 1; i >= 0; i--) {
+        CardLayoutArt_DigitCell(buf[i], &tpage, &u, &v, &clut, &cw, &ch);
+        CardLayout_DrawCell(x, base_y + cy - dh / 2, dw, dh, tpage, u, v, clut, cw, ch, ot, mode, EXT);
+        x += step;
+    }
+    return 1;
+}
 #endif
 
 void func_80028B08(DisplayObject *obj, s32 arg1) {
@@ -423,6 +447,16 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
             }
             Text_EncodeDecimalDigits(attack, digits, buf1);
             Text_EncodeDecimalDigits(defense, digits, buf2);
+            /* A full-bleed mod's own digits, centred on each box. Not for a
+             * raised or lowered stat (rec->field_3C's 0x80/0x40): the retail
+             * digits' other palette rows tint those, and the strip has one
+             * colour, so they stay retail's. */
+            if (CardLayout_FullBleed() && !(rec->field_3C & 0xC0) &&
+                CardLayout_DrawDigits(win->field_30.h.field_30, win->field_30.h.field_32,
+                                      atk_layout.x, atk_layout.y, buf1, digits, arg1, arg, EXT)) {
+                CardLayout_DrawDigits(win->field_30.h.field_30, win->field_30.h.field_32,
+                                      def_layout.x, def_layout.y, buf2, digits, arg1, arg, EXT);
+            } else {
 
             PRM->uv.b.hi = (PRM->uv.b.hi & 0x80) + 0x10;
             PRM->xy.h.x = win->field_30.h.field_30 + atk_left;
@@ -447,6 +481,7 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
                 PRM->uv.b.lo = buf2[i] * 6 + 0x10;
                 DisplayObject_SubmitPacket(PRM, CTX, arg1, arg, EXT);
                 PRM->xy.h.x = PRM->xy.h.x + step;
+            }
             }
         }
 #else

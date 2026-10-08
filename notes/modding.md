@@ -916,6 +916,16 @@ out entirely, though, and it inherits retail's title-plate spot -- now
 covered by full-bleed's bigger art -- so it ends up hidden; giving it a
 position in the stat band keeps it clear of `art`'s own rect.
 
+`digits` (optional) replaces the ATK/DFD numbers with the mod's own while the
+layout is on: `{"image": "digits.png", "width": 10, "height": 11, "step": 10}`.
+The image is a strip of 5 x 2 cells of 40 x 44 texels, digit d in column
+`d % 5` and row `d / 5` (200 x 88, `tools/pc/card_digits.py` draws one from a
+font); `width`/`height` are one digit's size on the card, `step` the distance
+between two digits' left edges (default `width`). Each number is centred on
+its `atk`/`def` point. The strip has one colour, so a raised or lowered stat
+keeps retail's tinted digits. Left out, the retail digits are drawn.
+`hd_assets_pack.py --digit-font <ttf>` builds it for the HD mod.
+
 `stars`'s `x`/`y` is the row's *centre*, like `atk`/`def`'s box centre
 above, not retail's right-anchored first-star position: a card can carry
 up to 12 stars at a fixed 9px each, and `func_80028B08.c` centres however

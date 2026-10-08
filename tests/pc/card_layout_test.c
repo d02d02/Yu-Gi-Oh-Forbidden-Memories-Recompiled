@@ -330,6 +330,31 @@ static void ritual_wears_magic_unless_own_frame(void)
     CHECK(!CardLayout_RitualWearsMagic());  /* its own ritual frame stays */
 }
 
+static void digits_from_mod(void)
+{
+    char path[1024];
+    int w = 0, h = 0, step = 0;
+
+    reset();
+    CHECK(!CardLayout_Digits(path, sizeof(path), &w, &h, &step) && !path[0]);   /* no layout */
+    add_mod("a", "/mods/a", FULL_MANIFEST, 1, "full_bleed", 1);
+    CHECK(!CardLayout_Digits(path, sizeof(path), &w, &h, &step) && !path[0]);   /* no "digits" */
+    reset();
+    add_mod("a", "/mods/a",
+            "{\"id\": \"x\", \"card_layout\": {\"digits\": {\"image\": \"d.png\", \"width\": 9, \"height\": 10}}}",
+            1, "full_bleed", 1);
+    CHECK(CardLayout_Digits(path, sizeof(path), &w, &h, &step));
+    CHECK(!strcmp(path, "/mods/a/d.png") && w == 9 && h == 10 && step == 9);   /* step defaults to width */
+    reset();
+    add_mod("a", "/mods/a",
+            "{\"id\": \"x\", \"card_layout\": {\"digits\": {\"image\": \"d.png\"}}}", 1, "full_bleed", 0);
+    CHECK(!CardLayout_Digits(path, sizeof(path), &w, &h, &step));   /* full-bleed off */
+    reset();
+    add_mod("a", "/mods/a",
+            "{\"id\": \"x\", \"card_layout\": {\"digits\": {\"image\": \"../d.png\"}}}", 1, "full_bleed", 1);
+    CHECK(!CardLayout_Digits(path, sizeof(path), &w, &h, &step) && notes == 1);   /* outside the mod */
+}
+
 int main(void)
 {
     retail_defaults();
@@ -346,6 +371,7 @@ int main(void)
     spell_frame_ritual_falls_back_to_monster_frame();
     frame_color_override_wins_over_type();
     ritual_wears_magic_unless_own_frame();
+    digits_from_mod();
     reset();
     printf("card layout: ok\n");
     return 0;

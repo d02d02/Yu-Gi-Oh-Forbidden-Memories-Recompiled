@@ -68,19 +68,25 @@ int CardLayout_IsSpell(void)
            current_kind == CARD_FRAME_RITUAL;
 }
 
+/* A mod's own file `file` joined with its directory, into `out`; "" for
+ * none (or one outside the mod). `what` names the key, for the note. */
+static void mod_file(int mod, const char *file, const char *what, char *out, size_t size)
+{
+    out[0] = 0;
+    if (file && *file) {
+        if (!Paths_Contained(file) || snprintf(out, size, "%s/%s", Mods_Directory(mod), file) >= (int)size) {
+            Mods_Note(Mods_Id(mod), "card_layout: %s \"image\" \"%s\" is outside the mod", what, file);
+            out[0] = 0;
+        }
+    }
+}
+
 /* `kind`'s "frame" image joined with the mod's own directory, into `out`;
  * "" for none (or one outside the mod). */
 static void frame_path_of(int mod, const JsonValue *layout, int kind, char *out, size_t size)
 {
     const JsonValue *frame = frame_for_kind(layout, kind);
-    const char *file = Json_String(Json_Member(frame, "image"), NULL);
-    out[0] = 0;
-    if (file && *file) {
-        if (!Paths_Contained(file) || snprintf(out, size, "%s/%s", Mods_Directory(mod), file) >= (int)size) {
-            Mods_Note(Mods_Id(mod), "card_layout: \"frame\" \"image\" \"%s\" is outside the mod", file);
-            out[0] = 0;
-        }
-    }
+    mod_file(mod, Json_String(Json_Member(frame, "image"), NULL), "\"frame\"", out, size);
 }
 
 /* The last applied mod, in load order, that declares a "card_layout" key --
@@ -138,6 +144,22 @@ static void rect(const JsonValue *layout, const char *key, int *x, int *y, int *
     *y = (int)Json_Number(Json_Member(part, "y"), dy);
     *w = (int)Json_Number(Json_Member(part, "width"), dw);
     *h = (int)Json_Number(Json_Member(part, "height"), dh);
+}
+
+int CardLayout_Digits(char *path, size_t size, int *w, int *h, int *step)
+{
+    LayoutSource source = find_source();
+    const JsonValue *digits;
+
+    path[0] = 0;
+    if (source.mod < 0 || !full_bleed_of(&source)) return 0;
+    digits = Json_Member(source.layout, "digits");
+    mod_file(source.mod, Json_String(Json_Member(digits, "image"), NULL), "\"digits\"", path, size);
+    if (!path[0]) return 0;
+    *w = (int)Json_Number(Json_Member(digits, "width"), 10);
+    *h = (int)Json_Number(Json_Member(digits, "height"), 11);
+    *step = (int)Json_Number(Json_Member(digits, "step"), *w);
+    return *w > 0 && *h > 0 && *step > 0;
 }
 
 int CardLayout_RitualWearsMagic(void)

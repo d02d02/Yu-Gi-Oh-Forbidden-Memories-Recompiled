@@ -79,6 +79,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import extract_images as X  # noqa: E402
 import card_frame_window as W  # noqa: E402
+import card_digits  # noqa: E402
 
 S = 4
 SECTOR = 2048
@@ -539,6 +540,8 @@ def main():
     parser.add_argument("--anime-frame-trap", help="the same, for trap cards")
     parser.add_argument("--anime-frame-ritual", help="the same, for ritual cards")
     parser.add_argument("--anime-frame-orange", help="the same, for an effect monster")
+    parser.add_argument("--digit-font", help="a .ttf (Yu-Gi-Oh. Matrix Regular Small Caps) the anime frame's "
+                        "ATK/DFD digits are drawn from; read, never committed. Without it the retail digits stay")
     parser.add_argument("--id", default="forbidden-memories-hd")
     parser.add_argument("--name", default="Forbidden Memories HD")
     parser.add_argument("--author", default="Unchiga, X@nder")
@@ -595,6 +598,11 @@ def main():
         if art:
             monster["art"] = art
         manifest["card_layout"] = dict(frame=frame, spell=spell, **monster)
+        if args.digit_font:
+            card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"))
+            # One digit's draw size and step, in the card's own units (10 x 11 is the strip's cell shape).
+            manifest["card_layout"]["digits"] = {"image": "textures/anime_digits.png", "width": 10,
+                                                 "height": 11, "step": 10}
         manifest["settings"].append({
             "key": "full_bleed", "label": "Anime card frame", "type": "bool", "default": 0,
             "description": "An anime-style card frame representation, by d02d02 and Hræzlyr."})

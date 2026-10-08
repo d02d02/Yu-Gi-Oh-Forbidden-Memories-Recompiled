@@ -19,6 +19,18 @@
  * purely decorative. */
 int CardLayoutArt_FrameTile(int col, int row, int *tpage, int *clut, int *w, int *h);
 
+/* The layout's ATK/DFD digits (card_layout.h's CardLayout_Digits): one PNG,
+ * DIGIT_COLS x DIGIT_ROWS cells of DIGIT_CELL_W x DIGIT_CELL_H texels, digit
+ * d in column d % 5, row d / 5 -- 200x88, which tools/pc/hd_assets_pack.py
+ * draws from a font. 1 on success (the cell's page, u, v, clut and texel
+ * size filled), 0 when the layout gives none or it could not be built: the
+ * caller draws the retail digits then. */
+#define CARD_LAYOUT_DIGIT_COLS 5
+#define CARD_LAYOUT_DIGIT_ROWS 2
+#define CARD_LAYOUT_DIGIT_CELL_W 40
+#define CARD_LAYOUT_DIGIT_CELL_H 44
+int CardLayoutArt_DigitCell(int digit, int *tpage, int *u, int *v, int *clut, int *w, int *h);
+
 /* Once a frame (cards.c's Cards_Frame): builds, one a call and only now and
  * then, any frame image of the active layout not built yet, so the cost of
  * building one (decoding a 919x1319 PNG and a 255-colour median cut of it,
