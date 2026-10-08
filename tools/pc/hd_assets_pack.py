@@ -53,11 +53,13 @@ is a part of its own, named as that mod is).
 the full-bleed "card_layout" presentation (notes/modding.md, "Card layout"),
 folded in as the mod's own "full_bleed" setting. Each defaults to
 tools/pc/hd_recipes/anime_frame_<kind>.png if present, else
-<assets>/anime_frame_<kind>.png, else nothing for that kind. A kind with no PNG
-wears another's, in the card view and in the hand alike (orange the monster
-frame, a ritual spell the magic one): the mod's card_layout
-"kinds" says so ({"ritual": "magic", "orange": "monster", "purple":
-"monster"}, CardLayout_KindFor). "none" as a flag's value gives a kind no PNG
+<assets>/anime_frame_<kind>.png, else nothing for that kind.
+
+Each PNG is a frame STYLE (gold, green, pink, blue, orange) and the mod's
+card_layout "frame_for" rules say which cards wear which (anime_frame_layout.py;
+notes/modding.md): ritual spells are green, as in the anime, effect monsters
+orange. A ritual PNG does not replace that: it becomes the player's sub-option
+"Ritual spells: own frame" (off). "none" as a flag's value gives a kind no PNG
 even where tools/pc/hd_recipes has one (--anime-frame-orange none: effect
 monsters wear the monster frame).
 
@@ -95,6 +97,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import extract_images as X  # noqa: E402
 import card_frame_window as W  # noqa: E402
 import card_digits  # noqa: E402
+import anime_frame_layout  # noqa: E402
 
 S = 4
 SECTOR = 2048
@@ -617,12 +620,12 @@ def main():
             centres = W.stat_box_centres(os.path.join(args.out, "textures", "anime_frame_monster.png"))
             if centres:
                 monster.update(centres)
-        # A kind with no frame of its own wears another's, in the card view and in the hand
-        # alike (card_layout "kinds"): ritual spells the magic frame (green), effect and purple
-        # monsters the monster frame. Nothing is a copy of another's file under a new name.
-        kinds = {kind: wears for kind, wears in (("ritual", "magic"), ("orange", "monster"), ("purple", "monster"))
-                 if kind not in frame}
-        manifest["card_layout"] = dict(frame=frame, spell=spell, kinds=kinds, **monster)
+        # Styles and the rules that pick them (anime_frame_layout.py): a ritual spell is green, as in
+        # the anime, unless a ritual PNG was given, which becomes a sub-option; effect monsters orange
+        # when there is an orange PNG, else gold. The card view and the hand follow the same style.
+        styles, extra_settings = anime_frame_layout.build(frame)
+        manifest["card_layout"] = dict(spell=spell, **styles, **monster)
+        manifest["settings"] += extra_settings
         digits = os.path.join(args.out, "textures", "anime_digits.png")
         ready = next((c for c in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "hd_recipes", "anime_digits.png"),
                                   os.path.join(args.assets, "anime_digits.png")) if os.path.isfile(c)), None)
