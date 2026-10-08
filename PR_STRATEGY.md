@@ -40,7 +40,7 @@ Font chosen by the owner: Yu-Gi-Oh! Matrix Regular Small Caps (file "2"), stretc
 
 Goal: the digits fill the stat box and use the card game's font (a thin,
 wide Matrix Regular Small Caps look).
-- `tools/pc/card_digits.py` draws a 200x88 strip (5x2 cells of 40x44) from a .ttf; `hd_assets_pack.py --digit-font <ttf>` adds it as `card_layout.digits`. The font is read, never committed.
+- `tools/pc/card_digits.py` draws a 200x192 strip (5x4 cells of 40x48, the last two rows greyed) from a .ttf; `hd_assets_pack.py --digit-font <ttf>` adds it as `card_layout.digits`. The font is read, never committed.
 - `CardLayout_Digits` (card_layout.c) reads the key; `CardLayoutArt_DigitCell` (card_layout_art.c) puts the strip in the frame's bank (page slot 9); `CardLayout_DrawDigits` (func_80028B08.c) draws each stat's digits at the key's size, centred on the box.
-- Only with the anime frame on; retail and a layout without `digits` are unchanged. A raised/lowered stat keeps retail's tinted digits.
+- Only with the anime frame on; retail and a layout without `digits` are unchanged. The stat the attack screen dims uses the greyed digits in the strip.
 - Known: five digits (stat above 9999) are 50 units wide in a 51-unit box. Not run in the game (no disc data here): check at Internal 4x.

@@ -1,8 +1,9 @@
 """The anime frame's ATK/DFD digits, drawn from a font.
 
 One PNG for the engine (src/pc/cards/card_layout_art.h's digit strip):
-5 x 2 cells of 40 x 48 texels (200 x 96, one texture page), digit d in
-column d % 5, row d / 5: 4 texels a card unit, one a screen pixel at
+5 x 4 cells of 40 x 48 texels (200 x 192, one texture page), digit d in
+column d % 5, row d / 5, the same ten greyed (the stat the attack screen
+dims) two rows further down: 4 texels a card unit, one a screen pixel at
 Internal 4x, anti-aliased against the stat box's own colour, in the
 same 10 x 12 unit proportion the layout draws a digit at ("digits" in
 card_layout). The font is the maker's own file (a Yu-Gi-Oh. Matrix Regular
@@ -11,7 +12,8 @@ and never committed.
 """
 from PIL import Image, ImageDraw, ImageFont
 
-COLS, ROWS = 5, 2
+COLS, ROWS = 5, 4   # the ten digits (two rows), then the same ten greyed (two rows)
+DIM = 0.55           # how far the greyed digits' ink is mixed into the box colour
 CELL_W, CELL_H = 40, 48
 GLYPH_H = 40          # the digits' height in texels: 10 of the box's 17 units (4 texels a unit)
 LIFT = 3              # texels the digits sit above the cell's middle: the stat boxes' cream is about half a unit above their studs' centre
@@ -52,15 +54,17 @@ def render(font_path, out_path, stretch=STRETCH, paper=None):
         wide = mask.resize((round(mask.width * stretch), mask.height), Image.LANCZOS)
         left = (wide.width - mask.width) // 2
         alpha = wide.crop((left, 0, left + mask.width, mask.height)).resize((CELL_W, CELL_H), Image.BOX)
-        cell = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))
-        px, src = cell.load(), alpha.load()
-        for yy in range(CELL_H):
-            for xx in range(CELL_W):
-                a = src[xx, yy] / 255
-                if a >= 0.04:   # the game's texture has one transparent index, no partial alpha: the edge is
-                    # blended into the box's own colour instead
-                    px[xx, yy] = tuple(round(INK[i] * a + paper[i] * (1 - a)) for i in range(3)) + (255,)
-        sheet.paste(cell, (d % COLS * CELL_W, d // COLS * CELL_H))
+        for dim in (0, 1):
+            ink = tuple(INK[i] * (1 - DIM * dim) + paper[i] * DIM * dim for i in range(3))
+            cell = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))
+            px, src = cell.load(), alpha.load()
+            for yy in range(CELL_H):
+                for xx in range(CELL_W):
+                    a = src[xx, yy] / 255
+                    if a >= 0.04:   # the game's texture has one transparent index, no partial alpha: the edge is
+                        # blended into the box's own colour instead
+                        px[xx, yy] = tuple(round(ink[i] * a + paper[i] * (1 - a)) for i in range(3)) + (255,)
+            sheet.paste(cell, (d % COLS * CELL_W, (d // COLS + 2 * dim) * CELL_H))
     sheet.save(out_path)
     return sheet
 

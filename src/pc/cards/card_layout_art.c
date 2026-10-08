@@ -164,7 +164,7 @@ static void digits_build(const char *path)
     }
 }
 
-int CardLayoutArt_DigitCell(int digit, int *tpage, int *u, int *v, int *clut, int *w, int *h)
+int CardLayoutArt_DigitCell(int digit, int dim, int *tpage, int *u, int *v, int *clut, int *w, int *h)
 {
     char path[1024];
     int dw, dh, step, x, y;
@@ -189,7 +189,7 @@ int CardLayoutArt_DigitCell(int digit, int *tpage, int *u, int *v, int *clut, in
     *tpage = 0x80 | (FRAME_BANK << 11) | (DIGITS_SLOT % 8 * 2) | (DIGITS_SLOT / 8 << 4);
     *clut = ((DIGITS_SLOT / 8 * 256 + DIGITS_H) << 6) | (DIGITS_SLOT % 8 * 128 / 16);
     *u = digit % CARD_LAYOUT_DIGIT_COLS * CARD_LAYOUT_DIGIT_CELL_W;
-    *v = digit / CARD_LAYOUT_DIGIT_COLS * CARD_LAYOUT_DIGIT_CELL_H;
+    *v = (digit / CARD_LAYOUT_DIGIT_COLS + (dim ? 2 : 0)) * CARD_LAYOUT_DIGIT_CELL_H;
     *w = CARD_LAYOUT_DIGIT_CELL_W;
     *h = CARD_LAYOUT_DIGIT_CELL_H;
     return 1;

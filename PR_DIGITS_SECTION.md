@@ -13,7 +13,7 @@ the retail digits are drawn, as before.
 
 No, and it is not needed to build either. The engine never reads a font. The
 digits are one picture, `tools/pc/hd_recipes/anime_digits.png` (ten digits,
-200x88), drawn once from the card game's ATK/DFD font by
+200x192), drawn once from the card game's ATK/DFD font by
 `tools/pc/card_digits.py` and committed like the frame PNGs. `hd_assets_pack.py`
 copies it into the mod (`textures/anime_digits.png`) and writes the manifest's
 `card_layout.digits`. The engine loads it through the same path as the frame
@@ -42,7 +42,7 @@ the card view is unchanged.
 
 ### Limits
 
-- One colour: a raised or lowered stat keeps retail's tinted digits.
+- The stat the attack screen dims uses the strip's greyed digits.
 - The strip has one transparent index, no partial alpha: the soft edges are
   blended into the stat box's colour.
 - Not run in the game from this environment (no disc data): checked by the
