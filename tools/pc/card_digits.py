@@ -21,8 +21,7 @@ STRETCH = 1.4         # the game draws these digits wide: a zero is about as wid
 
 def render(font_path, out_path, stretch=STRETCH):
     probe = ImageFont.truetype(font_path, 200)
-    boxes = [probe.getbbox(str(d), anchor="ls") for d in range(10)]
-    top, bottom = min(b[1] for b in boxes), max(b[3] for b in boxes)
+    top, bottom = probe.getbbox("0", anchor="ls")[1::2]   # the zero's height: all the digits are centred on it
     size = 200 * GLYPH_H * SUPER / (bottom - top)
     font = ImageFont.truetype(font_path, round(size))
     sheet = Image.new("RGBA", (COLS * CELL_W, ROWS * CELL_H), (0, 0, 0, 0))

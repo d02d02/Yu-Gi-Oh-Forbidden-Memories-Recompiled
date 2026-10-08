@@ -111,8 +111,8 @@ PARTS = {
 # so a wide row never runs past the frame's edge.
 ANIME_FRAME_MONSTER_LAYOUT = {
     "attribute": {"x": 114, "y": 149},
-    "atk": {"x": 38, "y": 178},
-    "def": {"x": 104, "y": 178},
+    "atk": {"x": 38, "y": 179},   # the stat boxes' centres, measured from the frame (card_frame_window.stat_box_centres)
+    "def": {"x": 102, "y": 179},
     "stars": {"x": 59, "y": 153},
 }
 ANIME_FRAME_SPELL_LAYOUT = {
@@ -599,6 +599,10 @@ def main():
             spell["art"] = spell_art
         if art:
             monster["art"] = art
+        if "monster" in frame:   # the numbers are centred on the boxes the frame draws, not where retail's were
+            centres = W.stat_box_centres(os.path.join(args.out, "textures", "anime_frame_monster.png"))
+            if centres:
+                monster.update(centres)
         manifest["card_layout"] = dict(frame=frame, spell=spell, **monster)
         if args.digit_font:
             card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"),

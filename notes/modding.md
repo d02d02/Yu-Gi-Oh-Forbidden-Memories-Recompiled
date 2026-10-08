@@ -900,8 +900,8 @@ some of them out, with a `"card_layout"` object, no code needed:
     },
     "art": {"x": 3, "y": 3, "width": 134, "height": 139},
     "attribute": {"x": 114, "y": 149},
-    "atk": {"x": 38, "y": 178},
-    "def": {"x": 104, "y": 178},
+    "atk": {"x": 38, "y": 179},
+    "def": {"x": 102, "y": 179},
     "stars": {"x": 59, "y": 153},
     "spell": {
         "art": {"x": 3, "y": 3, "width": 134, "height": 139},
