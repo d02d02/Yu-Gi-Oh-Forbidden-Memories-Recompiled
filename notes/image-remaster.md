@@ -263,6 +263,9 @@ python tools/pc/hd_assets_pack.py \
 - To look at a font's digits alone: `python tools/pc/card_digits.py <font.ttf>
   <out.png>`; commit the result as `tools/pc/hd_recipes/anime_digits.png` to
   change the default.
+- To try the frame kinds and digits on a mod that is already built, without the
+  art folder: `python tools/pc/anime_frame_patch.py <mod folder>` edits its
+  `mod.json` (a `.bak` is kept) and adds `textures/anime_digits.png`.
 - Then zip the mod folder and upload it as before. A player needs the new
   engine and the new zip, and turns on **Anime card frame** in the Mods window.
 
