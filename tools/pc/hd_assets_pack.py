@@ -68,14 +68,16 @@ Usage: hd_assets_pack.py --assets <folder> --out <mod folder> [--data game/DATA]
                          [--anime-frame-trap tools/pc/hd_recipes/anime_frame_trap.png]
                          [--anime-frame-ritual tools/pc/hd_recipes/anime_frame_ritual.png]
                          [--anime-frame-orange tools/pc/hd_recipes/anime_frame_orange.png]
-                         [--digit-font <Matrix Regular Small Caps .ttf>] [--digit-stretch 1.4]
+                         [--digit-font <.ttf> | none] [--digit-stretch 1.4]
                          [--id forbidden-memories-hd] [--name "Forbidden Memories HD"]
 
---digit-font draws the anime frame's ATK/DFD digits from a font
-(tools/pc/card_digits.py): a 256x210 strip, textures/anime_digits.png, and the
-card_layout "digits" key that points at it (notes/modding.md). The font is
-read here and never committed or shipped, only its pictures are. Without it
-the retail digits stay. --digit-stretch is how much wider than the font's own
+The anime frame's ATK/DFD digits are one picture, textures/anime_digits.png (a
+256x210 strip), and the card_layout "digits" key that points at it
+(notes/modding.md). It is tools/pc/hd_recipes/anime_digits.png (else
+<assets>/anime_digits.png) copied in, as the frames are: drawn once, committed,
+no font needed to build. --digit-font draws a new one from a .ttf
+(tools/pc/card_digits.py), the font read here and never shipped; --digit-font
+none leaves the digits retail. --digit-stretch is how much wider than the font's own
 shape they are drawn (default 1.4, the look chosen for Matrix Regular Small
 Caps). The digits are centred on the stat boxes measured from the monster
 frame's corner studs (card_frame_window.stat_box_centres).
@@ -621,9 +623,16 @@ def main():
         kinds = {kind: wears for kind, wears in (("ritual", "magic"), ("orange", "monster"), ("purple", "monster"))
                  if kind not in frame}
         manifest["card_layout"] = dict(frame=frame, spell=spell, kinds=kinds, **monster)
-        if args.digit_font:
-            card_digits.render(args.digit_font, os.path.join(args.out, "textures", "anime_digits.png"),
-                               args.digit_stretch)
+        digits = os.path.join(args.out, "textures", "anime_digits.png")
+        ready = next((c for c in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "hd_recipes", "anime_digits.png"),
+                                  os.path.join(args.assets, "anime_digits.png")) if os.path.isfile(c)), None)
+        if args.digit_font and args.digit_font.lower() != "none":
+            card_digits.render(args.digit_font, digits, args.digit_stretch)
+        elif ready and not args.digit_font:
+            shutil.copyfile(ready, digits)   # the strip drawn once and committed: no font needed
+        else:
+            digits = None
+        if digits:
             # One digit's draw size and step, in the card's own units (10 x 11 is the strip's cell shape).
             manifest["card_layout"]["digits"] = {"image": "textures/anime_digits.png", "width": 10,
                                                  "height": 11, "step": 10}

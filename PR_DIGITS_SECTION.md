@@ -11,32 +11,27 @@ the retail digits are drawn, as before.
 
 ### Is the font compiled?
 
-Not by the game. The engine never reads a font file. The digits are drawn
-**once, when the HD mod is built**, by `tools/pc/card_digits.py` (called from
-`hd_assets_pack.py --digit-font <file.ttf>`), into one 256x210 PNG
-(`textures/anime_digits.png`: ten digits, 64x70 texels each, one texture page).
-That PNG ships inside the mod zip like the frame art. The engine loads it
-through the same path as the frame (`card_layout_art.c`), and
-`func_80028B08.c` draws each digit as one quad at the size in the manifest's
-`card_layout.digits` (`width`, `height`, `step`).
+No, and it is not needed to build either. The engine never reads a font. The
+digits are one picture, `tools/pc/hd_recipes/anime_digits.png` (ten digits,
+256x210), drawn once from the card game's ATK/DFD font by
+`tools/pc/card_digits.py` and committed like the frame PNGs. `hd_assets_pack.py`
+copies it into the mod (`textures/anime_digits.png`) and writes the manifest's
+`card_layout.digits`. The engine loads it through the same path as the frame
+(`card_layout_art.c`), and `func_80028B08.c` draws each digit as one quad at
+the size in `digits` (`width`, `height`, `step`).
 
 ### What the maintainer does to ship it
 
 1. Merge: the engine change is compiled into `memories-pc.exe` and ships with
    the next regular engine release; nothing extra.
-2. Rebuild the HD mod zip with the font: the usual `hd_assets_pack.py`
-   command plus `--digit-font <path to the .ttf>` (the full command is in
-   `notes/image-remaster.md`, "Building the Forbidden Memories HD mod")
-   The font used for the shipped look is Yu-Gi-Oh! Matrix Regular Small Caps
-   (the second of the two files), stretched 1.4x wide; digits are centred on
-   the stat boxes. (`--digit-stretch` changes how wide the digits are drawn; default 1.4).
-   The `.ttf` is read from the maintainer's machine and is never committed.
-   Without `--digit-font` the build is as before and the digits stay retail's.
+2. Rebuild the HD mod zip with the usual `hd_assets_pack.py` command (in
+   `notes/image-remaster.md`): the digits and frames are picked up, no new flag.
+   To change the look, `--digit-font <file.ttf>` draws a new picture
+   (`--digit-stretch` for the width), or replace `anime_digits.png`.
 3. Upload the new zip, as for any HD mod rebuild.
 
-Licence: the pack contains the digits as pictures, not the font. Whether
-those pictures may be redistributed is the font's licence, to check before
-shipping.
+Licence: the repository holds the digits as a picture, not the font. Whether
+that picture may be redistributed is the font's licence, to check.
 
 ### What the player does
 

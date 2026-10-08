@@ -924,7 +924,8 @@ font); `width`/`height` are one digit's size on the card, `step` the distance
 between two digits' left edges (default `width`). Each number is centred on
 its `atk`/`def` point. The strip has one colour, so a raised or lowered stat
 keeps retail's tinted digits. Left out, the retail digits are drawn.
-`hd_assets_pack.py --digit-font <ttf>` builds it for the HD mod.
+`hd_assets_pack.py` copies `tools/pc/hd_recipes/anime_digits.png` in for the HD
+mod (`--digit-font <ttf>` draws a new one).
 
 `stars`'s `x`/`y` is the row's *centre*, like `atk`/`def`'s box centre
 above, not retail's right-anchored first-star position: a card can carry

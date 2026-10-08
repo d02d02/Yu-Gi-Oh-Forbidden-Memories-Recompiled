@@ -239,9 +239,8 @@ the card assets were mapped from a set of redrawn HD images. Two tools:
 
 ### Building the Forbidden Memories HD mod
 
-The same command as for any rebuild, plus the font for the anime frame's
-digits (run from the repository root; the paths in angle brackets are the
-maintainer's own):
+The same command as for any rebuild (run from the repository root; the paths
+in angle brackets are the maintainer's own):
 
 ```
 python tools/pc/hd_assets_pack.py \
@@ -251,22 +250,19 @@ python tools/pc/hd_assets_pack.py \
     --base <hd_screen_pack.py's Build Deck pack> \
     --base <hd_screen_pack.py's duel pack> \
     --merge <portraits pack> \
-    --thumb-crops tools/pc/hd_recipes/thumb_crops.json \
-    --digit-font "<path>/Yu-Gi-Oh_Matrix_Regular_Small_Caps_2.ttf"
+    --thumb-crops tools/pc/hd_recipes/thumb_crops.json
 ```
 
-- `--digit-font` is the only new flag. Leave it out and the build is what it
-  was: the digits stay retail's. It takes a `.ttf` (the card game's ATK/DFD
-  font, Yu-Gi-Oh! Matrix Regular Small Caps), reads it on the build machine,
-  and writes `textures/anime_digits.png` (ten digits, one 256x210 picture) and
-  the manifest's `card_layout.digits` into the mod. The font itself is
-  not in the mod, nor in the repository.
-- `--digit-stretch <n>` (default 1.4) draws the digits wider or narrower.
-- The frame art needs no flag: `--anime-frame-<kind>` default to
-  `tools/pc/hd_recipes/anime_frame_<kind>.png`. The stat boxes' centres, the
-  digits are centred on, are measured from the monster frame in that file.
-- To look at the digits alone: `python tools/pc/card_digits.py <font.ttf>
-  <out.png>`.
+- The anime frame needs no flag. Its frames (`anime_frame_<kind>.png`) and its
+  ATK/DFD digits (`anime_digits.png`, one 256x210 picture) are in
+  `tools/pc/hd_recipes/` and are copied in. No font is needed to build.
+- `--digit-font <file.ttf>` draws a new digit picture from a font instead
+  (the card game's ATK/DFD font, Yu-Gi-Oh! Matrix Regular Small Caps), with
+  `--digit-stretch <n>` (default 1.4) for how wide; the font is read, never
+  shipped. `--digit-font none` leaves the digits retail's.
+- To look at a font's digits alone: `python tools/pc/card_digits.py <font.ttf>
+  <out.png>`; commit the result as `tools/pc/hd_recipes/anime_digits.png` to
+  change the default.
 - Then zip the mod folder and upload it as before. A player needs the new
   engine and the new zip, and turns on **Anime card frame** in the Mods window.
 
