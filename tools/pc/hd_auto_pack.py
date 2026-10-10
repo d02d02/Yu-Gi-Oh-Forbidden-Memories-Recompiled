@@ -37,6 +37,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hd_screen_pack as hs  # noqa: E402
+from upscale_pack import read_cuts  # noqa: E402
 
 CHUNK_PIXELS = 400_000   # pixels per batch of readings (the 16x outputs are held until written)
 
@@ -109,6 +110,8 @@ def main():
     parser.add_argument("--out", default="tmp/pc/packs/hd-auto")
     parser.add_argument("--exclude", action="append", default=[], help="a mod's textures/manifest.json whose images are skipped")
     parser.add_argument("--only", action="append", default=[], help="keep entries whose file contains this text")
+    parser.add_argument("--cuts", action="append", default=[],
+                        help="assets.txt of a MEMORIES_DUMP_TEXTURES run: each piece it saw the game cut from a sheet is enlarged alone")
     parser.add_argument("--limit", type=int, help="stop after this many groups (a trial run)")
     parser.add_argument("--upscaler")
     parser.add_argument("--model", default="realesrgan-x4plus")
@@ -132,6 +135,7 @@ def main():
             continue
         seen.add(identity(entry))
         todo.append(entry)
+    cuts = read_cuts(args.cuts, entries) if args.cuts else {}
     groups = groups_of(todo)
     if args.limit:
         groups = groups[:args.limit]
@@ -176,7 +180,9 @@ def main():
             else:
                 joined = os.path.join(work, "joined.png")
                 Image.fromarray(rgba).save(joined)
-                reading = hs.Reading(joined, {"method": method, "rects": [[0, 0, w, h]]})
+                own = cuts.get(members[0]["file"]) if len(members) == 1 else None
+                sheet = {"method": method, "rects": own or [[0, 0, w, h]], "alone": bool(own)}
+                reading = hs.Reading(joined, sheet)
             counts[method] += len(members)
             batch.append((members, reading))
             pixels += w * h
