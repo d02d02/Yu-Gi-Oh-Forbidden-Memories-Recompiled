@@ -63,6 +63,37 @@ def classify(rgba, pixel_colors):
     return "pixel" if len(colors) <= pixel_colors else "model"
 
 
+class Made:
+    def __init__(self, out):
+        self.out = out
+
+
+def xbr_whole(rgba):
+    """hd_screen_pack's xBR path for a whole picture in three ffmpeg runs instead of two per region: the
+    colors enlarged and pulled back to the texels, the outline smoothed (regions up to SMOOTH_MAX across; a
+    bigger one keeps its texels' hard edge, so a box does not grow past its corners)."""
+    rgb, mask = rgba[..., :3], rgba[..., 3] >= 128
+    filled = hs.fill_transparent(rgb, mask)
+    big = hs.back_project(hs.SCALER.xbr(filled), filled, mask)
+    alpha = hs.xbr_alpha(mask)
+    labels, count = hs.regions(mask)
+    ys, xs = np.nonzero(mask)
+    lab = labels[ys, xs]
+    top, left = np.full(count + 1, 1 << 30), np.full(count + 1, 1 << 30)
+    bottom, right = np.full(count + 1, -1), np.full(count + 1, -1)
+    np.minimum.at(top, lab, ys)
+    np.minimum.at(left, lab, xs)
+    np.maximum.at(bottom, lab, ys)
+    np.maximum.at(right, lab, xs)
+    big_regions = np.maximum(bottom - top, right - left) + 1 > hs.SMOOTH_MAX
+    hard = hs.blocks(mask).astype(np.uint8) * 255
+    use_hard = hs.blocks(big_regions[labels])
+    alpha = np.where(use_hard, hard, alpha)
+    out = np.dstack([big, alpha]).astype(np.uint8)
+    out[alpha == 0, :3] = hs.blocks(rgba)[alpha == 0][:, :3]
+    return out
+
+
 def groups_of(entries):
     """Entries to make together: a story picture's columns (one palette) side by side, everything else alone."""
     joined = collections.OrderedDict()
@@ -120,7 +151,7 @@ def main():
             nonlocal batch, pixels
             if not batch:
                 return
-            hs.build([reading for _, reading in batch])
+            hs.build([reading for _, reading in batch if isinstance(reading, hs.Reading)])
             for members, reading in batch:
                 at = 0
                 for entry in members:
@@ -139,10 +170,13 @@ def main():
             if method == "skip":
                 skipped += len(members)
                 continue
-            joined = os.path.join(work, "joined.png")
-            Image.fromarray(rgba).save(joined)
             h, w = rgba.shape[:2]
-            reading = hs.Reading(joined, {"method": method, "rects": [[0, 0, w, h]]})
+            if method == "pixel":
+                reading = Made(xbr_whole(rgba))
+            else:
+                joined = os.path.join(work, "joined.png")
+                Image.fromarray(rgba).save(joined)
+                reading = hs.Reading(joined, {"method": method, "rects": [[0, 0, w, h]]})
             counts[method] += len(members)
             batch.append((members, reading))
             pixels += w * h
