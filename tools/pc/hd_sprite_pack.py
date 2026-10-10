@@ -31,6 +31,71 @@ from upscale_pack import read_cuts  # noqa: E402
 S = hs.S
 
 
+def redraw_label(big, text, font_file):
+    """The grey (inactive) button label set anew in a serif italic: the old letters erased from the enlarged
+    composite (its grain carried over them), the word set at the old letters' height and across their width
+    (the letters' spacing taken up by tracking), light with a thin dark outline."""
+    from PIL import ImageDraw, ImageFilter, ImageFont
+    from scipy import ndimage as ndi
+    h, w = big.shape[:2]
+    zone = np.zeros((h, w), bool)
+    zone[9 * S:24 * S, 5 * S:w - 5 * S] = True
+    lum = big.astype(float).mean(2)
+    tophat = lum - ndi.grey_opening(lum, size=(5 * S, 5 * S))   # bright marks narrower than 5 texels, whatever their level
+    letters = zone & (tophat > 28)
+    letters = ndi.binary_opening(letters, iterations=2)
+    ys, xs = np.nonzero(letters)
+    rows, cols = letters.sum(1), letters.sum(0)
+    ry, rx = np.nonzero(rows > 0.3 * rows.max())[0], np.nonzero(cols > 0.12 * cols.max())[0]
+    x0, x1, y0, y1 = int(rx.min()), int(rx.max()) + 1, int(ry.min()), int(ry.max()) + 1
+    strokes = ndi.binary_dilation(zone & (tophat > 18), iterations=4) & zone
+    keep = ~strokes
+    est = np.stack([ndi.gaussian_filter(np.where(keep, big[..., c], 0).astype(float), 6) for c in range(3)], -1)
+    est /= np.maximum(ndi.gaussian_filter(keep.astype(float), 6), 1e-3)[..., None]
+    clean = np.where(strokes[..., None], est, big)
+    # the word: capitals of the old letters' height, tracked out to their width
+    size = 400
+    font = ImageFont.truetype(font_file, size)
+    cap = font.getbbox("H")
+    scale = (y1 - y0) / (cap[3] - cap[1])
+    font = ImageFont.truetype(font_file, max(8, round(size * scale)))
+    cap = font.getbbox("H")
+    glyphs = []
+    for ch in text:
+        if ch == " ":
+            glyphs.append((None, font.getlength(" ") * 0.9))
+            continue
+        left, top, right, bottom = font.getbbox(ch)
+        g = Image.new("L", (right - left + 8, bottom - top + 8))
+        ImageDraw.Draw(g).text((4 - left, 4 - top), ch, font=font, fill=255)
+        glyphs.append(((g, top), right - left))
+    natural = sum(adv for _, adv in glyphs)
+    gaps = max(1, len(glyphs) - 1)
+    track = max(0.0, ((x1 - x0) - natural) / gaps)
+    cover = Image.new("L", (w, h))
+    baseline = y0 - cap[1] * 0 - 0
+    pen = float(x0)
+    cap_top = cap[1]
+    for item, adv in glyphs:
+        if item is not None:
+            g, top = item
+            cover.paste(g, (int(round(pen)) - 4, y0 + (top - cap_top) - 4), g)
+        pen += adv + track
+    if pen - track > x1 + 2 * S:   # too wide even untracked: squeeze to the old width
+        cover = cover.crop((x0, 0, int(pen - track), h)).resize((x1 - x0, h), Image.LANCZOS)
+        full = Image.new("L", (w, h)); full.paste(cover, (x0, 0)); cover = full
+    if os.environ.get('HD_LABEL_DEBUG'):
+        viz = np.dstack([letters * 255, strokes * 255, np.zeros_like(letters, dtype=np.uint8)]).astype(np.uint8)
+        Image.fromarray(np.vstack([big, viz])).save(os.path.join(os.environ['HD_LABEL_DEBUG'], text.replace(' ', '_') + '.png'))
+        print('label', text, 'box', x0, x1, y0, y1, 'scale', round(scale, 3), 'cover', cover.getbbox(), 'natural', natural, 'track', round(track, 1), 'glyphs', [a for _, a in glyphs])
+    out = Image.fromarray(clean.round().astype(np.uint8))
+    grow = cover.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(1.0))
+    out.paste(Image.new("RGB", out.size, (10, 8, 12)), mask=grow.point(lambda v: int(v * 0.8)))
+    fill = np.linspace(232, 180, h)[:, None, None] * np.ones((1, w, 3))
+    out.paste(Image.fromarray(fill.astype(np.uint8)), mask=cover)
+    return np.array(out)
+
+
 def column_of(file):
     return int(file.split("-c")[1].split("-")[0])
 
@@ -56,9 +121,12 @@ def main():
     parser.add_argument("--bank", required=True, help="<MRG file>:<sector of the one-sector bank>")
     parser.add_argument("--cuts", action="append", required=True)
     parser.add_argument("--only", default="sheets/menu/a", help="the sheet family the bank's parts are cut from")
+    parser.add_argument("--labels", help='JSON file {"<frame offset hex>": "WORD"}: grey button labels redrawn in --font')
+    parser.add_argument("--font", default=r"C:\Windows\Fonts\timesi.ttf")
     parser.add_argument("--upscaler")
     parser.add_argument("--model", default="realesrgan-x4plus")
     args = parser.parse_args()
+    labels = json.load(open(args.labels, encoding="utf-8")) if args.labels else {}
     path, sector = args.bank.rsplit(":", 1)
     with open(path, "rb") as handle:
         handle.seek(int(sector) * 2048)
@@ -110,10 +178,15 @@ def main():
             mask = canvas[..., 3] >= 128
             rgb = hs.fill_transparent(canvas[..., :3], mask)
             big = hs.back_project(big, rgb, mask)
-            for part, (file, (x, y, w, h)) in zip(parts, found):
+            plain = big
+            if labels.get(f"{offset:04x}"):
+                big = redraw_label(big, labels[f"{offset:04x}"], args.font)
+            for index, (part, (file, (x, y, w, h))) in enumerate(zip(parts, found)):
                 piece = sheet(file)[y:y + h, x:x + w]
                 opaque = piece[..., 3] == 255
-                region = big[(part[1] - y0) * S:(part[1] - y0 + h) * S, (part[0] - x0) * S:(part[0] - x0 + w) * S]
+                # the last part is the frame, shared by every button: it never takes a label's letters
+                source = plain if index == len(parts) - 1 else big
+                region = source[(part[1] - y0) * S:(part[1] - y0 + h) * S, (part[0] - x0) * S:(part[0] - x0 + w) * S]
                 acc, count = total.setdefault(file, (np.zeros((256 * S, 128 * S, 3)), np.zeros((256 * S, 128 * S))))
                 keep = hs.blocks(opaque)
                 acc[y * S:(y + h) * S, x * S:(x + w) * S][keep] += region[keep]
