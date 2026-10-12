@@ -38,16 +38,31 @@ work is (1) deciding which retail cards get the purple/ritual-monster/god frames
 3. Frame art must stay the **light originals** (no contrast boost: that was made for the old single 177x254 texture, obsolete since the
    3x3 tile grid in `card_layout_art.c`).
 
-## Questions to settle (for the user)
-1. **Fusion**: retail FM has no fusion class or frame. Which cards wear the purple frame? (e.g. every card that is only reachable as a
-   fusion result? Dragon Master Knight and similar?). Needs a definition before any tagging.
-2. **Ritual monsters**: the results of the 15 retail ritual cards (ids 665-679 in `notes/card-catalog.csv`) — extract the exact result ids from the
-   engine's ritual table, tag them `ritual`.
-3. **God frames**: retail has no Obelisk/Ra/Slifer; keep the three styles for card mods that tag `obelisk`/`ra`/`slifer`?
-4. **Commit the PNGs?** ~6 MB for the ten frames + digits (the script regenerates them from the originals in `hacking\asset\frame`).
-5. **Defaults**: `enabled` and `full_bleed` on (this mod's whole purpose) vs HD's off-by-default.
-6. **Do tags merge or override** when two card mods tag the same retail card? (check `notes/more-cards.md` "Tags" and the "Where two mods
-   disagree" table before shipping a `cards` section.)
+## Decisions (user, 2026-10-12)
+1. **Fusion (and any per-card frame) is chosen by the mod user**, not by us: a list "card -> frame style", with examples in the README.
+   Syntax: card id, or a card name, to a style name (`fusion`, `ritual_monster`, `obelisk`, ...). **A card we do not name is left exactly as
+   it is: we never write a name, description, art, password or stats.**
+2. **Ritual monsters**: the results of the game's ritual table get the `ritual_monster` frame (the user can still override per card).
+3. God frames stay, for card mods and for the per-card list.
+4. The mod ships as **one zip** with the images inside; the repo folder `mods/anime-art/` is the mod (PNGs committed there).
+5. **On by default** (`enabled`, `full_bleed`). More options below.
+
+## Why a small code mod, and not `cards` entries (checked in `src/pc/cards/cards.c`, v0.3.0)
+A `{"replace": <id>, "tags": [...]}` entry would work for the engine's `tag` rules, **but a `replace` entry that gives no name/description/art/
+password resets them** (`names[id] = NULL` etc., line ~1557: "so a later mod's entry for the same card without one does not keep an
+earlier mod's"). Only `notes` has a shortcut (`notes_only`). So tagging cards through `cards` would wipe another mod's custom names for
+the same cards. Do not do that.
+Instead the mod has a tiny code mod (`library`) that **hooks `Cards_HasTag(int id, const char *tag)`** (a port global, hookable by name
+via `host->hook`, as 3d-monsters hooks game functions) and answers "yes" for the style the user's list gives that card, and for ritual results.
+The frame rules in `mod.json` stay plain `{"tag": "<style>", "style": "<style>"}`. No card data is touched, so nothing can be overridden.
+The same hook can turn a `choice` setting into a tag (layout rules only read a `bool` setting), which is how multi-way options work.
+- Per-card list: `mods/anime-art/frames.json` (user edited), e.g. `{"364": "ritual_monster", "Dragon Master Knight": "fusion"}`.
+- Ritual results: read from the game's ritual table at run time (`gDuel_awRitualData`, valid only while a duel is loaded; the mod caches
+  the results while it is) or a generated fallback list — to be settled when implementing.
+- Needs checking: is `Cards_HasTag` ever inlined/LTO'd (cross-TU call from `card_layout.c`, so expected hookable); added (mod) cards ids.
+
+## Option ideas (to choose from)
+See the discussion; every option is a declarative setting; multi-way ones are `choice` settings answered by the code mod.
 
 ## Test recipe
 Official v0.3.0 exe folder + `mods/anime-art` only, clean profile: `MEMORIES_USER_DIR=<dir>`, `MEMORIES_DEBUG_DECK=374,380,332,683,364,670`
