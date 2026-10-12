@@ -156,6 +156,7 @@
             ]
         }
     ],
+    "textures": "art",
     "settings": [
         {
             "key": "full_bleed",
@@ -170,6 +171,13 @@
             "type": "bool",
             "default": 1,
             "description": "Ritual spells wear the blue ritual frame instead of the green magic frame."
+        },
+        {
+            "key": "smooth_card_art",
+            "label": "Smooth card art",
+            "type": "bool",
+            "default": 1,
+            "description": "Shows the Forbidden Memories HD card pictures enlarged, so the anime frame does not stretch them into stair-steps at Internal 4x. Needs the Forbidden Memories HD card art; turn off to use the HD pack's own."
         }
     ],
     "card_layout": {
@@ -245,6 +253,12 @@
                 "width": 140,
                 "height": 197,
                 "hand_color": "orange"
+            },
+            "purple": {
+                "image": "textures/anime_frame_fusion.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "purple"
             }
         },
         "frame_for": [
@@ -266,6 +280,14 @@
             },
             {
                 "tag": "ritual",
+                "style": "ritual_monster"
+            },
+            {
+                "tag": "purple",
+                "style": "fusion"
+            },
+            {
+                "tag": "blue",
                 "style": "ritual_monster"
             },
             {

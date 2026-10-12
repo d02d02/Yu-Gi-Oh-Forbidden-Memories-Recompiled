@@ -3,12 +3,16 @@
     "name": "My anime frames",
     "version": "1.0",
     "author": "you",
-    "description": "Example: choose the Anime Art frame of single cards. A card is a name or an id; the tag is the frame.",
+    "description": "Example: the Anime Art frame of single cards. A card is its name or its id, the tag is the frame.",
     "min_api": 11,
     "enabled": true,
     "after": ["anime-art"],
     "cards": [
-        { "replace": "Thousand Dragon", "tags": ["fusion"] },
-        { "replace": 392,              "tags": ["fusion"] }
+        { "replace": "Thousand Dragon",         "tags": ["fusion"] },
+        { "replace": 392,                       "tags": ["fusion"] },
+        { "replace": "Dark Magician",           "tags": ["ritual"] },
+        { "replace": 364,                       "tags": [] },
+        { "replace": "Blue-eyes Ultimate Dragon", "tags": ["obelisk"] },
+        { "replace": 1,                         "tags": ["slifer"] }
     ]
 }

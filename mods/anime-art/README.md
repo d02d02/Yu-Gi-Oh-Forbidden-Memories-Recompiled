@@ -26,9 +26,8 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 
 ## Choosing the frame of a card
 
-Frames follow a card's *tag*. A card with the tag `fusion` wears the purple fusion frame, `ritual` the ritual-monster frame, and
-`obelisk`, `ra`, `slifer` the god frames. Nothing in the disc is a fusion monster or a god, so **you decide**, with a small mod of
-your own that gives the cards a tag. It lives next to Anime Art in the `mods` folder:
+A card wears the frame of its **tag**. You give cards tags in a small mod of your own, in the `mods` folder next to Anime Art.
+This example is tested: copy `mods/anime-art/examples/my-anime-frames` to `mods/` and edit it.
 
 `mods/my-frames/mod.json`
 ```json
@@ -39,19 +38,39 @@ your own that gives the cards a tag. It lives next to Anime Art in the `mods` fo
     "enabled": true,
     "after": ["anime-art"],
     "cards": [
-        { "replace": "Thousand Dragon",       "tags": ["fusion"] },
-        { "replace": 392,                     "tags": ["fusion"] },
-        { "replace": "Black Luster Soldier",  "tags": ["fusion"] },
-        { "replace": 380,                     "tags": [] }
+        { "replace": "Thousand Dragon",           "tags": ["fusion"] },
+        { "replace": 392,                         "tags": ["fusion"] },
+        { "replace": "Dark Magician",             "tags": ["ritual"] },
+        { "replace": 364,                         "tags": [] },
+        { "replace": "Blue-eyes Ultimate Dragon", "tags": ["obelisk"] },
+        { "replace": 1,                           "tags": ["slifer"] }
     ]
 }
 ```
 
-- A card is its **name** (as the game spells it) or its **id** (1 to 722; `notes/card-catalog.csv` lists them).
-- `"tags": ["fusion"]` gives the frame. `"tags": []` takes a tag away (the last line above puts Blue-eyes Ultimate Dragon back to the
-  plain gold frame). A card with no tag wears its kind's frame.
-- A ready copy of this example is in `mods/anime-art/examples/my-anime-frames`. Copy the folder up into `mods/` and edit.
-- The FM Editor's Cards tab sets the same tags (its **Tags** box) if you would rather not write JSON.
+What each line does: Thousand Dragon and Metalzoa (392) get the purple fusion frame; Dark Magician gets the blue ritual-monster
+frame; Black Luster Soldier (364) is a ritual result and would be blue, `[]` takes its tag away so it is gold again; Blue-eyes
+Ultimate Dragon gets the Obelisk frame and Blue-eyes White Dragon (1) the Slifer frame (just for the look).
+
+- A card is its **name** (as the game spells it) or its **id** (1 to 722; `notes/card-catalog.csv`).
+- A tag is **one word**, written exactly as in the table. Do not combine words (`ritual/blue` is not a tag): write `"ritual"`
+  or `"blue"`, one entry per card, a card has the tags you list.
+- `"tags": []` takes a card's tags away: it wears the frame of its kind again. A card you do not list is not touched.
+
+| Tag word | Frame |
+|---|---|
+| `fusion` or `purple` | purple |
+| `ritual` or `blue` | blue ritual monster (two plaques) |
+| `obelisk` | Obelisk (blue) |
+| `ra` | Ra (yellow) |
+| `slifer` | Slifer (red) |
+
+Without a tag a card wears its kind's frame (monster gold, effect monster orange, spell and equip green, trap pink, ritual spell
+blue); the 24 monsters the disc's ritual table summons are tagged `ritual` by Anime Art itself.
+
+**The gods:** the vanilla game has no Obelisk, Ra or Slifer card and Anime Art does not add any. A mod that adds those cards
+(a cards mod) tags them `obelisk`, `ra`, `slifer` and they wear those frames; on vanilla you can still give any card a god
+frame as above, only for the look.
 
 ### Your cards keep their name and everything else
 

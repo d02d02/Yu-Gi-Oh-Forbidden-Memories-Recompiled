@@ -24,3 +24,6 @@
 # Tool-generated language caches
 **/__pycache__/
 *.py[cod]
+
+# Anime Art: the enlarged card pictures are generated (tools/pc/anime_art_card_art.py), not committed (about 135 MB)
+mods/anime-art/art/
