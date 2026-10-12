@@ -99,3 +99,11 @@ on the field, listed in `test-scenes/field.json`, ready for the card viewer (TRI
 - The images in `textures/` have power-of-two sizes on purpose (1024x2048, 1024x1024, 256x256): the v0.3.0 engine draws a frame
   of any other size invisibly at Internal 2x/4x on some graphics drivers. `tools/pc/anime_art_textures.py` rebuilds them from the
   original artwork.
+
+## Credits
+
+- Card pictures ("Smooth card art" is the HD pictures, enlarged): Forbidden Memories HD, **Unchiga** and **X@nder**.
+- The Anime Art mod: **d02d02**.
+- The anime frame artwork: **d02d02** and **Hræzlyr**.
+
+Full list in `CREDITS.txt`.

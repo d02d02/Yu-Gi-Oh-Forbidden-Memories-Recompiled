@@ -125,5 +125,7 @@ Good to know
 
 Credits
 -------
-Anime card frames: d02d02 and Hraezlyr.
 Card pictures (Smooth card art): Forbidden Memories HD, Unchiga and X@nder, enlarged.
+Anime Art mod: d02d02.
+Anime frame artwork: d02d02 and Hræzlyr.
+Full list: CREDITS.txt

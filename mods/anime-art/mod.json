@@ -2,7 +2,7 @@
     "id": "anime-art",
     "name": "Anime Art",
     "version": "1.0.0",
-    "author": "d02d02, Hr\u00e6zlyr",
+    "author": "Unchiga, X@nder (card pictures, Forbidden Memories HD); d02d02, Hr\u00e6zlyr (anime frames)",
     "description": "Anime-style full-bleed card frames: one frame per card kind (and fusion, ritual and god frames you choose), the art enlarged to fill it, ATK/DEF in the frame's plaques. Standalone: does not need Forbidden Memories HD. See HOWTO.txt.",
     "min_api": 11,
     "enabled": true,
