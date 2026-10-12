@@ -1,8 +1,8 @@
 {
     "id": "anime-art",
     "name": "Anime Art",
-    "version": "1.1.0",
-    "author": "Unchiga, X@nder (HD pictures, Forbidden Memories HD); d02d02, Hr\u00e6zlyr (anime frames)",
+    "version": "1.2.0",
+    "author": "Unchiga, X@nder (HD pictures); d02d02, Hr\u00e6zlyr (anime/frame art)",
     "description": "Anime-style full-bleed card frames (one per card kind; fusion, ritual and god frames for the cards you choose), the art enlarged to fill them, ATK/DEF in the plaques, and the Forbidden Memories HD pictures everywhere (switchable). Standalone: nothing else needed. See HOWTO.txt.",
     "min_api": 11,
     "enabled": true,
@@ -12,30 +12,39 @@
     ],
     "priority": -1000,
     "cards": [
-        { "replace": 356, "tags": ["ritual"] },
-        { "replace": 357, "tags": ["ritual"] },
-        { "replace": 360, "tags": ["ritual"] },
-        { "replace": 362, "tags": ["ritual"] },
-        { "replace": 364, "tags": ["ritual"] },
-        { "replace": 365, "tags": ["ritual"] },
-        { "replace": 374, "tags": ["ritual"] },
-        { "replace": 380, "tags": ["ritual"] },
-        { "replace": 701, "tags": ["ritual"] },
-        { "replace": 702, "tags": ["ritual"] },
-        { "replace": 703, "tags": ["ritual"] },
-        { "replace": 704, "tags": ["ritual"] },
-        { "replace": 705, "tags": ["ritual"] },
-        { "replace": 706, "tags": ["ritual"] },
-        { "replace": 708, "tags": ["ritual"] },
-        { "replace": 709, "tags": ["ritual"] },
-        { "replace": 710, "tags": ["ritual"] },
-        { "replace": 715, "tags": ["ritual"] },
-        { "replace": 716, "tags": ["ritual"] },
-        { "replace": 717, "tags": ["ritual"] },
-        { "replace": 718, "tags": ["ritual"] },
-        { "replace": 719, "tags": ["ritual"] },
-        { "replace": 720, "tags": ["ritual"] },
-        { "replace": 722, "tags": ["ritual"] }
+        { "replace": 356, "tags": ["known_ritual"] },
+        { "replace": 357, "tags": ["known_ritual"] },
+        { "replace": 360, "tags": ["known_ritual"] },
+        { "replace": 362, "tags": ["known_ritual"] },
+        { "replace": 364, "tags": ["known_ritual"] },
+        { "replace": 365, "tags": ["known_ritual"] },
+        { "replace": 374, "tags": ["known_ritual"] },
+        { "replace": 380, "tags": ["known_ritual"] },
+        { "replace": 701, "tags": ["known_ritual"] },
+        { "replace": 702, "tags": ["known_ritual"] },
+        { "replace": 703, "tags": ["known_ritual"] },
+        { "replace": 704, "tags": ["known_ritual"] },
+        { "replace": 705, "tags": ["known_ritual"] },
+        { "replace": 706, "tags": ["known_ritual"] },
+        { "replace": 708, "tags": ["known_ritual"] },
+        { "replace": 709, "tags": ["known_ritual"] },
+        { "replace": 710, "tags": ["known_ritual"] },
+        { "replace": 715, "tags": ["known_ritual"] },
+        { "replace": 716, "tags": ["known_ritual"] },
+        { "replace": 717, "tags": ["known_ritual"] },
+        { "replace": 718, "tags": ["known_ritual"] },
+        { "replace": 719, "tags": ["known_ritual"] },
+        { "replace": 720, "tags": ["known_ritual"] },
+        { "replace": 722, "tags": ["known_ritual"] },
+        { "replace": 15, "tags": ["known_fusion"] },
+        { "replace": 37, "tags": ["known_fusion"] },
+        { "replace": 69, "tags": ["known_fusion"] },
+        { "replace": 168, "tags": ["known_fusion"] },
+        { "replace": 215, "tags": ["known_fusion"] },
+        { "replace": 217, "tags": ["known_fusion"] },
+        { "replace": 392, "tags": ["known_fusion"] },
+        { "replace": 613, "tags": ["known_fusion"] },
+        { "replace": 713, "tags": ["known_fusion"] }
     ],
     "textures": "hd",
     "settings": [
@@ -52,6 +61,20 @@
             "type": "bool",
             "default": 1,
             "description": "Shows the Forbidden Memories HD pictures everywhere (card art, thumbnails, stars, Build Deck, duel, portraits). Off: the original game pictures."
+        },
+        {
+            "key": "ritual_monsters",
+            "label": "Ritual monster frames",
+            "type": "bool",
+            "default": 0,
+            "description": "On: the known ritual monsters (the 24 the game's ritual table summons) wear the blue ritual-monster frame. Off: gold."
+        },
+        {
+            "key": "fusion_monsters",
+            "label": "Fusion monster frames",
+            "type": "bool",
+            "default": 0,
+            "description": "On: the well-known fusion monsters (Thousand Dragon, Metalzoa, Gaia the Dragon Champion, ...) wear the purple frame. Off: gold."
         },
         {
             "key": "ritual_green",
@@ -170,6 +193,16 @@
             {
                 "tag": "blue",
                 "style": "ritual_monster"
+            },
+            {
+                "tag": "known_ritual",
+                "setting": "ritual_monsters",
+                "style": "ritual_monster"
+            },
+            {
+                "tag": "known_fusion",
+                "setting": "fusion_monsters",
+                "style": "fusion"
             },
             {
                 "class": "ritual_spell",

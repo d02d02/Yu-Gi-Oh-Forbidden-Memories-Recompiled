@@ -8,7 +8,7 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 
 1. Close the game. Extract the zip into the game folder (next to `memories-pc.exe`), so that `mods/anime-art/mod.json` exists.
 2. Start the game. **Everything is on by default**: the anime frames and the HD pictures. **Game > Mods > Anime Art** has the options:
-   *Anime card frame* (off = the original card views), *HD assets* (off = the original game pictures), and *Ritual spells: green frame*.
+   *Anime card frame* (off = the original card views), *HD assets* (off = the original game pictures), *Ritual monster frames* and *Fusion monster frames* (both off by default), and *Ritual spells: green frame*.
 3. Looks best at **Video > Resolution > Internal 4x** with **HD text** on.
 
 You do **not** need the Forbidden Memories HD pack: its pictures are inside this mod. If you already have the pack installed, nothing breaks: leave it or delete it, you see the same HD pictures either way.
@@ -22,25 +22,26 @@ You do **not** need the Forbidden Memories HD pack: its pictures are inside this
 | green | spells and equips (and ritual spells, if *own frame* is off) |
 | pink | traps |
 | blue (ritual spell) | ritual spells |
-| ritual monster (blue) | the monsters the ritual table summons (the 24 of the disc) |
-| fusion (purple) | **only the cards you choose** (below) |
+| ritual monster (blue) | the 24 monsters the ritual table summons, with *Ritual monster frames* **on** (off by default) |
+| fusion (purple) | the well-known fusion monsters, with *Fusion monster frames* **on** (off by default), and any card you tag (below) |
 | Obelisk, Ra, Slifer | **only the cards you choose** |
 
 ## Choosing the frame of a card
 
 A card wears the frame of its **tag**. Add tags in Anime Art's own `mods/anime-art/mod.json`: open it, find the `"cards"` list (one
-line per card; the 24 ritual monsters are there) and add your lines **at the end**, a comma after the previous last line:
+line per card; the 24 ritual monsters are there) and add your lines **at the end**, a comma after the previous last line. The shipped lines tag the known ritual monsters `known_ritual`
+and the known fusion monsters `known_fusion` (they show only while their option is on); your own tags always show:
 
 ```json
-        { "replace": 722, "tags": ["ritual"] },
-        { "replace": "Thousand Dragon", "tags": ["fusion"] },
-        { "replace": 392, "tags": ["fusion"] }
+        { "replace": 713, "tags": ["known_fusion"] },
+        { "replace": "Dark Magician", "tags": ["fusion"] },
+        { "replace": 1, "tags": ["slifer"] }
     ],
 ```
 
 - A card is its **name** (as the game spells it) or its **id** (1 to 722; `notes/card-catalog.csv`).
 - A tag is **one word** from the table below (`ritual/blue` is not a tag). `"tags": []` takes a card's tags away.
-- To change one of the 24 ritual monsters, edit its own line (a second line for the same card also works, with a harmless log note).
+- To change a known ritual or fusion monster, edit its own line (`[]` = plain gold; a second line for the same card also works, with a harmless log note).
 - An update replaces `mod.json`: keep a copy of your lines, or use a mod of your own (below).
 
 | Tag word | Frame |
@@ -88,8 +89,7 @@ on the field, listed in `test-scenes/field.json`, ready for the card viewer (TRI
 
 ## Credits
 
-- The HD pictures ("HD assets"; the card art is enlarged): Forbidden Memories HD, **Unchiga** and **X@nder**.
-- The Anime Art mod: **d02d02**.
-- The anime frame artwork: **d02d02** and **Hræzlyr**.
+HD pictures - Forbidden Memories HD by **Unchiga** and **X@nder**.
+Anime/Frame Art - **d02d02** and **Hræzlyr**.
 
 Full list in `CREDITS.txt`.
