@@ -17,6 +17,9 @@ import sys
 
 from PIL import Image
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anime_art_digits import soften  # noqa: E402
+
 MONSTER = (1024, 2048)
 SPELL = (1024, 1024)
 DIGITS = (256, 256)
@@ -60,7 +63,7 @@ def main():
         image.resize(size, Image.LANCZOS).save(os.path.join(out, name), optimize=True)
         print("%-34s %s -> %s" % (name, image.size, size))
     if os.path.exists(args.digits):
-        image = Image.open(args.digits).convert("RGBA")
+        image = soften(Image.open(args.digits))   # real soft edges (see anime_art_digits.py), then power-of-two
         image.resize(DIGITS, Image.LANCZOS).save(os.path.join(out, "anime_digits.png"), optimize=True)
         print("%-34s %s -> %s" % ("anime_digits.png", image.size, DIGITS))
     else:

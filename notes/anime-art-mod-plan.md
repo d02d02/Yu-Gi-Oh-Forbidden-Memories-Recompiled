@@ -75,3 +75,23 @@ in the hand, screenshot at Internal 4x and 1x.
 **Quick test (L1 + Option):** the Test scenes mod (`dev` worktree `mods/test-scenes`, prebuilt `test-scenes.o` in the main checkout's
 `tmp\pc\shared-mods\test-scenes`) loads on the stock v0.3.0 engine. Enable it (`mod.test-scenes=1`), hold L1 and confirm Option on the
 title screen: a Simon Muran duel with the ten monsters in its `field.json` face up. Test folder: `C:\YFM-anime-art-test\yfm-redecomp-v0.3.0\run.bat`.
+
+## ATK/DFD digits: the pale contour in the attack animation (fixed in 1.2.2)
+- **Symptom:** during a battle, the digits on the big cards (the greyed stat above all) had a white, pixelated outline; the card viewer's
+  digits were fine.
+- **Cause:** `anime_digits.png` (the HD pack's picture) has only clear or opaque pixels; its anti-aliased edge pixels are opaque with the
+  plaque's cream already blended in (about 15% of the dark set's opaque pixels, 7% of the greyed set's). Over the cream plaque at neutral
+  colour that ring is invisible. The attack screen draws the greyed set (`rec->field_3C & 0x80/0x40`, func_80028B08.c), whose ink is light
+  grey, and it fades and flashes the card, so the baked ring no longer matches what is behind it and shows as a pale contour. The viewer
+  never draws the greyed set and never flashes, so it never showed.
+- **Fix:** `tools/pc/anime_art_digits.py` turns the ring into real alpha (flat ink colour, coverage in alpha); `anime_art_textures.py`
+  runs it when it builds the digits; `tools/pc/anime_art_check.py` rejects a digit picture with a baked light edge (old: 15.4% / 7.2%
+  pale; new: passes) and checks the rest of the mod folder before a release.
+- **How it was captured (reuse):** test-scene state at frame 1700 (`MEMORIES_SAVE_STATE=1700:<file>`), then reload it
+  (`MEMORIES_LOAD_STATE`) with the bench input (Cross, Right, Cross, Right, Cross, Cross, Start) and dump the picture
+  (`MEMORIES_DUMP_FRAME=<n> MEMORIES_DUMP_PICTURE=1`, Internal 4x): the opponent's attack appears at frames about 1150-1600 (white flash at
+  1200 and 1550, settled battle screen at 1500).
+
+## Open: a trap or a spell activated during an attack takes the attacking monster's frame
+Reported 2026-10-13: the card shown for an activated trap wears the attacker's (monster) frame. Not investigated; needs a save state with
+the right cards.

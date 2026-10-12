@@ -1,7 +1,7 @@
 {
     "id": "anime-art",
     "name": "Anime Style",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "author": "Unchiga, X@nder (HD pictures); d02d02, Hr\u00e6zlyr (anime/frame art)",
     "description": "Anime Style: full-bleed anime card frames (one per card kind; ritual, fusion and god frames), the art enlarged to fill them, ATK/DEF in the plaques, and the Forbidden Memories HD pictures built in (switchable). Standalone: nothing else needed. See HOWTO.txt.",
     "min_api": 11,
