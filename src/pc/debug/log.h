@@ -21,4 +21,13 @@ int Log_Tail(int n, const char **lines);
 
 #define LOG(channel, ...) do { if (Log_Wanted(channel)) Log_Printf(channel, __VA_ARGS__); } while (0)
 
+
+/* DEBUG(v0.3.0 frame): the first `first` hits of this call site, then every `every`th. */
+#define LOG_SAMPLED(channel, first, every, ...) \
+    do { \
+        static unsigned sampled_n_; \
+        if (Log_Wanted(channel) && (sampled_n_++ < (unsigned)(first) || sampled_n_ % (unsigned)(every) == 0)) \
+            Log_Printf(channel, __VA_ARGS__); \
+    } while (0)
+
 #endif

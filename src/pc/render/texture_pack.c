@@ -2,6 +2,7 @@
 #include "texture_pack.h"
 #include "texture_dump.h"
 #include "soft_gpu.h"
+#include "pc/debug/log.h"
 #include "pc/mods/json.h"
 #include "pc/platform/paths.h"
 #include "pc/compat/signal.h"
@@ -158,6 +159,7 @@ static void bank_read(BankImage *image)
     FILE *file;
     png.version = PNG_IMAGE_VERSION;
     file = fopen(image->file, "rb");
+    LOG(LOG_CARD_LAYOUT, "bank_read: fopen('%s') -> %s", image->file, file ? "ok" : "FAILED");
     if (!file || !png_image_begin_read_from_stdio(&png, file)) {
         fprintf(stderr, "memories-pc: texture bank image: %s cannot be read: %s\n", image->file, png.message);
         if (file) fclose(file);
@@ -182,11 +184,14 @@ static void bank_read(BankImage *image)
     while (image->levels < BANK_LEVELS &&
            (image->width[image->levels - 1] > 1 || image->height[image->levels - 1] > 1))
         if (!bank_halve(image, image->levels - 1)) break;
+    LOG(LOG_CARD_LAYOUT, "bank_read: '%s' %dx%d, %d levels", image->file, image->width[0], image->height[0],
+        image->levels);
 }
 
 static void bank_free(BankImage *image)
 {
     int i;
+    LOG(LOG_CARD_LAYOUT, "bank_free: '%s' (key %u) -- generation will change", image->file, image->key);
     for (i = 0; i < image->levels; i++) free(image->level[i]);
     free(image->file);
     free(image);
@@ -247,12 +252,14 @@ void TexturePack_BankSpritesUseOwner(unsigned owner) { bank_sprite_owner = owner
 void TexturePack_BankSpritesClear(unsigned owner)
 {
     int i, kept = 0;
+    LOG(LOG_CARD_LAYOUT, "BankSpritesClear(owner=%u): %d sprites before", owner, bank_sprite_count);
     for (i = 0; i < bank_sprite_count; i++) {
         BankSprite *at = &bank_sprites[i];
         if (owner == UINT_MAX || at->owner == owner) { bank_release(at->image); continue; }
         if (kept != i) bank_sprites[kept] = *at;
         kept++;
     }
+    LOG(LOG_CARD_LAYOUT, "BankSpritesClear: %d kept", kept);
     bank_sprite_count = kept;
     bank_cached = -1;
     if (!kept) { free(bank_sprites); bank_sprites = NULL; }
@@ -267,7 +274,12 @@ int TexturePack_AddBankSpriteCrop(int bank, int page_x, int page_y, int depth, i
     BankImage *image;
     int i;
     if (!file || bank <= 0 || w <= 0 || h <= 0 || u < 0 || v < 0 || u + w > 256 || v + h > 256 ||
-        source_x < 0 || source_y < 0 || (source_w == 0) != (source_h == 0) || source_w < 0 || source_h < 0) return 0;
+        source_x < 0 || source_y < 0 || (source_w == 0) != (source_h == 0) || source_w < 0 || source_h < 0) {
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 120,
+                    "AddBankSpriteCrop REJECTED: file=%s bank=%d u=%d v=%d w=%d h=%d src=(%d,%d %dx%d)",
+                    file ? file : "(null)", bank, u, v, w, h, source_x, source_y, source_w, source_h);
+        return 0;
+    }
     if (depth == 2) clut_x = clut_y = 0; /* direct color: no palette */
     for (i = 0; i < bank_sprite_count && !at; i++) {
         BankSprite *same = &bank_sprites[i];
@@ -278,7 +290,13 @@ int TexturePack_AddBankSpriteCrop(int bank, int page_x, int page_y, int depth, i
     if (at && at->clut_x == clut_x && at->clut_y == clut_y && !strcmp(at->image->file, file) &&
         at->source_x == source_x && at->source_y == source_y && at->source_w == source_w && at->source_h == source_h)
         return 1;
-    if (!(image = bank_image(file))) return 0;
+    if (!(image = bank_image(file))) {
+        LOG(LOG_CARD_LAYOUT, "AddBankSpriteCrop: bank_image('%s') returned NULL", file);
+        return 0;
+    }
+    if (!image->level[0])
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 10, 200, "AddBankSpriteCrop: '%s' registered but its PNG FAILED to read (level[0] NULL)",
+                    file);
     image->users++;
     if (!at) {
         more = realloc(bank_sprites, (size_t)(bank_sprite_count + 1) * sizeof(*more));
@@ -291,6 +309,11 @@ int TexturePack_AddBankSpriteCrop(int bank, int page_x, int page_y, int depth, i
     bank_cached = -1;
     bank_trim();
     TextureDump_BankSample = TexturePack_BankSample;
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 240,
+                "AddBankSpriteCrop OK: owner=%u bank=%d page=(%d,%d) depth=%d clut=(%d,%d) uv=(%d,%d) %dx%d <- '%s' "
+                "crop=(%d,%d %dx%d) sprites now %d, image %dx%d",
+                bank_sprite_owner, bank, page_x, page_y, depth, clut_x, clut_y, u, v, w, h, file, source_x, source_y,
+                source_w, source_h, bank_sprite_count, image->width[0], image->height[0]);
     return 1;
 }
 
@@ -327,7 +350,23 @@ int TexturePack_BankEntryForRegion(int bank, int page_x, int page_y, int depth, 
     for (i = bank_sprite_count - 1; i >= 0; i--) {
         BankSprite *at = &bank_sprites[i];
         if (bank_sprite_in(at, bank, page_x, page_y, depth, clut_x, clut_y) && u0 < at->u + at->w && u1 > at->u &&
-            v0 < at->v + at->h && v1 > at->v && at->image->level[0]) return -i - 1;
+            v0 < at->v + at->h && v1 > at->v && at->image->level[0]) {
+            LOG_SAMPLED(LOG_CARD_LAYOUT, 30, 300, "BankEntryForRegion HIT bank=%d page=(%d,%d) clut=(%d,%d) uv=(%d..%d,%d..%d) -> sprite %d",
+                        bank, page_x, page_y, clut_x, clut_y, u0, u1, v0, v1, i);
+            return -i - 1;
+        }
+    }
+    if (bank == 13) {
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 30, 300,
+                    "BankEntryForRegion MISS bank=%d page=(%d,%d) depth=%d clut=(%d,%d) uv=(%d..%d,%d..%d); %d sprites registered",
+                    bank, page_x, page_y, depth, clut_x, clut_y, u0, u1, v0, v1, bank_sprite_count);
+        for (i = 0; i < bank_sprite_count && i < 12; i++) {
+            const BankSprite *at = &bank_sprites[i];
+            LOG_SAMPLED(LOG_CARD_LAYOUT, 120, 3000,
+                        "   registered #%d: owner=%u bank=%d page=(%d,%d) depth=%d clut=(%d,%d) uv=(%d,%d %dx%d) png_ok=%d",
+                        i, at->owner, at->bank, at->page_x, at->page_y, at->depth, at->clut_x, at->clut_y, at->u, at->v,
+                        at->w, at->h, at->image->level[0] != NULL);
+        }
     }
     return 0;
 }

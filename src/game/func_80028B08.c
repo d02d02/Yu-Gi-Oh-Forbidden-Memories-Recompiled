@@ -177,6 +177,12 @@ static void CardLayout_DrawCell(s32 x, s32 y, s32 w, s32 h, s32 tpage, s32 u, s3
     art.v2 = art.v3 = (u8)(v + cell_h - 1);
     setXY4(&art, (short)x, (short)y, (short)(x + w), (short)y,
            (short)x, (short)(y + h), (short)(x + w), (short)(y + h));
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 240,
+                "DrawCell: xy=(%d,%d) wh=(%d,%d) tpage=0x%x (bank %d) clut=0x%x uv=(%d,%d) cell=%dx%d ot=%d "
+                "mode_in=0x%x art_mode=0x%x projected=%d attribute=0x%x rgb=0x%06x pad2=%d",
+                (int)x, (int)y, (int)w, (int)h, (unsigned)tpage, (int)((tpage >> 11) & 15), (unsigned)clut,
+                (int)u, (int)v, (int)cell_w, (int)cell_h, (int)ot, (unsigned)mode, (unsigned)art_mode,
+                (int)projected, (unsigned)attribute, (unsigned)(rgb & 0xFFFFFF), (int)art.pad2);
     DisplayObject_SubmitPacket((SpritePrim *)attribute, (Func80028B08Ctx *)&art,
                                ot, art_mode, EXT);
 }
@@ -192,7 +198,11 @@ static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, u
             s32 x0 = x + w * col / CARD_LAYOUT_FRAME_COLS, x1 = x + w * (col + 1) / CARD_LAYOUT_FRAME_COLS;
             s32 y0 = y + h * row / CARD_LAYOUT_FRAME_ROWS, y1 = y + h * (row + 1) / CARD_LAYOUT_FRAME_ROWS;
 
-            if (!CardLayoutArt_FrameTile(col, row, &tpage, &clut, &tile_w, &tile_h)) return;
+            if (!CardLayoutArt_FrameTile(col, row, &tpage, &clut, &tile_w, &tile_h)) {
+                LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 120,
+                            "DrawFrame: FrameTile(col=%d,row=%d) returned 0 -- NOTHING DRAWN for this frame", col, row);
+                return;
+            }
             CardLayout_DrawCell(x0, y0, x1 - x0, y1 - y0, tpage, 0, 0, clut, tile_w, tile_h, ot, mode, rgb, EXT);
         }
     }
@@ -604,6 +614,10 @@ void func_80028B08(DisplayObject *obj, s32 arg1) {
     /* Last on purpose (CardLayout_DrawFrame's own comment explains why):
      * submitted after art/digits/stars/attribute above, so it ends up
      * drawn before them -- underneath. */
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 240,
+                "func_80028B08 end: FullBleed=%d FramePath='%s' obj=%p win=%p arg1(ot)=%d arg(mode)=0x%x color=0x%x",
+                CardLayout_FullBleed(), CardLayout_FramePath(), (void *)obj, (void *)win, (int)arg1, (unsigned)arg,
+                (unsigned)win->field_0C);
     if (CardLayout_FullBleed()) {
         LOG(LOG_CARD_LAYOUT, "DrawFrame: x=%d y=%d w=%d h=%d ot=%d mode=0x%x",
             win->field_30.h.field_30, win->field_30.h.field_32, frame_layout.w, frame_layout.h,

@@ -94,6 +94,8 @@ static FrameImage *image_for(const char *path, int build)
     }
     /* The PNG itself for above 1x (TexturePack_AddBankSprite), read with
      * the rest of the build rather than when a tile is first drawn. */
+    LOG(LOG_CARD_LAYOUT, "frame: built '%s': png %dx%d, indices=%s", path, slot->png_w, slot->png_h,
+        slot->indices ? "ok" : "FAILED");
     if (slot->indices && slot->png_w > 0) TexturePack_BankImagePreload(path);
     return slot;
 }
@@ -124,13 +126,19 @@ int CardLayoutArt_FrameTile(int col, int row, int *tpage, int *clut, int *w, int
     const char *path = CardLayout_FramePath();
     const FrameImage *image;
     int tile = row * FRAME_COLS + col;
-    int sx, sy, sx1, sy1;
+    int sx = 0, sy = 0, sx1 = 0, sy1 = 0, added = -1;
     if (col < 0 || col >= FRAME_COLS || row < 0 || row >= FRAME_ROWS) return 0;
     if (!path || !*path) { LOG(LOG_CARD_LAYOUT, "FrameTile: no path"); return 0; }
     if (!(bank = SoftGpu_Bank(FRAME_BANK))) { LOG(LOG_CARD_LAYOUT, "FrameTile: no bank"); return 0; }
     image = image_for(path, 1);
-    if (!image || !image->indices) return 0;
+    if (!image || !image->indices) {
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 120, "FrameTile: image_for('%s') -> %s", path,
+                    image ? "built but NO indices (conversion failed)" : "NULL");
+        return 0;
+    }
     if (strcmp(bank_path, path)) {
+        LOG(LOG_CARD_LAYOUT, "FrameTile: storing '%s' into bank %d (png %dx%d, previous bank_path '%s')", path,
+            FRAME_BANK, image->png_w, image->png_h, bank_path);
         store(bank, image);
         snprintf(bank_path, sizeof(bank_path), "%s", path);
     }
@@ -145,9 +153,15 @@ int CardLayoutArt_FrameTile(int col, int row, int *tpage, int *clut, int *w, int
         sx1 = (col + 1) * FRAME_TILE_W * image->png_w / FRAME_W;
         sy = row * FRAME_TILE_H * image->png_h / FRAME_H;
         sy1 = (row + 1) * FRAME_TILE_H * image->png_h / FRAME_H;
-        TexturePack_AddBankSpriteCrop(FRAME_BANK, (tile % 8 * 2) * 64, tile / 8 * 256, 1, 0, FRAME_CLUT_Y, 0, 0,
+        added = TexturePack_AddBankSpriteCrop(FRAME_BANK, (tile % 8 * 2) * 64, tile / 8 * 256, 1, 0, FRAME_CLUT_Y, 0, 0,
                                       FRAME_TILE_W, FRAME_TILE_H, path, sx, sy, sx1 - sx, sy1 - sy);
     }
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 30, 240,
+                "FrameTile(col=%d,row=%d tile=%d): path='%s' png=%dx%d bank=%d tpage=0x%x clut=0x%x "
+                "page_x=%d page_y=%d src_crop=(%d,%d %dx%d) AddBankSpriteCrop=%d (png_w>0: %d)",
+                col, row, tile, path, image->png_w, image->png_h, FRAME_BANK, (unsigned)*tpage, (unsigned)*clut,
+                (tile % 8 * 2) * 64, tile / 8 * 256, image->png_w > 0 ? sx : -1, image->png_w > 0 ? sy : -1,
+                image->png_w > 0 ? sx1 - sx : -1, image->png_w > 0 ? sy1 - sy : -1, added, image->png_w > 0);
     return 1;
 }
 
@@ -233,11 +247,14 @@ void CardLayoutArt_Prewarm(void)
     int i, count, dw, dh, dstep;
 
     if (++frame % 30) return;   /* the layout changes with a setting, not a frame */
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 10, 20, "Prewarm: tick %u", frame);
     if (CardLayout_Digits(digits, sizeof(digits), &dw, &dh, &dstep) && strcmp(digits_path, digits)) {
         digits_build(digits);
         return;
     } else if (!digits[0]) TexturePack_BankSpritesClear(TEXTURE_BANK_OWNER_LAYOUT_DIGITS);
     count = CardLayout_FramePaths(paths, FRAME_CACHE);
+    LOG_SAMPLED(LOG_CARD_LAYOUT, 10, 20, "Prewarm: CardLayout_FramePaths -> %d paths%s", count,
+                count ? "" : " (=> frame bank sprites CLEARED)");
     if (!count) TexturePack_BankSpritesClear(TEXTURE_BANK_OWNER_LAYOUT_FRAME);
     for (i = 0; i < count; i++) {
         if (!image_for(paths[i], 0)) {

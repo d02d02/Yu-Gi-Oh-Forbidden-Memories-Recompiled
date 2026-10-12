@@ -1242,6 +1242,9 @@ static void set_page(uint32_t value)
     /* Bits 11-14 name a texture bank (soft_gpu.h); one never made is VRAM. */
     int bank = (int)((value >> 11) & (SOFT_GPU_BANKS - 1));
     state.bank = bank && SoftGpu_BankPixels(bank) ? bank : 0;
+    if (bank == 13)
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 30, 600, "gl set_page: tpage word=0x%x names bank %d -> state.bank=%d (SoftGpu_BankPixels %s)",
+                    (unsigned)value, bank, state.bank, SoftGpu_BankPixels(bank) ? "present" : "ABSENT");
     if (state.bank) bank_used[state.bank] = 1;
     state.page_x = (value & 0xf) * 64;
     state.page_y = ((value >> 4) & 1) * 256;
@@ -1311,6 +1314,13 @@ static size_t polygon(const uint32_t *words, size_t count)
         ? (scale > 1 ? TexturePack_BankEntryForRegion(state.bank, state.page_x, state.page_y, state.depth, state.clut_x,
                                                       state.clut_y, piece[4], piece[5], piece[6], piece[7]) : 0)
         : TexturePack_EntryFor(state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y, v[0].u, v[0].v)) : 0;
+    if (state.bank == 13)
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 300,
+                    "gl polygon bank13: textured=%d scale=%d quad=%d page=(%d,%d) depth=%d clut=(%d,%d) uv-box=(%d..%d,%d..%d) "
+                    "xy0=(%d,%d) -> state.pack=%d%s",
+                    textured, scale, quad, state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y, (int)piece[4],
+                    (int)piece[6], (int)piece[5], (int)piece[7], (int)v[0].x, (int)v[0].y, state.pack,
+                    scale > 1 ? "" : " (scale 1: bank sprites are NOT consulted here, VRAM-bank texels used)");
     if (quad && textured && hd_hud && !state.pack && !state.bank) {
         /* A digit or the panel drawn as a quad (a clip-tested field card):
          * a texture pack's image, where one paints it, comes first. */
@@ -1441,6 +1451,11 @@ static size_t rectangle(const uint32_t *words, size_t count)
         ? (scale > 1 ? TexturePack_BankEntryFor(state.bank, state.page_x, state.page_y, state.depth, state.clut_x,
                                                 state.clut_y, base.u, base.v) : 0)
         : TexturePack_EntryFor(state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y, base.u, base.v)) : 0;
+    if (state.bank == 13)
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 300,
+                    "gl sprite bank13: textured=%d scale=%d page=(%d,%d) depth=%d clut=(%d,%d) uv=(%d,%d) wh=(%d,%d) -> state.pack=%d",
+                    textured, scale, state.page_x, state.page_y, state.depth, state.clut_x, state.clut_y, (int)base.u,
+                    (int)base.v, w, h, state.pack);
     if (w && h && textured && hd_hud && !state.pack && !state.bank) {
         /* HD numbers and labels (a texture pack's image comes first). */
         int atlas_u, atlas_v;
@@ -1994,7 +2009,10 @@ static int bind_pack_entry(int entry)
 {
     const unsigned char *rgba;
     int width, height, crop_left, crop_width, rows, per, texture_width, texture_height;
-    if (!TexturePack_EntryImage(entry, &rgba, &width, &height, &crop_left, &crop_width, &rows, &per)) return 0;
+    if (!TexturePack_EntryImage(entry, &rgba, &width, &height, &crop_left, &crop_width, &rows, &per)) {
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 300, "bind_pack_entry(%d): TexturePack_EntryImage FAILED", entry);
+        return 0;
+    }
     texture_width = fitted(width);
     texture_height = fitted(height);
     if (entry < 0) {
@@ -2034,13 +2052,21 @@ static int bind_pack_entry(int entry)
         } else glBindTexture(GL_TEXTURE_2D, bank_textures[at].texture);
         gl_ActiveTexture(GL_TEXTURE0);
         if (!TexturePack_BankEntryRect(entry, &u, &v, &w, &h) ||
-            !TexturePack_BankEntrySource(entry, &sx, &sy, &sw, &sh)) return 0;
+            !TexturePack_BankEntrySource(entry, &sx, &sy, &sw, &sh)) {
+            LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 300, "bind_pack_entry(%d): BankEntryRect/Source FAILED", entry);
+            return 0;
+        }
         level = TexturePack_BankEntryLevelFor(entry, scale);
         if (level >= bank_textures[at].levels) level = bank_textures[at].levels - 1;
         sx = sx * texture_width / width;
         sy = sy * texture_height / height;
         sw = (sw * texture_width + width - 1) / width;
         sh = (sh * texture_height + height - 1) / height;
+        LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 300,
+                    "bind_pack_entry(%d) bank sprite: image %dx%d -> texture %dx%d, sprite uv=(%d,%d %dx%d) source=(%d,%d %dx%d) "
+                    "level=%d/%d scale=%d glError=0x%x",
+                    entry, width, height, texture_width, texture_height, u, v, w, h, sx, sy, sw, sh, level,
+                    bank_textures[at].levels, scale, (unsigned)glGetError());
         gl_Uniform4i(u_bank_sprite, u, v, w, h);
         gl_Uniform4i(u_bank_source, sx, sy, sw, sh);
         gl_Uniform1i(u_bank_level, level);
@@ -2178,7 +2204,12 @@ static void flush_runs(void)
         scissor_words(run->clip[0], run->clip[1], run->clip[2], run->clip[3], origin_x, origin_y);
         gl_Uniform4i(u_window, run->window[0] * 8, run->window[1] * 8, (run->window[2] & run->window[0]) * 8,
                     (run->window[3] & run->window[1]) * 8);
+        if (run->pack < 0)
+            LOG_SAMPLED(LOG_CARD_LAYOUT, 40, 300, "gl flush run: bank-sprite pack=%d first=%u count=%u scale=%d", run->pack,
+                        (unsigned)run->first, (unsigned)run->count, scale);
         if (!run->pack || !bind_pack_entry(run->pack)) {
+            if (run->pack)
+                LOG_SAMPLED(LOG_CARD_LAYOUT, 20, 300, "gl flush run: bind_pack_entry(%d) FAILED -> falls back to VRAM", run->pack);
             gl_Uniform4i(u_pack_entry, 0, 0, 0, 0);
             gl_Uniform4i(u_bank_sprite, 0, 0, 0, 0);
             gl_Uniform4i(u_bank_source, 0, 0, 0, 0);
