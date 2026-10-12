@@ -124,8 +124,8 @@ static int bank_cached = -1; /* the current primitive normally stays in one spri
  * texels' colors do not bleed into the edges. */
 static int bank_halve(BankImage *image, int from)
 {
-    int width = image->width[from], height = image->height[from], half_w = (width + 1) / 2,
-        half_h = (height + 1) / 2, x, y;
+    int width = image->width[from], height = image->height[from], half_w = width > 1 ? width / 2 : 1,
+        half_h = height > 1 ? height / 2 : 1, x, y;
     const unsigned char *in = image->level[from];
     unsigned char *out = malloc((size_t)half_w * half_h * 4);
     if (!out) return 0;

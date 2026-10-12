@@ -552,9 +552,32 @@ static const char *fragment_source =
     "                int row = int(place >> 16), word_in = int(place & 0xffffu);\n"
     "                int texel_x = word_in * per + (u - (u / per) * per) - pack_entry.y;\n"
     "                if (texel_x >= 0 && texel_x < pack_entry.z) {\n"
-    "                    int px = int(floor((float(texel_x) + fract(ub)) * float(pack_size.x) / float(pack_entry.z)));\n"
-    "                    int py = int(floor((float(row) + fract(vb)) * float(pack_size.y) / float(pack_entry.w)));\n"
+    "                    float fx = (float(texel_x) + fract(ub)) * float(pack_size.x) / float(pack_entry.z);\n"
+    "                    float fy = (float(row) + fract(vb)) * float(pack_size.y) / float(pack_entry.w);\n"
+    "                    int px = int(floor(fx));\n"
+    "                    int py = int(floor(fy));\n"
     "                    vec4 p = texelFetch(pack, ivec2(clamp(px, 0, pack_size.x - 1), clamp(py, 0, pack_size.y - 1)), 0);\n"
+    /* The image's texels a pixel spans: below ~0.85 the screen shows each texel larger than a pixel (the anime
+     * layout stretches a 408x384 card picture over 536x556 pixels at Internal 4x), and picking the nearest
+     * texel leaves stair-steps; there the four nearest are blended (alpha weighted). At about 1:1 or smaller,
+     * and for HD text, the nearest texel is kept as before. */
+    "                    float hd_step = spread * max(float(pack_size.x) / float(pack_entry.z), float(pack_size.y) / float(pack_entry.w));\n"
+    "                    if (hd_step < 0.85) {\n"
+    "                        vec2 hb_g = vec2(fx, fy) - 0.5;\n"
+    "                        ivec2 hb_0 = ivec2(floor(hb_g));\n"
+    "                        vec2 hb_w = hb_g - vec2(hb_0);\n"
+    "                        ivec2 hb_hi = pack_size.xy - 1;\n"
+    "                        vec4 hb_a = texelFetch(pack, clamp(hb_0, ivec2(0), hb_hi), 0);\n"
+    "                        vec4 hb_b = texelFetch(pack, clamp(hb_0 + ivec2(1, 0), ivec2(0), hb_hi), 0);\n"
+    "                        vec4 hb_c = texelFetch(pack, clamp(hb_0 + ivec2(0, 1), ivec2(0), hb_hi), 0);\n"
+    "                        vec4 hb_d = texelFetch(pack, clamp(hb_0 + ivec2(1, 1), ivec2(0), hb_hi), 0);\n"
+    "                        hb_a = vec4(hb_a.rgb * hb_a.a, hb_a.a);\n"
+    "                        hb_b = vec4(hb_b.rgb * hb_b.a, hb_b.a);\n"
+    "                        hb_c = vec4(hb_c.rgb * hb_c.a, hb_c.a);\n"
+    "                        hb_d = vec4(hb_d.rgb * hb_d.a, hb_d.a);\n"
+    "                        vec4 hb_m = mix(mix(hb_a, hb_b, hb_w.x), mix(hb_c, hb_d, hb_w.x), hb_w.y);\n"
+    "                        p = vec4(hb_m.rgb / max(hb_m.a, 1.0 / 255.0), hb_m.a);\n"
+    "                    }\n"
     /* A partly clear pixel (a letter's smoothed edge) is mixed over what
      * lies beneath as much as it covers (texture_pack.c, sample). */
     "                    if (p.a < 8.0 / 255.0) discard;\n"
