@@ -47,24 +47,31 @@ work is (1) deciding which retail cards get the purple/ritual-monster/god frames
 4. The mod ships as **one zip** with the images inside; the repo folder `mods/anime-art/` is the mod (PNGs committed there).
 5. **On by default** (`enabled`, `full_bleed`). More options below.
 
-## Why a small code mod, and not `cards` entries (checked in `src/pc/cards/cards.c`, v0.3.0)
-A `{"replace": <id>, "tags": [...]}` entry would work for the engine's `tag` rules, **but a `replace` entry that gives no name/description/art/
-password resets them** (`names[id] = NULL` etc., line ~1557: "so a later mod's entry for the same card without one does not keep an
-earlier mod's"). Only `notes` has a shortcut (`notes_only`). So tagging cards through `cards` would wipe another mod's custom names for
-the same cards. Do not do that.
-Instead the mod has a tiny code mod (`library`) that **hooks `Cards_HasTag(int id, const char *tag)`** (a port global, hookable by name
-via `host->hook`, as 3d-monsters hooks game functions) and answers "yes" for the style the user's list gives that card, and for ritual results.
-The frame rules in `mod.json` stay plain `{"tag": "<style>", "style": "<style>"}`. No card data is touched, so nothing can be overridden.
-The same hook can turn a `choice` setting into a tag (layout rules only read a `bool` setting), which is how multi-way options work.
-- Per-card list: `mods/anime-art/frames.json` (user edited), e.g. `{"364": "ritual_monster", "Dragon Master Knight": "fusion"}`.
-- Ritual results: read from the game's ritual table at run time (`gDuel_awRitualData`, valid only while a duel is loaded; the mod caches
-  the results while it is) or a generated fallback list — to be settled when implementing.
-- Needs checking: is `Cards_HasTag` ever inlined/LTO'd (cross-TU call from `card_layout.c`, so expected hookable); added (mod) cards ids.
-
-## Option ideas (to choose from)
-See the discussion; every option is a declarative setting; multi-way ones are `choice` settings answered by the code mod.
+## How the per-card choice works (checked on v0.3.0; **no code mod is possible**, and none is needed)
+- The frame rules in `mod.json` pick a style by `class`, `tag` or `setting`. A card's tags come from a `cards` entry
+  (`{"replace": <id or name>, "tags": [...]}`), so **choosing a frame = tagging the card**. The user writes that in a small mod of
+  their own (README + `examples/my-anime-frames`), by card name or id: this is the syntax asked for.
+- **A code mod cannot do it on the stock v0.3.0 engine.** The idea was to hook `Cards_HasTag` and answer from a list, but only the
+  game units are built with `-fpatchable-function-entry`; `src/pc/cards/cards.c` (the port) starts at `push ebp` with no hook room
+  (llvm-objdump of `cards.c.o`), and `host->hook` is documented for `src/game` functions. The frame choice itself (`resolve_style`)
+  is port code too. A code mod could not fix the mip-chain bug either (static host function). So: data only.
+  (An engine change, e.g. a `"card"` selector in `frame_for`, would allow a nicer syntax but the mod would then need a patched exe.
+  Not done; decide later if wanted.)
+- **Names are never overridden.** `cards.c` (`add_entry`, ~line 1557) sets `names[id]`, `descriptions[id]`, art, password back to
+  "none" for a `replace` entry that does not give them, so an *earlier* mod's custom name would be reset (only `notes` has a shortcut).
+  So the mod has `"priority": -1000`: it loads before every other mod, nothing is earlier to reset, a later mod's entry for the same
+  card wins, and our tags survive unless that entry has its own `tags`. Checked: the 24 entries load as "card 364 Black Luster Soldier
+  replaced" with the retail names, and a user mod after it resolves `"Thousand Dragon"`/`392` with no warnings.
+- **Ritual monsters** = the 24 results of the disc's ritual table (`tools/pc/fm_editor` `decode_rituals` on the retail disc):
+  356, 357, 360, 362, 364, 365, 374, 380, 701-706, 708-710, 715-720, 722. Shipped as `cards` entries tagging them `ritual`.
+- Options 1-3 from the first option list (ritual spell / ritual monster / effect monster colour switches) were dropped by the user: the
+  art is fixed per kind. Kept: `full_bleed` and `ritual_own_frame` (ritual spell blue vs green) which exist from v0.3.0's own HD manifest.
 
 ## Test recipe
 Official v0.3.0 exe folder + `mods/anime-art` only, clean profile: `MEMORIES_USER_DIR=<dir>`, `MEMORIES_DEBUG_DECK=374,380,332,683,364,670`
 (Gate Guardian, Blue-Eyes Ultimate Dragon, Mountain, Bear Trap, Black Luster Soldier, Black Luster Ritual), Free Duel, TRIANGLE on a card
 in the hand, screenshot at Internal 4x and 1x.
+
+**Quick test (L1 + Option):** the Test scenes mod (`dev` worktree `mods/test-scenes`, prebuilt `test-scenes.o` in the main checkout's
+`tmp\pc\shared-mods\test-scenes`) loads on the stock v0.3.0 engine. Enable it (`mod.test-scenes=1`), hold L1 and confirm Option on the
+title screen: a Simon Muran duel with the ten monsters in its `field.json` face up. Test folder: `C:\YFM-anime-art-test\yfm-redecomp-v0.3.0\run.bat`.

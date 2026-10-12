@@ -1,0 +1,14 @@
+{
+    "id": "my-anime-frames",
+    "name": "My anime frames",
+    "version": "1.0",
+    "author": "you",
+    "description": "Example: choose the Anime Art frame of single cards. A card is a name or an id; the tag is the frame.",
+    "min_api": 11,
+    "enabled": true,
+    "after": ["anime-art"],
+    "cards": [
+        { "replace": "Thousand Dragon", "tags": ["fusion"] },
+        { "replace": 392,              "tags": ["fusion"] }
+    ]
+}

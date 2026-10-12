@@ -9,6 +9,153 @@
     "after": [
         "forbidden-memories-hd"
     ],
+    "priority": -1000,
+    "cards": [
+        {
+            "replace": 356,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 357,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 360,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 362,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 364,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 365,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 374,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 380,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 701,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 702,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 703,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 704,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 705,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 706,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 708,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 709,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 710,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 715,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 716,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 717,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 718,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 719,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 720,
+            "tags": [
+                "ritual"
+            ]
+        },
+        {
+            "replace": 722,
+            "tags": [
+                "ritual"
+            ]
+        }
+    ],
     "settings": [
         {
             "key": "full_bleed",
