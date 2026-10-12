@@ -1,9 +1,9 @@
 {
     "id": "anime-art",
     "name": "Anime Art",
-    "version": "0.1",
-    "author": "d02d02",
-    "description": "Anime-style full-bleed card frames: one frame per card kind, the art enlarged to fill it, ATK/DEF in the frame's plaques. Independent of Forbidden Memories HD.",
+    "version": "1.0.0",
+    "author": "d02d02, Hr\u00e6zlyr",
+    "description": "Anime-style full-bleed card frames: one frame per card kind (and fusion, ritual and god frames you choose), the art enlarged to fill it, ATK/DEF in the frame's plaques. Standalone: does not need Forbidden Memories HD. See HOWTO.txt.",
     "min_api": 11,
     "enabled": true,
     "after": [
@@ -162,15 +162,15 @@
             "key": "full_bleed",
             "label": "Anime card frame",
             "type": "bool",
-            "default": 1,
-            "description": "Replaces the retail card frame with the anime frame. Off: every card view looks like retail."
+            "default": 0,
+            "description": "Turn this ON to see the anime frames. Off: every card view looks like the original game."
         },
         {
-            "key": "ritual_own_frame",
-            "label": "Ritual spells: own frame",
+            "key": "ritual_green",
+            "label": "Ritual spells: green frame",
             "type": "bool",
-            "default": 1,
-            "description": "Ritual spells wear the blue ritual frame instead of the green magic frame."
+            "default": 0,
+            "description": "Off: ritual spells wear the blue ritual frame. On: they wear the green magic frame."
         },
         {
             "key": "smooth_card_art",
@@ -292,12 +292,12 @@
             },
             {
                 "class": "ritual_spell",
-                "setting": "ritual_own_frame",
-                "style": "blue"
+                "setting": "ritual_green",
+                "style": "green"
             },
             {
                 "class": "ritual_spell",
-                "style": "green"
+                "style": "blue"
             },
             {
                 "class": "effect_monster",

@@ -7,8 +7,8 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 ## Install
 
 1. Close the game. Extract the zip into the game folder (next to `memories-pc.exe`), so that `mods/anime-art/mod.json` exists.
-2. Start the game. The mod is on by default; **Game > Mods** shows it. *Anime card frame* turns the frames on and off, and
-   *Ritual spells: own frame* switches the ritual-spell frame between blue and the magic green.
+2. Start the game, open **Game > Mods > Anime Art** and switch *Anime card frame* **on** (once: the game keeps a setting only after
+   you save it, so it starts off). *Ritual spells: green frame* gives ritual spells the magic green instead of their blue frame.
 3. Looks best at **Video > Resolution > Internal 4x**.
 
 ## Which frame a card wears
@@ -85,7 +85,7 @@ The game has room for 32 tags in all; Anime Art uses five (`fusion`, `ritual`, `
 ## Together with Forbidden Memories HD
 
 Only one mod's card layout is used at a time, the last one applied. Anime Art is applied after Forbidden Memories HD, so with both
-installed the anime frames of Anime Art are shown; turn *Anime card frame* off here to see HD's layout again.
+installed the anime frames of Anime Art are shown; switch *Anime card frame* off here to see HD's layout again.
 
 ## Trying it quickly
 
