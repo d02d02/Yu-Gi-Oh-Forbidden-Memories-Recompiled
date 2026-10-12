@@ -11,7 +11,7 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
    *Anime card frame* (off = the original card views), *HD assets* (off = the original game pictures), and *Ritual spells: green frame*.
 3. Looks best at **Video > Resolution > Internal 4x** with **HD text** on.
 
-You do **not** need the Forbidden Memories HD pack: its pictures are inside this mod. If you keep the pack too, this mod's pictures are shown.
+You do **not** need the Forbidden Memories HD pack: its pictures are inside this mod. If you already have the pack installed, nothing breaks: leave it or delete it, you see the same HD pictures either way.
 
 ## Which frame a card wears
 

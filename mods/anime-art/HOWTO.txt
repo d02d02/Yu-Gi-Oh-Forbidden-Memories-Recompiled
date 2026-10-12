@@ -122,8 +122,9 @@ A duel opens with ten monsters on the field. Press Triangle on a card to open th
 
 Good to know
 ------------
-- The HD pictures are inside this mod. If you also installed the Forbidden Memories HD pack
-  you can remove it; if you keep it, the pictures of this mod are the ones shown.
+- The HD pictures are inside this mod, so you do NOT need to install the Forbidden Memories
+  HD pack. If you already have it installed, nothing breaks: leave it there or delete it, you
+  see the same HD pictures either way.
 - Only one mod's card layout is used at a time. Anime Art loads after Forbidden Memories HD,
   so with both installed the Anime Art frames are shown. Frame rules you wrote inside the HD
   pack's own mod.json are not used while Anime Art is on. Tags are: they belong to the cards.
