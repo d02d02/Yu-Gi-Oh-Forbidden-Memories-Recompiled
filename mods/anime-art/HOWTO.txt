@@ -3,33 +3,31 @@ ANIME ART - quick how-to
 
 What it is
 ----------
-Anime-style card frames for Yu-Gi-Oh! Forbidden Memories Recompiled (v0.3.0 or newer).
+Anime-style card frames for Yu-Gi-Oh! Forbidden Memories Recompiled (v0.3.0 or newer),
+with the Forbidden Memories HD pictures built in.
 Every big card view (card viewer, duel hand, field cards, results) gets a full-bleed frame:
 the picture fills the card and ATK/DEF sit in the two plaques of the frame.
-It is a standalone mod. It does not need the Forbidden Memories HD pack, and it never
-changes a card's name, text, picture or stats.
+It is a standalone mod: you do NOT need the Forbidden Memories HD pack. It never changes a
+card's name, text, picture or stats.
 
 Install
 -------
 1. Close the game.
 2. Unzip into the game folder, the one that holds memories-pc.exe, so that this file exists:
    mods/anime-art/mod.json
-3. Start the game and press F10 for the menu bar: Game > Mods > Anime Art.
-4. FIRST START: switch "Anime card frame" ON. (The game only keeps a setting once you have
-   saved it, so the frame starts switched off. You do this once.)
-5. Best look: Video > Resolution > Internal 4x.
+3. Start the game. Everything is ON by default: the anime frames and the HD pictures.
+   Game > Mods shows the mod as "Anime Art" (press F10 for the menu bar).
+4. Best look: Video > Resolution > Internal 4x, and Video > HD text on.
 
-Options (Game > Mods > Anime Art)
----------------------------------
-Anime card frame       on/off. Off = every card view looks like the original game.
-                       Starts OFF: switch it on once (see Install).
+Options (F10 > Game > Mods > Anime Art)
+---------------------------------------
+Anime card frame       on (default) / off. Off = every card view looks like the original game.
+HD assets              on (default) / off. On = the Forbidden Memories HD pictures everywhere:
+                       card art, thumbnails, stars, attribute balls, Build Deck screen, duel
+                       arena and HUD, portraits. Off = the original game pictures.
 Ritual spells: green frame
-                       off = ritual spells wear the blue ritual frame (default).
-                       on  = ritual spells wear the green magic frame.
-Smooth card art        on/off. Shows the card pictures enlarged so the anime frame does
-                       not stretch them into stair-steps at Internal 4x. These are the
-                       Forbidden Memories HD card pictures (credit: Unchiga, X@nder),
-                       enlarged. Off = the game's own pictures (or the HD pack's).
+                       off (default) = ritual spells wear the blue ritual frame.
+                       on            = ritual spells wear the green magic frame.
 
 Which frame a card gets
 -----------------------
@@ -47,37 +45,37 @@ Obelisk / Ra / Slifer .. blue / yellow / red god frames. Chosen by you, see belo
 Giving a card a frame (fusion, ritual, god ...)
 -----------------------------------------------
 The game has no fusion monsters or gods, so you decide which cards wear those frames.
-A card wears a frame because it has a TAG. You give tags in a small mod of your own:
+A card wears a frame because it has a TAG. You add tags in Anime Art's own mod.json:
 
-1. Make a folder  mods/my-frames
-2. Put a file  mod.json  in it, with this text:
+1. Open  mods/anime-art/mod.json  in a text editor (Notepad is fine).
+2. Find the "cards" list. It holds one line per card, like this (the 24 ritual monsters):
+       { "replace": 356, "tags": ["ritual"] },
+       ...
+       { "replace": 722, "tags": ["ritual"] }
+   ]
+3. Add your own lines at the END of the list. Every line ends with a comma EXCEPT the last
+   one. So put a comma after the 722 line and add yours, for example:
 
-   {
-       "id": "my-frames",
-       "name": "My frames",
-       "min_api": 11,
-       "enabled": true,
-       "after": ["anime-art"],
-       "cards": [
-           { "replace": "Thousand Dragon", "tags": ["fusion"] },
-           { "replace": 392,               "tags": ["fusion"] }
-       ]
-   }
+       { "replace": 722, "tags": ["ritual"] },
+       { "replace": "Thousand Dragon", "tags": ["fusion"] },
+       { "replace": 392, "tags": ["fusion"] }
+   ]
 
-3. Start the game. Thousand Dragon and Metalzoa (id 392) now have the purple fusion frame.
+4. Save the file and start the game. Thousand Dragon and Metalzoa (id 392) now have the
+   purple fusion frame.
 
-(A ready, tested copy of this is in  mods/anime-art/examples/my-anime-frames . Copy that
-folder up into mods/ and edit it.)
+Tip: an update of Anime Art replaces mod.json. Keep a copy of your lines, or put them in a
+mod of your own instead, which survives updates (see "Your own mod" below).
 
 The rules
 ---------
 - A card is written by its NAME ("Thousand Dragon") or its ID number (1 to 722).
-  notes/card-catalog.csv in the game's source lists the ids.
-- A tag is ONE word, written exactly like the table below. One tag word per frame.
-  "ritual/blue" is not a tag. Write "ritual" or "blue".
-- Several cards: one line per card, separated by commas, the last line without a comma.
-- Your entry changes nothing else about the card: its name, text, picture and stats stay.
-- "after": ["anime-art"] makes your mod load after Anime Art. Keep it.
+- A tag is ONE word, written exactly like the table below. "ritual/blue" is not a tag:
+  write "ritual" or "blue".
+- To change one of the 24 ritual monsters, change its own line (for example "ritual" to
+  "fusion", or to [] for the plain gold frame). A second line for the same card also works;
+  the game then writes a harmless note in its log.
+- Your line changes nothing else about the card: its name, text, picture and stats stay.
 
 Tag words
 ---------
@@ -87,8 +85,8 @@ obelisk ............... Obelisk god frame (blue)
 ra .................... Ra god frame (yellow)
 slifer ................ Slifer god frame (red)
 
-Examples (one line each, put them in the "cards" list)
-------------------------------------------------------
+Examples (one line each, in the "cards" list)
+---------------------------------------------
 Purple fusion frame by name:
    { "replace": "Thousand Dragon", "tags": ["fusion"] }
 
@@ -108,6 +106,15 @@ God frames (cosmetic on the vanilla game, which has no god cards):
 
 If a mod adds Obelisk, Ra or Slifer cards, tag them "obelisk", "ra", "slifer" the same way.
 
+Your own mod (survives updates)
+-------------------------------
+Instead of editing Anime Art's mod.json you can keep your lines in a separate mod:
+make a folder mods/my-frames with a mod.json holding
+   { "id": "my-frames", "name": "My frames", "min_api": 11, "enabled": true,
+     "after": ["anime-art"],
+     "cards": [ { "replace": "Thousand Dragon", "tags": ["fusion"] } ] }
+A ready copy is in  mods/anime-art/examples/my-anime-frames .
+
 Quick test
 ----------
 With the optional Test scenes mod: on the title screen hold L1 and press confirm on Option.
@@ -115,17 +122,20 @@ A duel opens with ten monsters on the field. Press Triangle on a card to open th
 
 Good to know
 ------------
+- The HD pictures are inside this mod. If you also installed the Forbidden Memories HD pack
+  you can remove it; if you keep it, the pictures of this mod are the ones shown.
 - Only one mod's card layout is used at a time. Anime Art loads after Forbidden Memories HD,
   so with both installed the Anime Art frames are shown. Frame rules you wrote inside the HD
   pack's own mod.json are not used while Anime Art is on. Tags are: they belong to the cards.
-- Card pictures: Anime Art carries the enlarged HD card pictures (Smooth card art). If you
-  turn off "Card art" in the HD pack, also turn off "Smooth card art" here.
+- The mod has one tiny piece of code (anime-art.o): at start it switches "Anime card frame"
+  on if you have never chosen. Your own choice is kept after that.
 - The frame pictures have power-of-two sizes on purpose. A frame picture of another size can
   be invisible at Internal 2x/4x on some graphics cards in game version v0.3.0.
 
 Credits
 -------
-Card pictures (Smooth card art): Forbidden Memories HD, Unchiga and X@nder, enlarged.
+HD pictures (HD assets): Forbidden Memories HD, Unchiga and X@nder. The card pictures are
+enlarged for the anime frame.
 Anime Art mod: d02d02.
 Anime frame artwork: d02d02 and Hræzlyr.
 Full list: CREDITS.txt

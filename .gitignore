@@ -26,4 +26,5 @@
 *.py[cod]
 
 # Anime Art: the enlarged card pictures are generated (tools/pc/anime_art_card_art.py), not committed (about 135 MB)
-mods/anime-art/art/
+mods/anime-art/hd/
+mods/anime-art/anime-art.o

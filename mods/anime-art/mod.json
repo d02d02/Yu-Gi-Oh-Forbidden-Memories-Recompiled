@@ -1,169 +1,57 @@
 {
     "id": "anime-art",
     "name": "Anime Art",
-    "version": "1.0.0",
-    "author": "Unchiga, X@nder (card pictures, Forbidden Memories HD); d02d02, Hr\u00e6zlyr (anime frames)",
-    "description": "Anime-style full-bleed card frames: one frame per card kind (and fusion, ritual and god frames you choose), the art enlarged to fill it, ATK/DEF in the frame's plaques. Standalone: does not need Forbidden Memories HD. See HOWTO.txt.",
+    "version": "1.1.0",
+    "author": "Unchiga, X@nder (HD pictures, Forbidden Memories HD); d02d02, Hr\u00e6zlyr (anime frames)",
+    "description": "Anime-style full-bleed card frames (one per card kind; fusion, ritual and god frames for the cards you choose), the art enlarged to fill them, ATK/DEF in the plaques, and the Forbidden Memories HD pictures everywhere (switchable). Standalone: nothing else needed. See HOWTO.txt.",
     "min_api": 11,
     "enabled": true,
+    "library": "anime-art",
     "after": [
         "forbidden-memories-hd"
     ],
     "priority": -1000,
     "cards": [
-        {
-            "replace": 356,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 357,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 360,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 362,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 364,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 365,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 374,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 380,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 701,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 702,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 703,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 704,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 705,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 706,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 708,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 709,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 710,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 715,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 716,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 717,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 718,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 719,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 720,
-            "tags": [
-                "ritual"
-            ]
-        },
-        {
-            "replace": 722,
-            "tags": [
-                "ritual"
-            ]
-        }
+        { "replace": 356, "tags": ["ritual"] },
+        { "replace": 357, "tags": ["ritual"] },
+        { "replace": 360, "tags": ["ritual"] },
+        { "replace": 362, "tags": ["ritual"] },
+        { "replace": 364, "tags": ["ritual"] },
+        { "replace": 365, "tags": ["ritual"] },
+        { "replace": 374, "tags": ["ritual"] },
+        { "replace": 380, "tags": ["ritual"] },
+        { "replace": 701, "tags": ["ritual"] },
+        { "replace": 702, "tags": ["ritual"] },
+        { "replace": 703, "tags": ["ritual"] },
+        { "replace": 704, "tags": ["ritual"] },
+        { "replace": 705, "tags": ["ritual"] },
+        { "replace": 706, "tags": ["ritual"] },
+        { "replace": 708, "tags": ["ritual"] },
+        { "replace": 709, "tags": ["ritual"] },
+        { "replace": 710, "tags": ["ritual"] },
+        { "replace": 715, "tags": ["ritual"] },
+        { "replace": 716, "tags": ["ritual"] },
+        { "replace": 717, "tags": ["ritual"] },
+        { "replace": 718, "tags": ["ritual"] },
+        { "replace": 719, "tags": ["ritual"] },
+        { "replace": 720, "tags": ["ritual"] },
+        { "replace": 722, "tags": ["ritual"] }
     ],
-    "textures": "art",
+    "textures": "hd",
     "settings": [
         {
             "key": "full_bleed",
             "label": "Anime card frame",
             "type": "bool",
-            "default": 0,
-            "description": "Turn this ON to see the anime frames. Off: every card view looks like the original game."
+            "default": 1,
+            "description": "Replaces the original card frame with the anime frame. Off: every card view looks like the original game."
+        },
+        {
+            "key": "hd_assets",
+            "label": "HD assets",
+            "type": "bool",
+            "default": 1,
+            "description": "Shows the Forbidden Memories HD pictures everywhere (card art, thumbnails, stars, Build Deck, duel, portraits). Off: the original game pictures."
         },
         {
             "key": "ritual_green",
@@ -171,13 +59,6 @@
             "type": "bool",
             "default": 0,
             "description": "Off: ritual spells wear the blue ritual frame. On: they wear the green magic frame."
-        },
-        {
-            "key": "smooth_card_art",
-            "label": "Smooth card art",
-            "type": "bool",
-            "default": 1,
-            "description": "Shows the Forbidden Memories HD card pictures enlarged, so the anime frame does not stretch them into stair-steps at Internal 4x. Needs the Forbidden Memories HD card art; turn off to use the HD pack's own."
         }
     ],
     "card_layout": {

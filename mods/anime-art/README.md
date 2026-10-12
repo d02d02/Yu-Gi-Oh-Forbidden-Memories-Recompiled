@@ -7,9 +7,11 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 ## Install
 
 1. Close the game. Extract the zip into the game folder (next to `memories-pc.exe`), so that `mods/anime-art/mod.json` exists.
-2. Start the game, open **Game > Mods > Anime Art** and switch *Anime card frame* **on** (once: the game keeps a setting only after
-   you save it, so it starts off). *Ritual spells: green frame* gives ritual spells the magic green instead of their blue frame.
-3. Looks best at **Video > Resolution > Internal 4x**.
+2. Start the game. **Everything is on by default**: the anime frames and the HD pictures. **Game > Mods > Anime Art** has the options:
+   *Anime card frame* (off = the original card views), *HD assets* (off = the original game pictures), and *Ritual spells: green frame*.
+3. Looks best at **Video > Resolution > Internal 4x** with **HD text** on.
+
+You do **not** need the Forbidden Memories HD pack: its pictures are inside this mod. If you keep the pack too, this mod's pictures are shown.
 
 ## Which frame a card wears
 
@@ -26,36 +28,20 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 
 ## Choosing the frame of a card
 
-A card wears the frame of its **tag**. You give cards tags in a small mod of your own, in the `mods` folder next to Anime Art.
-This example is tested: copy `mods/anime-art/examples/my-anime-frames` to `mods/` and edit it.
+A card wears the frame of its **tag**. Add tags in Anime Art's own `mods/anime-art/mod.json`: open it, find the `"cards"` list (one
+line per card; the 24 ritual monsters are there) and add your lines **at the end**, a comma after the previous last line:
 
-`mods/my-frames/mod.json`
 ```json
-{
-    "id": "my-frames",
-    "name": "My frames",
-    "min_api": 11,
-    "enabled": true,
-    "after": ["anime-art"],
-    "cards": [
-        { "replace": "Thousand Dragon",           "tags": ["fusion"] },
-        { "replace": 392,                         "tags": ["fusion"] },
-        { "replace": "Dark Magician",             "tags": ["ritual"] },
-        { "replace": 364,                         "tags": [] },
-        { "replace": "Blue-eyes Ultimate Dragon", "tags": ["obelisk"] },
-        { "replace": 1,                           "tags": ["slifer"] }
-    ]
-}
+        { "replace": 722, "tags": ["ritual"] },
+        { "replace": "Thousand Dragon", "tags": ["fusion"] },
+        { "replace": 392, "tags": ["fusion"] }
+    ],
 ```
 
-What each line does: Thousand Dragon and Metalzoa (392) get the purple fusion frame; Dark Magician gets the blue ritual-monster
-frame; Black Luster Soldier (364) is a ritual result and would be blue, `[]` takes its tag away so it is gold again; Blue-eyes
-Ultimate Dragon gets the Obelisk frame and Blue-eyes White Dragon (1) the Slifer frame (just for the look).
-
 - A card is its **name** (as the game spells it) or its **id** (1 to 722; `notes/card-catalog.csv`).
-- A tag is **one word**, written exactly as in the table. Do not combine words (`ritual/blue` is not a tag): write `"ritual"`
-  or `"blue"`, one entry per card, a card has the tags you list.
-- `"tags": []` takes a card's tags away: it wears the frame of its kind again. A card you do not list is not touched.
+- A tag is **one word** from the table below (`ritual/blue` is not a tag). `"tags": []` takes a card's tags away.
+- To change one of the 24 ritual monsters, edit its own line (a second line for the same card also works, with a harmless log note).
+- An update replaces `mod.json`: keep a copy of your lines, or use a mod of your own (below).
 
 | Tag word | Frame |
 |---|---|
@@ -66,11 +52,11 @@ Ultimate Dragon gets the Obelisk frame and Blue-eyes White Dragon (1) the Slifer
 | `slifer` | Slifer (red) |
 
 Without a tag a card wears its kind's frame (monster gold, effect monster orange, spell and equip green, trap pink, ritual spell
-blue); the 24 monsters the disc's ritual table summons are tagged `ritual` by Anime Art itself.
+blue). **The gods:** the vanilla game has no Obelisk, Ra or Slifer card and Anime Art does not add any; a mod that adds them tags
+them `obelisk`, `ra`, `slifer`; on vanilla you can still give any card a god frame, only for the look.
 
-**The gods:** the vanilla game has no Obelisk, Ra or Slifer card and Anime Art does not add any. A mod that adds those cards
-(a cards mod) tags them `obelisk`, `ra`, `slifer` and they wear those frames; on vanilla you can still give any card a god
-frame as above, only for the look.
+**Your own mod** (survives updates): `mods/my-frames/mod.json` with `"after": ["anime-art"]` and your lines in its own `"cards"`
+list; a ready copy is in `mods/anime-art/examples/my-anime-frames`.
 
 ### Your cards keep their name and everything else
 
@@ -98,11 +84,11 @@ on the field, listed in `test-scenes/field.json`, ready for the card viewer (TRI
   (see `notes/modding.md`, *Frame styles and the rules that pick them*). Add a style and a rule with your own tag to add a frame.
 - The images in `textures/` have power-of-two sizes on purpose (1024x2048, 1024x1024, 256x256): the v0.3.0 engine draws a frame
   of any other size invisibly at Internal 2x/4x on some graphics drivers. `tools/pc/anime_art_textures.py` rebuilds them from the
-  original artwork.
+  original artwork; `tools/pc/anime_art_hd_assets.py` builds the `hd` folder from the HD pack.
 
 ## Credits
 
-- Card pictures ("Smooth card art" is the HD pictures, enlarged): Forbidden Memories HD, **Unchiga** and **X@nder**.
+- The HD pictures ("HD assets"; the card art is enlarged): Forbidden Memories HD, **Unchiga** and **X@nder**.
 - The Anime Art mod: **d02d02**.
 - The anime frame artwork: **d02d02** and **Hræzlyr**.
 

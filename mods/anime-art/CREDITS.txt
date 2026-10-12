@@ -2,8 +2,9 @@ ANIME ART - CREDITS
 ===================
 
 Forbidden Memories HD - Unchiga and X@nder
-    The HD card pictures. "Smooth card art" in this mod is those pictures, enlarged (the
-    art folder), and the anime layout is built on the card layout system of the same project.
+    All the HD pictures ("HD assets" in this mod: card art, thumbnails, stars, attribute balls,
+    Build Deck, duel, portraits; the card art is enlarged for the anime frame), and the card
+    layout system the anime layout is built on.
     Their pack is a separate download: https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled
 
 d02d02
