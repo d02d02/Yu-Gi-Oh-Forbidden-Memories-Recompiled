@@ -125,8 +125,17 @@ static int bank_cached = -1; /* the current primitive normally stays in one spri
  * texels' colors do not bleed into the edges. */
 static int bank_halve(BankImage *image, int from)
 {
-    int width = image->width[from], height = image->height[from], half_w = (width + 1) / 2,
-        half_h = (height + 1) / 2, x, y;
+    int width = image->width[from], height = image->height[from], half_w, half_h, x, y;
+    /* OpenGL's mip chain rounds DOWN (level n is max(1, floor(size / 2^n))): rounding up made the chain of any
+     * non-power-of-two PNG incomplete, and texelFetch on an incomplete texture returns transparent black
+     * (the HD anime card frame vanished at Internal 2x/4x). YFM_MIP_OLD=1 restores the old rounding to compare. */
+    if (getenv("YFM_MIP_OLD")) {
+        half_w = (width + 1) / 2;
+        half_h = (height + 1) / 2;
+    } else {
+        half_w = width > 1 ? width / 2 : 1;
+        half_h = height > 1 ? height / 2 : 1;
+    }
     const unsigned char *in = image->level[from];
     unsigned char *out = malloc((size_t)half_w * half_h * 4);
     if (!out) return 0;

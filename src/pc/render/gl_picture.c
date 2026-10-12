@@ -2047,6 +2047,24 @@ static int bind_pack_entry(int entry)
             }
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, levels - 1);
             if (levels > 1) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            {   /* DEBUG: is the mip chain what OpenGL's completeness rule demands (level n = max(1, floor(size/2^n)))? */
+                int k, bad = 0, gw, gh;
+                for (k = 0; k < levels; k++) {
+                    int ew = texture_width >> k, eh = texture_height >> k;
+                    if (ew < 1) ew = 1;
+                    if (eh < 1) eh = 1;
+                    gw = gh = 0;
+                    glGetTexLevelParameteriv(GL_TEXTURE_2D, k, GL_TEXTURE_WIDTH, &gw);
+                    glGetTexLevelParameteriv(GL_TEXTURE_2D, k, GL_TEXTURE_HEIGHT, &gh);
+                    if (gw != ew || gh != eh) {
+                        LOG(LOG_CARD_LAYOUT, "bank texture key %u (%dx%d): mip level %d is %dx%d but OpenGL requires %dx%d",
+                            key, texture_width, texture_height, k, gw, gh, ew, eh);
+                        bad++;
+                    }
+                }
+                LOG(LOG_CARD_LAYOUT, "bank texture key %u (%dx%d): %d levels, mip chain %s", key, texture_width,
+                    texture_height, levels, bad ? "INCOMPLETE (GL will sample transparent black)" : "complete");
+            }
             bank_textures[at].levels = levels;
             bank_texture_count++;
         } else glBindTexture(GL_TEXTURE_2D, bank_textures[at].texture);
