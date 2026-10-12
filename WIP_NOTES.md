@@ -23,6 +23,15 @@ Started 2026-10-12. Nothing built yet.
 4. The frame texture is stretched into a 3x3 tile grid (`card_layout_art.c`: 177x254 tiles, 531x762); the PNG is cropped in proportion, so
    a non-uniform stretch to power-of-two sizes is harmless. `notes/modding.md` still says single 177x254 / 27x downsample (outdated).
 
+## Original frame art inventory (the supplied originals, light, NOT contrast-boosted): `...\hacking\asset\frame\`
+magic (green), monster (gold), monster-effect (orange), trap (pink), ritual (blue spell, wide plaque), monster-ritual (PURPLE, anime fusion colour),
+monster-obelisk (blue), monster-ra (yellow), monster-slifer (red). First four are byte-identical to git `ff79f7dd0` (pre-boost). No file named "fusion".
+Retail FM only uses gold/green/pink/blue frames; no fusion/ritual-monster/god classes exist, so purple + the god frames can only be driven by
+`"tag"` rules (cards mod must tag cards `fusion`/`obelisk`/`ra`/`slifer`). Ritual spell blue = sub-option `ritual_own_frame` (default on).
+**Released (untested in game):** `hd-pack-v0.3.0-original-frame-v1` on the fork = HD pack + all 9 frames power-of-two + the rules above
+(build script was a one-off in the job tmp; rebuild = resize originals to 1024x2048 / 1024x1024, add styles+rules to `mod.json`). Test folder:
+`C:\YFM-v1-test\yfm-redecomp-v0.3.0\run.bat` (official v0.3.0 exe, clean profile). Next version = `-v2`.
+
 ## Next steps
 1. Scaffold `mods/anime-card-frame/` (new id, e.g. `anime-card-frame`): `mod.json` (setting `full_bleed`, default off or on, `card_layout` copied from
    the HD one), `textures/` (power-of-two frames + digits). Settings key will be `mod.<id>.full_bleed`.
