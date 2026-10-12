@@ -1,4 +1,4 @@
-/* Anime Art's one piece of code: it makes "Anime card frame" start ON.
+/* Anime Style's one piece of code: it makes "Anime card frame" start ON.
  *
  * The engine reads a card layout's own `full_bleed` setting as 0 until the player has saved it (card_layout.c: "Off until the
  * player turns it on"); the `default` a manifest declares is only what the Mods window shows. So a data mod alone starts with its

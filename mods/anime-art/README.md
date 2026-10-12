@@ -1,4 +1,4 @@
-# Anime Art
+# Anime Style
 
 Anime-style card frames for Yu-Gi-Oh! Forbidden Memories Recompiled (v0.3.0 and later). Every big card view (the card viewer,
 the duel hand, field cards, the result screens) gets a full-bleed frame: the picture is enlarged to fill it and ATK/DEF sit in the
@@ -7,7 +7,7 @@ frame's two plaques. A standalone mod: it does not need Forbidden Memories HD an
 ## Install
 
 1. Close the game. Extract the zip into the game folder (next to `memories-pc.exe`), so that `mods/anime-art/mod.json` exists.
-2. Start the game. **Everything is on by default**: the anime frames and the HD pictures. **Game > Mods > Anime Art** has the options:
+2. Start the game. **Everything is on by default**: the anime frames and the HD pictures. **Game > Mods > Anime Style** has the options:
    *Anime card frame* (off = the original card views), *HD assets* (off = the original game pictures), *Ritual monster frames* and *Fusion monster frames* (both off by default), and *Ritual spells: green frame*.
 3. Looks best at **Video > Resolution > Internal 4x** with **HD text** on.
 
@@ -28,7 +28,7 @@ You do **not** need the Forbidden Memories HD pack: its pictures are inside this
 
 ## Choosing the frame of a card
 
-A card wears the frame of its **tag**. Add tags in Anime Art's own `mods/anime-art/mod.json`: open it, find the `"cards"` list (one
+A card wears the frame of its **tag**. Add tags in Anime Style's own `mods/anime-art/mod.json`: open it, find the `"cards"` list (one
 line per card; the 24 ritual monsters are there) and add your lines **at the end**, a comma after the previous last line. The shipped lines tag the known ritual monsters `known_ritual`
 and the known fusion monsters `known_fusion` (they show only while their option is on); your own tags always show:
 
@@ -53,7 +53,7 @@ and the known fusion monsters `known_fusion` (they show only while their option 
 | `slifer` | Slifer (red) |
 
 Without a tag a card wears its kind's frame (monster gold, effect monster orange, spell and equip green, trap pink, ritual spell
-blue). **The gods:** the vanilla game has no Obelisk, Ra or Slifer card and Anime Art does not add any; a mod that adds them tags
+blue). **The gods:** the vanilla game has no Obelisk, Ra or Slifer card and Anime Style does not add any; a mod that adds them tags
 them `obelisk`, `ra`, `slifer`; on vanilla you can still give any card a god frame, only for the look.
 
 **Your own mod** (survives updates): `mods/my-frames/mod.json` with `"after": ["anime-art"]` and your lines in its own `"cards"`
@@ -63,16 +63,16 @@ list; a ready copy is in `mods/anime-art/examples/my-anime-frames`.
 
 The entries above give no `name`, `description`, picture or stats, and so **change none of them**: the card keeps what the disc, or
 another mod, gave it. One rule to know: a `replace` entry resets what an *earlier* mod gave that card (name, description, picture,
-password) when it does not give it itself. Anime Art loads first of all mods for that reason, so its own tags never reset anything.
+password) when it does not give it itself. Anime Style loads first of all mods for that reason, so its own tags never reset anything.
 For your own mod, either keep `"after": ["anime-art"]` and tag only cards no other mod renames, or load it before the mods that do
 (`"priority": -500`). If a card needs two mods to touch it, put the other mod's name/art in that card's entry too.
 
-The game has room for 32 tags in all; Anime Art uses five (`fusion`, `ritual`, `obelisk`, `ra`, `slifer`).
+The game has room for 32 tags in all; Anime Style uses five (`fusion`, `ritual`, `obelisk`, `ra`, `slifer`).
 
 ## Together with Forbidden Memories HD
 
-Only one mod's card layout is used at a time, the last one applied. Anime Art is applied after Forbidden Memories HD, so with both
-installed the anime frames of Anime Art are shown; switch *Anime card frame* off here to see HD's layout again.
+Only one mod's card layout is used at a time, the last one applied. Anime Style is applied after Forbidden Memories HD, so with both
+installed the anime frames of Anime Style are shown; switch *Anime card frame* off here to see HD's layout again.
 
 ## Trying it quickly
 

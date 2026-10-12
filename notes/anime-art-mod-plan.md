@@ -1,4 +1,4 @@
-# Anime Art mod — plan and map of what is needed (branch `adhoc-anime-art-mod`, from the v0.3.0 tag)
+# Anime Style mod — plan and map of what is needed (branch `adhoc-anime-art-mod`, from the v0.3.0 tag)
 
 A standalone mod (`mods/anime-art/`, id `anime-art`) that gives every card an anime-style full-bleed frame, independent of
 Forbidden Memories HD. Base: the upstream **v0.3.0 tag** (`663626b1d`), not master. Started 2026-10-12.

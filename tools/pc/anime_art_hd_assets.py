@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the HD asset pack that the Anime Art mod carries (mods/anime-art/hd).
+"""Build the HD asset pack that the Anime Style mod carries (mods/anime-art/hd).
 
     python tools/pc/anime_art_hd_assets.py <Forbidden Memories HD folder, the one holding textures/> [--out mods/anime-art/hd]
 
-The folder is the official Forbidden Memories HD pack (Unchiga, X@nder). Anime Art shows its pictures itself, so a player needs
+The folder is the official Forbidden Memories HD pack (Unchiga, X@nder). Anime Style shows its pictures itself, so a player needs
 only this mod: card pictures, thumbnails, card frames, stars and attribute balls, the Build Deck screen, the duel arena and
 HUD, the portraits. Every picture is the HD pack's, byte for byte, except the card pictures, which are enlarged (Lanczos,
 x1.5 = 612x576, 256 colors): the anime layout stretches a 408x384 card picture over about 536x556 pixels at Internal 4x, and the

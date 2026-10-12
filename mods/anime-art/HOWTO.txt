@@ -1,4 +1,4 @@
-ANIME ART - quick how-to
+ANIME STYLE - quick how-to
 ========================
 
 What it is
@@ -16,10 +16,10 @@ Install
 2. Unzip into the game folder, the one that holds memories-pc.exe, so that this file exists:
    mods/anime-art/mod.json
 3. Start the game. Everything is ON by default: the anime frames and the HD pictures.
-   Game > Mods shows the mod as "Anime Art" (press F10 for the menu bar).
+   Game > Mods shows the mod as "Anime Style" (press F10 for the menu bar).
 4. Best look: Video > Resolution > Internal 4x, and Video > HD text on.
 
-Options (F10 > Game > Mods > Anime Art)
+Options (F10 > Game > Mods > Anime Style)
 ---------------------------------------
 Anime card frame       on (default) / off. Off = every card view looks like the original game.
 HD assets              on (default) / off. On = the Forbidden Memories HD pictures everywhere:
@@ -53,7 +53,7 @@ Obelisk / Ra / Slifer .. blue / yellow / red god frames. Chosen by you, see belo
 Giving a card a frame (fusion, ritual, god ...)
 -----------------------------------------------
 The game has no fusion monsters or gods, so you decide which cards wear those frames.
-A card wears a frame because it has a TAG. You add tags in Anime Art's own mod.json:
+A card wears a frame because it has a TAG. You add tags in Anime Style's own mod.json:
 
 1. Open  mods/anime-art/mod.json  in a text editor (Notepad is fine).
 2. Find the "cards" list. It holds one line per card: the known ritual monsters (tag
@@ -75,7 +75,7 @@ A card wears a frame because it has a TAG. You add tags in Anime Art's own mod.j
 4. Save the file and start the game. Dark Magician now has the purple fusion frame and
    Blue-eyes White Dragon the Slifer frame, whatever the options say.
 
-Tip: an update of Anime Art replaces mod.json. Keep a copy of your lines, or put them in a
+Tip: an update of Anime Style replaces mod.json. Keep a copy of your lines, or put them in a
 mod of your own instead, which survives updates (see "Your own mod" below).
 
 The rules
@@ -119,7 +119,7 @@ If a mod adds Obelisk, Ra or Slifer cards, tag them "obelisk", "ra", "slifer" th
 
 Your own mod (survives updates)
 -------------------------------
-Instead of editing Anime Art's mod.json you can keep your lines in a separate mod:
+Instead of editing Anime Style's mod.json you can keep your lines in a separate mod:
 make a folder mods/my-frames with a mod.json holding
    { "id": "my-frames", "name": "My frames", "min_api": 11, "enabled": true,
      "after": ["anime-art"],
@@ -136,9 +136,9 @@ Good to know
 - The HD pictures are inside this mod, so you do NOT need to install the Forbidden Memories
   HD pack. If you already have it installed, nothing breaks: leave it there or delete it, you
   see the same HD pictures either way.
-- Only one mod's card layout is used at a time. Anime Art loads after Forbidden Memories HD,
-  so with both installed the Anime Art frames are shown. Frame rules you wrote inside the HD
-  pack's own mod.json are not used while Anime Art is on. Tags are: they belong to the cards.
+- Only one mod's card layout is used at a time. Anime Style loads after Forbidden Memories HD,
+  so with both installed the Anime Style frames are shown. Frame rules you wrote inside the HD
+  pack's own mod.json are not used while Anime Style is on. Tags are: they belong to the cards.
 - The mod has one tiny piece of code (anime-art.o): at start it switches "Anime card frame"
   on if you have never chosen. Your own choice is kept after that.
 - The frame pictures have power-of-two sizes on purpose. A frame picture of another size can

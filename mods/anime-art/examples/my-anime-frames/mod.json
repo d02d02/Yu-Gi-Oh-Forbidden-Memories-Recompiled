@@ -3,7 +3,7 @@
     "name": "My anime frames",
     "version": "1.0",
     "author": "you",
-    "description": "Example: the Anime Art frame of single cards. A card is its name or its id, the tag is the frame.",
+    "description": "Example: the Anime Style frame of single cards. A card is its name or its id, the tag is the frame.",
     "min_api": 11,
     "enabled": true,
     "after": ["anime-art"],

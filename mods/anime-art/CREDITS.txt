@@ -1,4 +1,4 @@
-ANIME ART - CREDITS
+ANIME STYLE - CREDITS
 ===================
 
 Forbidden Memories HD - Unchiga and X@nder
@@ -8,7 +8,7 @@ Forbidden Memories HD - Unchiga and X@nder
     Their pack is a separate download: https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled
 
 d02d02
-    The Anime Art mod: the card layout and frame rules, the frame styles, the per-card
+    The Anime Style mod: the card layout and frame rules, the frame styles, the per-card
     tags, the card art enlargement, the tools and the testing.
 
 Hræzlyr
