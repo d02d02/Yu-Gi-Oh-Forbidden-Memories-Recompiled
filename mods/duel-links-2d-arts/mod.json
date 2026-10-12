@@ -1,0 +1,88 @@
+{
+    "id": "duel-links-2d-arts",
+    "name": "Duel Links 2D Arts",
+    "author": "WillliTo & d02d02",
+    "version": "2.0",
+    "description": "Stands a high-resolution, Duel Links style 2D artwork on each face-up monster of the duel field, always facing the camera, with an optional glow. A mod of its own: it does not need 3D Monsters, and it never changes a card's name or text. Turn 3D Monsters off to use it: both draw a monster on the field, and together they would double up.",
+    "library": "duel-links-2d-arts",
+    "conflicts": [
+        "3d-monsters"
+    ],
+    "enabled": false,
+    "settings": [
+        {
+            "key": "size",
+            "label": "Art size",
+            "type": "int",
+            "default": 40,
+            "min": 8,
+            "max": 160,
+            "step": 4,
+            "description": "How tall each monster's art stands on the field, in game pixels. Bigger shows more of the detail."
+        },
+        {
+            "key": "lift",
+            "label": "Height above the card",
+            "type": "int",
+            "default": 16,
+            "min": -4096,
+            "max": 4096,
+            "step": 128,
+            "description": "Raises (or lowers) the art above its card. 0 stands it on the card."
+        },
+        {
+            "key": "glow",
+            "label": "Glow",
+            "type": "bool",
+            "default": 0,
+            "description": "A soft pulsing glow around each monster's art."
+        },
+        {
+            "key": "glow_r",
+            "label": "Glow colour: red",
+            "type": "int",
+            "default": 255,
+            "min": 0,
+            "max": 255,
+            "step": 1
+        },
+        {
+            "key": "glow_g",
+            "label": "Glow colour: green",
+            "type": "int",
+            "default": 255,
+            "min": 0,
+            "max": 255,
+            "step": 1
+        },
+        {
+            "key": "glow_b",
+            "label": "Glow colour: blue",
+            "type": "int",
+            "default": 90,
+            "min": 0,
+            "max": 255,
+            "step": 1
+        },
+        {
+            "key": "glow_reach",
+            "label": "Glow size",
+            "type": "int",
+            "default": 50,
+            "min": 40,
+            "max": 300,
+            "step": 10,
+            "description": "How far the glow spreads around the art, as a percent of the art's own size."
+        },
+        {
+            "key": "glow_period",
+            "label": "Glow pulse length",
+            "type": "int",
+            "default": 90,
+            "min": 4,
+            "max": 240,
+            "step": 2,
+            "description": "Frames for one full pulse, dim to bright and back. Lower pulses faster."
+        }
+    ]
+}
