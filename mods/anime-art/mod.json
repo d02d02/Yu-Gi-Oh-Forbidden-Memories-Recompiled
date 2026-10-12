@@ -1,0 +1,184 @@
+{
+    "id": "anime-art",
+    "name": "Anime Art",
+    "version": "0.1",
+    "author": "d02d02",
+    "description": "Anime-style full-bleed card frames: one frame per card kind, the art enlarged to fill it, ATK/DEF in the frame's plaques. Independent of Forbidden Memories HD.",
+    "min_api": 11,
+    "enabled": true,
+    "after": [
+        "forbidden-memories-hd"
+    ],
+    "settings": [
+        {
+            "key": "full_bleed",
+            "label": "Anime card frame",
+            "type": "bool",
+            "default": 1,
+            "description": "Replaces the retail card frame with the anime frame. Off: every card view looks like retail."
+        },
+        {
+            "key": "ritual_own_frame",
+            "label": "Ritual spells: own frame",
+            "type": "bool",
+            "default": 1,
+            "description": "Ritual spells wear the blue ritual frame instead of the green magic frame."
+        }
+    ],
+    "card_layout": {
+        "spell": {
+            "icon": {
+                "x": 62,
+                "y": 163
+            },
+            "art": {
+                "x": 3,
+                "y": 3,
+                "width": 134,
+                "height": 139
+            }
+        },
+        "frame_styles": {
+            "gold": {
+                "image": "textures/anime_frame_monster.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "gold"
+            },
+            "orange": {
+                "image": "textures/anime_frame_effect.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "orange"
+            },
+            "green": {
+                "image": "textures/anime_frame_magic.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "green"
+            },
+            "pink": {
+                "image": "textures/anime_frame_trap.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "pink"
+            },
+            "blue": {
+                "image": "textures/anime_frame_ritual.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "blue"
+            },
+            "fusion": {
+                "image": "textures/anime_frame_fusion.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "purple"
+            },
+            "ritual_monster": {
+                "image": "textures/anime_frame_ritual_monster.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "blue"
+            },
+            "obelisk": {
+                "image": "textures/anime_frame_obelisk.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "blue"
+            },
+            "ra": {
+                "image": "textures/anime_frame_ra.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "gold"
+            },
+            "slifer": {
+                "image": "textures/anime_frame_slifer.png",
+                "width": 140,
+                "height": 197,
+                "hand_color": "orange"
+            }
+        },
+        "frame_for": [
+            {
+                "tag": "obelisk",
+                "style": "obelisk"
+            },
+            {
+                "tag": "ra",
+                "style": "ra"
+            },
+            {
+                "tag": "slifer",
+                "style": "slifer"
+            },
+            {
+                "tag": "fusion",
+                "style": "fusion"
+            },
+            {
+                "tag": "ritual",
+                "style": "ritual_monster"
+            },
+            {
+                "class": "ritual_spell",
+                "setting": "ritual_own_frame",
+                "style": "blue"
+            },
+            {
+                "class": "ritual_spell",
+                "style": "green"
+            },
+            {
+                "class": "effect_monster",
+                "style": "orange"
+            },
+            {
+                "class": "spell",
+                "style": "green"
+            },
+            {
+                "class": "equip",
+                "style": "green"
+            },
+            {
+                "class": "trap",
+                "style": "pink"
+            },
+            {
+                "class": "monster",
+                "style": "gold"
+            }
+        ],
+        "default_style": "gold",
+        "attribute": {
+            "x": 114,
+            "y": 149
+        },
+        "atk": {
+            "x": 38,
+            "y": 179
+        },
+        "def": {
+            "x": 102,
+            "y": 179
+        },
+        "stars": {
+            "x": 59,
+            "y": 153
+        },
+        "art": {
+            "x": 3,
+            "y": 3,
+            "width": 134,
+            "height": 139
+        },
+        "digits": {
+            "image": "textures/anime_digits.png",
+            "width": 10,
+            "height": 12,
+            "step": 10
+        }
+    }
+}
