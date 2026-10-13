@@ -9,3 +9,6 @@ Usage and caveats are in the module docstring; strategy docs live in `C:\Users\m
 `rigkit.py situation <spec.json> [--record|--check]`: a declarative situation (hand, plays into chosen columns,
 attack, camera pin, shots at battle steps, pixel checks). `--record` stores goldens next to the spec (git-ignored),
 `--check` exits 1 when a shot differs. Spec keys are in `run_situation`'s docstring; example `situations/odd-slot-attack.json`.
+
+`rigkit.py ab <spec> --exe-a A --exe-b B [--settings-b k=v ...] [--max-pct N]`: the same situation on two builds (or one build with a
+setting changed on side B), shots matched by battle step, per-shot pixel diff, wall time, `ab.json` + `ab-sheet.png`, exit 1 on a difference.

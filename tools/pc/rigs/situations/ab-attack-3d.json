@@ -1,0 +1,11 @@
+{
+  "opponent": 1,
+  "hand": [374, 100, 332, 683, 364],
+  "turns": [
+    {"play": [[0, "up", 3]]},
+    {"play": [[0, "up", 1]], "attack": [1, 4]}
+  ],
+  "at": [2, 4, 10],
+  "scale": 2,
+  "settings": {"mod.3d-monsters": 1, "mod.2d-monsters": 0}
+}

@@ -32,7 +32,7 @@ def diff(a, b, region=None, thresh=8):
     m = np.abs(A - B).max(axis=2) > thresh
     ys, xs = np.nonzero(m)
     box = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1) if len(xs) else None
-    return {"count": int(m.sum()), "pct": round(100.0 * m.sum() / m.size, 4), "bbox": box, "same_size": True}
+    return {"count": int(m.sum()), "pct": float(round(100.0 * m.sum() / m.size, 4)), "bbox": box, "same_size": True}
 
 
 def count_color(img, rgb, tol=0, region=None):

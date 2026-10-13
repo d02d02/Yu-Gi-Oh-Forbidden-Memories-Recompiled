@@ -8,6 +8,10 @@
   python -I rigkit.py sets  --scale 2 --out DIR          (every scene set -> sheet.png)
   python -I rigkit.py situation situations/odd-slot-attack.json [--record | --check] --out DIR
       a declarative situation (hand, plays with COLUMNS, attack, camera, shots, pixel checks), see situations/*.json
+  python -I rigkit.py ab spec.json --exe-a A/memories-pc.exe --exe-b B/memories-pc.exe --out DIR [--max-pct 0]
+      the same situation on two builds (each in its own private copy), shots matched by battle step, per-shot pixel
+      diff + wall time, ab.json and ab-sheet.png, exit 1 when any shot differs by more than --max-pct. Both builds must
+      have the mods the spec turns on (camera-pin only when the spec pins a camera).
   python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
       attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
       --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
@@ -78,6 +82,64 @@ def camera_pin(g, angle=None, distance=None):
     if distance is not None:
         g.pad(0x8000 | (distance & 0x7FF), 2); g.step(1)
     g.pad(0, 2)
+
+
+def run_ab(a):
+    """Run the situation spec on build A and build B (two child processes, each with a private copy of its build),
+    match the shots by their battle step (s<step>-vb<n> or the single 'situation.png'), diff them, time them."""
+    import subprocess, time
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import pxkit
+    from PIL import Image, ImageDraw
+    out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
+    results = {}
+    for side, exe in (("a", a.exe_a), ("b", a.exe_b)):
+        spec_path = a.spec
+        if side == "b" and a.settings_b:
+            sp = json.loads(Path(a.spec).read_text(encoding="utf-8"))
+            sp.setdefault("settings", {}).update(dict(i.split("=", 1) for i in a.settings_b))
+            (out / "b").mkdir(exist_ok=True); spec_path = str(out / "b" / "spec-b.json")
+            Path(spec_path).write_text(json.dumps(sp), encoding="utf-8")
+        cmd = [sys.executable, "-I", str(Path(__file__).resolve()), "situation", spec_path, "--repo", a.repo, "--exe", exe,
+               "--out", str(out / side)]
+        t = time.time()
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        results[side] = {"exit": r.returncode, "wall_s": round(time.time() - t, 1), "tail": (r.stdout + r.stderr)[-400:]}
+        res_file = out / side / "result.json"
+        if not res_file.is_file():
+            print(f"build {side.upper()} produced no result:\n{results[side]['tail']}")
+            return 2
+        results[side]["shots"] = {e["shot"].split("-vb")[0].replace(".png", ""): e["shot"] for e in json.loads(res_file.read_text())["shots"]}
+    rows, ok = [], True
+    for key in sorted(set(results["a"]["shots"]) | set(results["b"]["shots"])):
+        fa, fb = results["a"]["shots"].get(key), results["b"]["shots"].get(key)
+        if not fa or not fb:
+            rows.append({"shot": key, "ok": False, "detail": "missing in " + ("A" if not fa else "B")}); ok = False; continue
+        d = pxkit.diff(out / "a" / fa, out / "b" / fb)
+        good = d["pct"] <= a.max_pct
+        ok &= good
+        rows.append({"shot": key, "a": fa, "b": fb, "ok": good, **d})
+    report = {"spec": a.spec, "exe_a": a.exe_a, "exe_b": a.exe_b, "max_pct": a.max_pct, "ok": ok, "rows": rows,
+              "wall_s": {"a": results["a"]["wall_s"], "b": results["b"]["wall_s"]}}
+    (out / "ab.json").write_text(json.dumps(report, indent=1))
+    # side-by-side sheet: A | B per shot
+    tiles = []
+    for r in rows:
+        if "a" in r:
+            ia, ib = Image.open(out / "a" / r["a"]).convert("RGB"), Image.open(out / "b" / r["b"]).convert("RGB")
+            w, h = ia.size; sc = 480 / w
+            ia, ib = ia.resize((480, int(h * sc))), ib.resize((480, int(h * sc)))
+            tile = Image.new("RGB", (960, ia.size[1] + 14)); tile.paste(ia, (0, 14)); tile.paste(ib, (480, 14))
+            ImageDraw.Draw(tile).text((4, 1), f"{r['shot']}  A | B  differ {r['pct']}%", fill="white"); tiles.append(tile)
+    if tiles:
+        sheet = Image.new("RGB", (960, sum(t.size[1] for t in tiles))); y = 0
+        for t in tiles:
+            sheet.paste(t, (0, y)); y += t.size[1]
+        sheet.save(out / "ab-sheet.png")
+    for r in rows:
+        print(f"{'PASS' if r['ok'] else 'FAIL'} {r['shot']:8s} differ {r.get('pct', '-')}% bbox {r.get('bbox')}")
+    print(f"wall A {report['wall_s']['a']} s, B {report['wall_s']['b']} s; verdict {'PASS' if ok else 'FAIL'}")
+    return 0 if ok else 1
 
 
 def play_at(g, slot, column=None, face_up=True, star=0):
@@ -216,7 +278,7 @@ def title_to_option_scene(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -232,6 +294,10 @@ def main():
     ap.add_argument("spec", nargs="?", help="situation: path of the JSON spec")
     ap.add_argument("--record", action="store_true", help="situation: store the shots as goldens next to the spec")
     ap.add_argument("--check", action="store_true", help="situation: compare the shots with the goldens (exit 1 on a difference)")
+    ap.add_argument("--exe-a", help="ab: build A (the reference)")
+    ap.add_argument("--exe-b", help="ab: build B (the change)")
+    ap.add_argument("--settings-b", nargs="*", help="ab: key=value settings applied to side B only (compare a setting, or a build with a setting changed)")
+    ap.add_argument("--max-pct", type=float, default=0.0, help="ab: allowed differing pixels, percent of the picture")
     ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
     ap.add_argument("--settings", nargs="*", help="key=value player settings, e.g. mod.anime-art=1")
@@ -239,6 +305,8 @@ def main():
     ap.add_argument("--steps", type=int, default=30, help="vblanks to run after loading, before the shot")
     ap.add_argument("--press", default="", help="comma list of keys pressed (e.g. triangle) after loading")
     a = ap.parse_args()
+    if a.kind == "ab":
+        return run_ab(a)
     if a.kind == "sets":
         return run_sets(a)
     yc = load_client(a.repo)
