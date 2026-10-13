@@ -64,6 +64,7 @@ editors write, is fine):
 | `terrain_bonus` | what each terrain gives each monster type, in place of the disc's +500 and -500, below |
 | `equip_bonus_default` | what an equip adds when no `equips` entry sets its bonus, below |
 | `trap_thresholds` | the attack each of the six attack traps stops, below |
+| `trap_effects` | an attack trap that also destroys every monster of the attacker's side (Mirror Force), [below](gameplay-tables.md#attack-traps) |
 | `passwords` | each card's password and starchip price on the Password screen, below |
 | `limits` | the numbers the game caps (ATK and DEF, life points, starchips, the chest, the records), below |
 | `guardian_stars` | the stars' names and icons, stars 11 to 15, and what each star gets against each other, below |

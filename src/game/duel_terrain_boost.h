@@ -73,4 +73,9 @@ extern s8 gDuel_aTerrainBoost[CARD_TYPE_MAGIC][DUEL_TERRAIN_COUNT];
    terrain or the card is not a monster. */
 s32 Duel_GetTerrainBoost(s32 cardType);
 
+#ifdef MEMORIES_PC
+/* The same for one card: a mod's own bonus for it on this terrain ("cards" in "terrain_bonus"), else its type's. */
+s32 Duel_GetTerrainBoostCard(s32 cardId, s32 cardType);
+#endif
+
 #endif

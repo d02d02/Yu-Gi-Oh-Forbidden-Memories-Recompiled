@@ -385,6 +385,7 @@ def modded_listing(modded_slus: bytes, modded_wa: bytes, report: list) -> str:
     image = g._image(modded_slus)
     names = g.plain_names(image, _tl.glyph_characters(image))
     parts = []
+    _tl.OVERLAPS.clear()
     for bank in _tl.banks(image):
         if bank.name == "descriptions" and modded_wa and g.wa_descriptions(modded_slus, modded_wa):
             parts.append(wa_description_listing(image, g.description_bytes(modded_slus, modded_wa), names))
@@ -396,6 +397,7 @@ def modded_listing(modded_slus: bytes, modded_wa: bytes, report: list) -> str:
         except Exception as problem:      # a text bank the listing cannot follow
             report.append(f"text: the modified {bank.name} bank could not be read ({problem}); its strings are not "
                           "imported")
+    report.extend(f"text: {note}" for note in _tl.OVERLAPS)
     return "\n".join(parts)
 
 
@@ -600,6 +602,59 @@ def port_wa(retail_wa: bytes, modded_wa: bytes, keep_retail) -> bytes:
     return bytes(out)
 
 
+def read_card_art(project: Project, retail_files, modded_files, report: list) -> list:
+    """Each card's picture, thumbnail and name plate that the mod changed, set as the editor sets them
+    (art.set_image: a texture pack for a retail card, the plate as a "title"). The regions of WA_MRG.MRG they
+    sit in are returned: they are carried by those files, not as data."""
+    from . import art
+    regions, parts_changed, cards = [], 0, set()
+    for cid in range(1, g.CARD_COUNT + 1):
+        done = False
+        for part in art.PARTS:
+            old, new = art.disc_image(retail_files.wa, cid, part), art.disc_image(modded_files.wa, cid, part)
+            if old.rgba == new.rgba and old.size == new.size:
+                continue
+            art.set_image(project, cid, part, new)
+            parts_changed += 1
+            done = True
+        if done:
+            cards.add(cid)
+            base = art.record_base(cid)
+            regions += [(base, base + art.ART_SECTORS * art.SECTOR), ((cid - 1) * art.SECTOR, cid * art.SECTOR)]
+    if cards:
+        project.other.setdefault("after", ["forbidden-memories-hd"])      # its pictures win over the HD pack's for the same slots
+        report.append(f"art: {parts_changed} pictures, thumbnails and name plates of {len(cards)} cards are the mod's: "
+                      "set as the editor sets card art (textures/ and \"title\" files)")
+    return regions
+
+
+def read_portraits(project: Project, retail_files, modded_files, report: list) -> list:
+    """The disc duelists' faces the mod changed, as the PNG of a replacement (roster.set_portrait); duelist 0's cannot be
+    set. The records' regions of WA_MRG.MRG are returned."""
+    from . import portrait, pngio, roster
+    regions, changed = [], []
+    for d in range(0, portrait.COUNT):
+        old, new = portrait.disc_record(retail_files.wa, d), portrait.disc_record(modded_files.wa, d)
+        if old == new:
+            continue
+        # A face a few pixels off (a palette touch-up) is the same face: the disc's own (and its HD picture) stands.
+        a, b = portrait.record_image(old).rgba, portrait.record_image(new).rgba
+        if sum(abs(a[i] - b[i]) for i in range(0, len(a), 4)) / (len(a) // 4) < 2.0:
+            continue
+        start = portrait.BASE + d * portrait.RECORD
+        regions.append((start, start + portrait.RECORD))
+        if d == 0:
+            report.append("portraits: duelist 0's face is the mod's; the port cannot set it")
+            continue
+        roster.set_portrait(project, d, pngio.encode(portrait.record_image(new)))
+        changed.append(d)
+    if changed:
+        report.append(f"portraits: {len(changed)} duelists wear the mod's face "
+                      f"({', '.join(g.DUELIST_NAMES[d] for d in changed[:4])}{'...' if len(changed) > 4 else ''}): "
+                      "portraits/ files of their replacements")
+    return regions
+
+
 def wa_data(project: Project, retail_files, modded_files, report: list) -> list:
     """The "data" entries that carry the rest of WA_MRG.MRG: patches and
     sector replacements at the retail disc's sectors when they are few, the
@@ -607,7 +662,8 @@ def wa_data(project: Project, retail_files, modded_files, report: list) -> list:
     fusions, equips, rituals and pools) stay retail's, so the port's rules
     apply over the disc's own tables."""
     wa_old, wa_new = retail_files.wa, modded_files.wa
-    keep = wa_structured_regions()
+    keep = wa_structured_regions() + read_card_art(project, retail_files, modded_files, report)
+    keep += read_portraits(project, retail_files, modded_files, report)
     starters = _starter_sums(wa_new) if len(wa_new) >= g.STARTER_BASE + g.STARTER_LENGTH else []
     if starters and min(starters) < g.POOL_TOTAL // 2 and wa_new[g.STARTER_BASE:g.STARTER_BASE + g.STARTER_LENGTH] != \
             wa_old[g.STARTER_BASE:g.STARTER_BASE + g.STARTER_LENGTH]:
@@ -664,6 +720,201 @@ def wa_data(project: Project, retail_files, modded_files, report: list) -> list:
     return data
 
 
+def magic_equips(project: Project, modded, retail_files, modded_files) -> list:
+    """Cards that are not equip cards but have rows in the equip table (Kuriboh's Multiply, Spellbinding Circle,
+    Shadow Spell): written as "equips" entries with "any_card", with the bonus the mod's placement hook gives
+    each (kit.placement_bonuses); an equip card's bonus goes to the Cards tab's Equip bonus as usual."""
+    bonuses = kit.placement_bonuses(retail_files.slus, modded_files.slus)
+    notes = []
+    for card in sorted(bonuses):
+        if card in project.cards and project.cards[card].type == g.TYPE_EQUIP and bonuses[card] != 500:
+            project.set_equip_bonus(card, bonuses[card])
+            notes.append(f"equips: {project.cards[card].name} gives {bonuses[card]} in the mod's placement hook (not +500)")
+    others = [e for e in sorted(project.equips) if e in project.cards and project.cards[e].type != g.TYPE_EQUIP
+              and project.equips[e] and e not in project.retail.equips]
+    for e in others:
+        entry = {"card": project.ref(e), "any_card": True, "replace": True,
+                 "add": [project.ref(m) for m in sorted(project.equips[e]) if m in project.cards]}
+        if e in bonuses:
+            entry["bonus"] = bonuses[e]
+        project.kept["equips"].append(entry)
+        del project.equips[e]
+    if others:
+        notes.append(f"equips: {len(others)} magic cards equip monsters in the mod ({_names(project, others)}): "
+                     "\"equips\" entries with \"any_card\", and their bonuses from the placement hook")
+    return notes
+
+
+def read_byte_pools(modded, modded_files) -> list:
+    """Pools a mod stores as one byte a card (Kuriboh: Duel_ShuffleDeck patches itself to read bytes for
+    the first fifteen duelists, and the drops follow): read as halfwords one adds up to nonsense, read
+    as bytes to 2048. The draw is the game's own, so the byte weights are the pool."""
+    found = []
+    for d in range(len(modded.pools)):
+        for name in g.POOLS:
+            at = g.DUELIST_BASE + d * g.DUELIST_STRIDE + g.POOL_OFFSETS[name]
+            raw = modded_files.wa[at:at + g.CARD_COUNT]
+            if sum(modded.pools[d][name].values()) != g.POOL_TOTAL and sum(raw) == g.POOL_TOTAL:
+                modded.pools[d][name] = {cid: w for cid, w in enumerate(raw, 1) if w}
+                found.append(f"{g.DUELIST_NAMES[d]} {name}")
+    if not found:
+        return []
+    return [f"pools: {len(found)} pools are stored as one byte a card, not two ({', '.join(found[:3])}"
+            f"{'...' if len(found) > 3 else ''}); read that way they add up to {g.POOL_TOTAL}"]
+
+
+START_CAMPAIGN_DUEL = 0x80038568       # Text_StartCampaignDuel: where it stores the opponent id
+EXTRA_AI_ROWS = 0x801CF3F7             # Kuriboh: the second AI rows, nine bytes a duelist, row k at +9k
+EXTRA_DUELISTS = 15
+EXTRA_NAMES = 0x801DB3A8                # Kuriboh: 24 glyph bytes a mode, 0xFF ends the name (func_800383DC shows it)
+NEVER = {"card": 1, "copies": 255}     # an unlock no save meets: the chest keeps 250 of a card at most
+
+
+def _extra_name(slus: bytes, k: int) -> str:
+    """The name of campaign duelist 39 + k from the mod's table of glyph bytes (0 is a space, 0xFF the end)."""
+    from .gamedata import _tl
+    image = g._image(slus)
+    glyphs = _tl.glyph_characters(image)
+    row = kit.Memory(slus).bytes(EXTRA_NAMES + 24 * k, 24)
+    text = ""
+    for byte in row:
+        if byte == 0xFF:
+            break
+        text += " " if byte == 0 else glyphs.get(byte, "")
+    return text.strip()
+
+
+AI_ROWS = 0x800917F0                   # gDuel_aOpponentData: nine bytes a duelist, 0-39
+
+
+def read_ai_rows(project: Project, retail_files, modded_files) -> list:
+    """The disc duelists' AI rows the mod changed, as the "ai" of a replacement (roster.take_over): the port reads
+    them for duelists 0-39 (notes/more-duelists.md, "The nine bytes"); duelist 0 is the Yugi and Atem final duel."""
+    from . import roster
+    retail, memory = kit.Memory(retail_files.slus), kit.Memory(modded_files.slus)
+    changed = []
+    for d in range(0, g.DUELIST_COUNT):
+        old, new = retail.bytes(AI_ROWS + 9 * d, 9), memory.bytes(AI_ROWS + 9 * d, 9)
+        if old == new:
+            continue
+        roster.take_over(project, d).extra["ai"] = {"values": list(new)}
+        changed.append(d)
+    notes = []
+    if changed:
+        notes.append(f"ai: {len(changed)} duelists play with the mod's AI rows (9 bytes each: how deep they look, when "
+                     f"they change play, how they fuse): {', '.join(g.DUELIST_NAMES[d] for d in changed[:4])}"
+                     f"{'...' if len(changed) > 4 else ''}")
+    return notes
+
+
+FRAME_HOOK = 0x8002940C                # func_800291E0: a j into the mod's frame table code (Kuriboh)
+FRAME_NIBBLES = 0x801DB8A0             # one nibble a card, two cards a byte: odd ids the high nibble, (id - 1) >> 1 the byte
+DEFAULT_FRAME = {20: 1, 21: 2, 22: 3, 23: 1}        # magic green, trap pink, ritual blue, equip green; monsters gold (0)
+
+
+def read_frame_colors(project: Project, retail_files, modded_files) -> list:
+    """The frame color of every card from the mod's table of nibbles (0-3 = Gold, Green, Pink, Blue), where it is not
+    the one the card's type draws: the ritual cards that became equips keep their blue."""
+    word, old = _word(modded_files.slus, FRAME_HOOK), _word(retail_files.slus, FRAME_HOOK)
+    if word is None or word == old or word >> 26 != 2:
+        return []
+    memory = kit.Memory(modded_files.slus)
+    table = memory.bytes(FRAME_NIBBLES, (g.CARD_COUNT + 1) // 2)
+    changed = []
+    for cid in range(1, g.CARD_COUNT + 1):
+        byte = table[(cid - 1) >> 1]
+        color = byte >> 4 if cid & 1 else byte & 15
+        card = project.cards.get(cid)
+        if card is not None and color < 4 and color != DEFAULT_FRAME.get(card.type, 0):
+            card.frame = color
+            changed.append(cid)
+    if not changed:
+        return []
+    return [f"cards: {len(changed)} cards have a frame color of the mod's table that their type does not give "
+            f"({_names(project, changed[:3])}{'...' if len(changed) > 3 else ''}): \"frame\""]
+
+
+def read_free_duel_music(project: Project, retail_files, modded_files) -> list:
+    """The song each disc duelist plays in Free Duel when the mod's func_80024DC8 picks it from a table (retail plays 39
+    for all): the "music" of a replacement."""
+    from . import roster
+    songs = kit.free_duel_music(retail_files.slus, modded_files.slus)
+    if not songs:
+        return []
+    for d, song in songs.items():
+        roster.take_over(project, d).extra["music"] = song
+    return [f"duelists: {len(songs)} disc duelists play their own song in Free Duel (the mod's table at 0x{kit.FREE_DUEL_BGM_TABLE:08X}): "
+            "\"music\""]
+
+
+AI_MODE_VARIABLE = (10, 11, 12, 13, 15)      # the modes the mod's table at 0x801CF67F gives to AI variable 15
+
+
+def read_extra_duelists(project: Project, retail_files, modded_files) -> list:
+    """The duelists a mod keeps beside the disc's first fifteen (Kuriboh): the campaign scripts start opponent
+    id 39 + k, the hook at Text_StartCampaignDuel stores k and the mode k, and the mod's twin of duelist k plays
+    from the second half of each of his four byte pools and a second AI row. Written as copies of the
+    base at the id the scripts name, out of Free Duel."""
+    if modded_files.slus == retail_files.slus or             _word(modded_files.slus, START_CAMPAIGN_DUEL) == _word(retail_files.slus, START_CAMPAIGN_DUEL) or             _word(modded_files.slus, START_CAMPAIGN_DUEL) >> 26 != 3:
+        return []
+    from . import roster
+    memory = kit.Memory(modded_files.slus)
+    made, skipped, scaled = [], [], []
+    for k in range(1, EXTRA_DUELISTS + 1):
+        pools = {}
+        for name in g.POOLS:
+            at = g.DUELIST_BASE + k * g.DUELIST_STRIDE + g.POOL_OFFSETS[name] + g.CARD_COUNT
+            raw = modded_files.wa[at:at + g.CARD_COUNT]
+            if not sum(raw):
+                break
+            pools[name] = {cid: w for cid, w in enumerate(raw, 1) if w}
+            if sum(raw) != g.POOL_TOTAL:       # the game's draw keeps each card's share whatever the sum
+                pools[name] = normalize(pools[name])
+                scaled.append(f"{g.DUELIST_NAMES[k]} {name}")
+        else:
+            row = list(memory.bytes(EXTRA_AI_ROWS + 9 * k, 9))
+            name = _extra_name(modded_files.slus, k) or f"Event {39 + k}"
+            entry = roster.add_copy(project, k, name=name, slot=39 + k, key=roster.slug(name) or f"event-{39 + k}")
+            entry.pools = pools
+            entry.extra["ai"] = {"values": row}
+            if k in AI_MODE_VARIABLE:     # the mod's AiScript_Store hands these modes' scripts their number as variable 15
+                entry.extra["ai"]["mode"] = k
+            entry.extra["unlock"] = dict(NEVER)
+            made.append(entry)
+            continue
+        skipped.append(k)
+    notes = []
+    if made:
+        notes.append(f"duelists: {len(made)} campaign duelists added (ids {made[0].slot}-{made[-1].slot}, the ones the "
+                     "dialogue starts): each copies duelist 1-15 and plays from the second half of his pools and "
+                     "the mod's second AI row; they never unlock for Free Duel")
+    if scaled:
+        notes.append(f"duelists: {len(scaled)} second pools do not add up to {g.POOL_TOTAL} ({', '.join(scaled)}): scaled, "
+                     "keeping each card's share")
+    if skipped:
+        notes.append(f"duelists: duelists {skipped} have an empty second pool; not added")
+    return notes
+
+
+def yugi_moto(project: Project) -> list:
+    """The mod's Yugi face sits on Duel Master K's record. Free Duel keeps K as he is and gets Yugi Moto beside him, on a
+    later page: a copy of K (his pools and AI row as the mod has them) wearing the face, open once Pegasus is beaten."""
+    from . import roster
+    k = roster.replacement(project, 39)
+    if k is None or k.portrait is None:
+        return []
+    yugi = roster.add_copy(project, 39, name="Yugi Moto", key="yugi-moto")
+    yugi.portrait, k.portrait = k.portrait, None
+    if "ai" in k.extra:
+        yugi.extra["ai"] = {"values": list(k.extra["ai"]["values"])}
+    if "music" in k.extra:
+        yugi.extra["music"] = k.extra["music"]
+    yugi.extra["unlock"] = {"beat": "Pegasus"}
+    roster.prune(project, k)
+    return ["duelists: Yugi Moto added to Free Duel (the mod's Yugi face, Duel Master K's pools and AI row; open after "
+            "Pegasus is beaten); Duel Master K keeps retail's face"]
+
+
 def fixed_decks(project: Project, retail, modded, retail_files, modded_files) -> list:
     """Fixed decks when the mod's shuffle deals counts of copies (A4): each
     opponent's deck is the forty cards that shuffle deals from its pool,
@@ -697,7 +948,7 @@ def fixed_decks(project: Project, retail, modded, retail_files, modded_files) ->
     return notes
 
 
-AI_COMMANDS = 0x800916E0, 0x800916E0 + 4 * 72    # gAiScript_apfnCommand
+AI_COMMANDS = 0x800916E0, 0x800916E0 + 4 * 68    # gAiScript_apfnCommand (the opponent rows start right after, 0x800917F0)
 STAT_CAP_SITES = (0x800170E0, 0x80017200)       # Duel_CalcCardStats
 OPPONENT_FIELD = 0x80024E08                     # func_80024DC8: the opponent's home field
 CARD_FRAME = 0x8002C290                         # func_8002BFCC: the card's frame
@@ -734,7 +985,50 @@ def kit_rules(project: Project, modded, retail_files, modded_files) -> tuple:
                            "home fields): the port has six")
         if terrain.by_attribute:
             missing.append(f"terrains from {terrain.by_attribute} up that favour a monster's attribute, not its type")
+    exodia = kit.exodia_score(retail_slus, slus)
+    if exodia is not None:
+        shown = max(-99, min(99, exodia))
+        project.other.setdefault("limits", {}).setdefault("rank_score", {})["exodia"] = shown
+        notes.append(f"rules: a win by Exodia adds {exodia} to the rank sum in the mod's code (retail 40): \"limits\" "
+                     f"\"rank_score\" \"exodia\" {shown}" + (" (the port's range ends at -99)" if shown != exodia else ""))
+        readme.append("- Winning with Exodia gives the best technique rank (S-TEC).")
+    penalties = kit.stat_penalties(retail_slus, slus)
+    if penalties:
+        project.other.setdefault("limits", {}).update(penalties)
+        notes.append("rules: the mod's DuelEffect_ApplyStatPenalty takes "
+                     + ", ".join(f"{v} for {k}" for k, v in penalties.items()) + " off ATK and DEF: \"limits\"")
+        readme.append("- " + ", ".join(f"{k.replace('_', ' ').title()} takes {v} off" for k, v in penalties.items())
+                      + " each of the opponent's monsters' ATK and DEF.")
+    unique = kit.unique_drops(retail_slus, slus)
+    if unique:
+        project.other["unique_drops"] = {g.DUELIST_NAMES[d]: str(project.ref(c)) for d, c in sorted(unique.items())
+                                         if c in project.cards}
+        notes.append(f"rules: {len(unique)} duelists give a card of their own the first time (until they are unlocked for "
+                     "Free Duel), from the mod's Duel_SelectCardDrop hook: \"unique_drops\"")
+        readme.append("- Each campaign duelist gives an iconic card of his own the first time you beat him.")
+    copies = kit.card_copies(retail_slus, slus)
+    if copies:
+        project.other.setdefault("limits", {})["card_copies"] = {str(project.ref(c)): n for c, n in sorted(copies.items())
+                                                                  if c in project.cards}
+        notes.append("rules: the mod's deck builder holds " + ", ".join(
+            f"{n} of {project.cards[c].name}" for c, n in sorted(copies.items())[:5] if c in project.cards)
+            + ("..." if len(copies) > 5 else "") + ": \"limits\" \"card_copies\"")
+        readme.append("- A deck holds the mod's own number of copies of some cards (none of Novox's Prayer).")
+    lists = kit.terrain_card_lists(retail_slus, slus)
+    if lists:
+        table = project.other.setdefault("terrain_bonus", {})
+        for terrain, cards in lists.items():
+            named = {str(project.ref(cid)): points for cid, points in sorted(cards.items()) if cid in project.cards}
+            table.setdefault(kit.TERRAIN_NAMES[terrain - 1], {})["cards"] = named
+        notes.append(f"rules: {sum(len(c) for c in lists.values())} cards have a terrain bonus of their own in the mod's "
+                     "DuelEffect_ApplyTerrain hook: \"terrain_bonus\" \"cards\"")
+        readme.append("- Named cards get their own terrain bonus (for example +500 on a field that favours them).")
     traps = kit.trap_thresholds(retail_slus, slus)
+    if not traps:
+        # The disc's own function with the mod's numbers in its table: only the thresholds that changed.
+        before, after = retail.bytes(kit.TRAP_THRESHOLDS, 6), memory.bytes(kit.TRAP_THRESHOLDS, 6)
+        if before != after and len(after) == 6:
+            traps = {trap: 100 * value for trap, old, value in zip(kit.ATTACK_TRAPS, before, after) if old != value}
     if traps:
         project.other["trap_thresholds"] = traps
         notes.append(f"rules: the attack traps' thresholds are the mod's (A8): \"trap_thresholds\" "
@@ -742,6 +1036,12 @@ def kit_rules(project: Project, modded, retail_files, modded_files) -> tuple:
         readme.append("- Attack traps spring up to the mod's attack thresholds.")
         missing.append("which cards act as which attack trap (the mod's lists, in its rewritten "
                        "Duel_SelectAttackTrap): the disc's six traps keep their places")
+    sweep = kit.attack_trap_sweep(retail_slus, slus)
+    if sweep:
+        project.other["trap_effects"] = {sweep: "destroy_all"}
+        notes.append(f"rules: {sweep} also destroys every monster of the attacker's side (the mod's hook at "
+                     f"0x{kit.TRAP_SWEEP_HOOK:08X}): \"trap_effects\"")
+        readme.append(f"- {sweep} (Mirror Force) destroys all the attacker's monsters when it springs.")
     bonus = kit.equip_bonus(retail_slus, slus)
     if bonus:
         equips = {cid: v for cid, v in bonus.fixed.items() if cid in cards and cards[cid].type == g.TYPE_EQUIP}
@@ -778,7 +1078,9 @@ def kit_rules(project: Project, modded, retail_files, modded_files) -> tuple:
     if changed:
         missing.append(f"the opponents' play (AI): {len(changed)} of its script commands are the mod's code, and "
                        "the mod's scripts in WA_MRG.MRG expect them, so they play by the disc's commands")
-    if memory.bytes(CARD_FRAME, 16) != retail.bytes(CARD_FRAME, 16):
+    frame_word = _word(slus, FRAME_HOOK)       # the mod's table of nibbles is read (read_frame_colors)
+    frame_read = frame_word is not None and frame_word != _word(retail_slus, FRAME_HOOK) and frame_word >> 26 == 2
+    if memory.bytes(CARD_FRAME, 16) != retail.bytes(CARD_FRAME, 16) and not frame_read:
         missing.append("each card's frame color by its class (Effect, Union...)")
     if any(slus[0x88:0x800]):
         notes.append("rules: the executable's header holds code (0x8000B070 and up): a mod made with the kit "
@@ -833,10 +1135,13 @@ def import_modded(retail_files, modded_files, mod_id: str = "imported-mod", name
                 setattr(card, name, getattr(old, name))     # only spaces at line ends differ: the same text
                 spaced += 1
         project.cards[cid] = card
-    drop_notes = decode_drop_pools(retail, modded, retail_files, modded_files)
+    byte_notes = read_byte_pools(modded, modded_files)
+    drop_notes = byte_notes + decode_drop_pools(retail, modded, retail_files, modded_files)
     project.fusions = dict(modded.fusions)
     project.equips = {e: set(m) for e, m in modded.equips.items()}
     equip_notes = read_equip_bitmaps(project, modded, retail_files, modded_files)
+    equip_notes += magic_equips(project, modded, retail_files, modded_files)
+    equip_notes += read_frame_colors(project, retail_files, modded_files)
     project.rituals = dict(modded.rituals)
     ritual_notes = check_rituals(project, modded)
     project.pools = [{p: dict(modded.pools[d][p]) for p in g.POOLS} for d in range(len(modded.pools))]
@@ -854,6 +1159,9 @@ def import_modded(retail_files, modded_files, mod_id: str = "imported-mod", name
     report.append(f"pools: {pools_changed} of {len(retail.pools) * len(g.POOLS)} differ")
     report += drop_notes
     report += fixed_decks(project, retail, modded, retail_files, modded_files)
+    report += read_extra_duelists(project, retail_files, modded_files)
+    report += read_ai_rows(project, retail_files, modded_files)
+    report += read_free_duel_music(project, retail_files, modded_files)
     off_total = []
     for d in range(len(modded.pools)):
         for p in g.POOLS:
@@ -903,7 +1211,9 @@ def import_modded(retail_files, modded_files, mod_id: str = "imported-mod", name
         result.unhandled += 1
     text_read = text_spans(modded_files.slus) or []      # what text.txt carries; nothing when unreadable
     handled = [(g.slus_offset(a), g.slus_offset(b)) for a, b in SLUS_HANDLED + text_read]
-    named = [(g.slus_offset(a), g.slus_offset(b), label) for a, b, label in SLUS_REGIONS]
+    # The AI rows of duelists 1-39 are read (read_ai_rows); row 0 is reported there.
+    named = [(g.slus_offset(a), g.slus_offset(b), label) for a, b, label in SLUS_REGIONS if a != AI_ROWS]
+    handled.append((g.slus_offset(AI_ROWS), g.slus_offset(AI_ROWS + 9 * g.DUELIST_COUNT)))
     for low, high, label in named:
         count = sum(min(e, high) - max(s, low) for s, e in slus_runs if s < high and e > low)
         if count:
@@ -929,6 +1239,7 @@ def import_modded(retail_files, modded_files, mod_id: str = "imported-mod", name
 
     # The rest of WA_MRG.MRG.
     data = wa_data(project, retail_files, modded_files, report)
+    report += yugi_moto(project)
     if data:
         project.other["data"] = data
     if result.unhandled:

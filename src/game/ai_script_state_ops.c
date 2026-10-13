@@ -204,6 +204,11 @@ void AiScript_Store(void)
     int index = AiScript_ReadByte();
     volatile int *values = gAiScript_aMemory;
 
+#ifdef MEMORIES_PC
+    /* A duelist's "ai" "mode" is variable 15 whatever the script stores there (duelists.h). */
+    if (index == 15 && gDuel_bOpponentID >= 0 && Duelists_AiMode(gDuel_bOpponentID) >= 0)
+        value = Duelists_AiMode(gDuel_bOpponentID);
+#endif
     values[index] = value;
 }
 

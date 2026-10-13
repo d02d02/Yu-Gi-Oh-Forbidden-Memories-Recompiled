@@ -121,6 +121,18 @@ s32 Duel_GetTerrainBoost(s32 cardType)
     return gDuel_aTerrainBoost[cardType][terrain[0] - 1] * CARD_STAT_SCALE;
 }
 
+#ifdef MEMORIES_PC
+/* The terrain's bonus for this card: a mod's own for the card, else the type's (Duel_GetTerrainBoost). */
+s32 Duel_GetTerrainBoostCard(s32 cardId, s32 cardType)
+{
+    s32 bonus;
+    if (Tables_TerrainBonusCard(gDuel_bTerrain[0], cardId, &bonus)) {
+        return bonus;
+    }
+    return Duel_GetTerrainBoost(cardType);
+}
+#endif
+
 /* Two RECTs per field slot: the card art at 2 * slot and the name strip at
    2 * slot + 1. LoadImage consumes both, which is what types the table. */
 
@@ -174,11 +186,20 @@ u8 *Duel_SetupCardRecord(s32 a, s32 b) {
 #ifdef MEMORIES_PC
     p->defense_modifier = 0;
 #endif
+#ifdef MEMORIES_PC
+    p->terrain_modifier =
+        Duel_GetTerrainBoostCard(
+            (s16)p->card_id,
+            (gDuel_adwCardStats[(s16)p->card_id - 1] >>
+             CARD_STAT_TYPE_SHIFT) &
+                CARD_STAT_TYPE_MASK);
+#else
     p->terrain_modifier =
         Duel_GetTerrainBoost(
             (gDuel_adwCardStats[(s16)p->card_id - 1] >>
              CARD_STAT_TYPE_SHIFT) &
             CARD_STAT_TYPE_MASK);
+#endif
 
     base = D_80177EA4;
     q = &base[idx * 2];

@@ -10,7 +10,7 @@ textures/anime_digits.png, the same things hd_assets_pack.py writes.
 - card_layout.frame_styles / frame_for / default_style (anime_frame_layout.py): an older
   "frame" per kind (and "kinds") becomes frame styles and the rules that pick them. A
   ritual frame that is magic's file is no frame of its own and is dropped; one that
-  differs becomes the sub-option "Ritual spells: own frame" (off).
+  differs becomes the sub-option "Ritual spells: own frame" (on).
 - card_layout.atk / def: the stat boxes' centres, measured from textures/anime_frame_monster.png.
 - card_layout.digits and textures/anime_digits.png: tools/pc/hd_recipes/anime_digits.png,
   or drawn from --digit-font.

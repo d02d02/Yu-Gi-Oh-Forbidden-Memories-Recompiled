@@ -79,6 +79,33 @@ static int select_custom_attack_trap(u8 *attacker)
 }
 #endif
 
+#ifdef MEMORIES_PC
+static s32 Duel_SelectAttackTrapRetail(u8 *p);
+
+/* A trap with the "destroy_all" effect (tables.h Tables_TrapDestroysAll; the Kuriboh mod's Mirror Force) takes
+ * every other monster of the attacking side with the attacker: records 5-9 or 20-24, the side D_8009B1D5 selects,
+ * released as a destroyed monster's record is. The attacker itself goes the way every attack trap sends it. */
+static void sweep_attacker_row(u8 *attacker)
+{
+    int trap = (int)D_8009B22A - DUEL_ATTACK_TRAP_FIRST_CARD_ID, i;
+    int base = D_8009B1D5 * DUEL_CARD_SIDE_RECORD_COUNT + DUEL_FIELD_ROW_SIZE;
+    if (!Tables_TrapDestroysAll(trap)) return;
+    for (i = 0; i < DUEL_FIELD_ROW_SIZE; i++) {
+        DuelCardRecord *card = &D_801A7AD8[base + i];
+        if ((card->flags & DUEL_CARD_FLAG_OCCUPIED) && base + i != ((DisplayObject *)attacker)->field_6A)
+            DuelCard_RemoveFromField(card);
+    }
+}
+
+s32 Duel_SelectAttackTrap(u8 *p)
+{
+    s32 sprung = Duel_SelectAttackTrapRetail(p);
+    if (sprung == 1) sweep_attacker_row(p);
+    return sprung;
+}
+#define Duel_SelectAttackTrap Duel_SelectAttackTrapRetail
+#endif
+
 s32 Duel_SelectAttackTrap(u8 *p) {
     s32 i;
     s32 off1;
@@ -216,6 +243,10 @@ s32 Duel_SelectAttackTrap(u8 *p) {
     }
     return 0;
 }
+
+#ifdef MEMORIES_PC
+#undef Duel_SelectAttackTrap
+#endif
 
 /* Four-state presentation sequencer on the D_8009B210 mode byte: mode 0
  * starts the first screen effect and arms the 0x14-frame counter; mode 1

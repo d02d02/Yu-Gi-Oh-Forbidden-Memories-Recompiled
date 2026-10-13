@@ -51,8 +51,12 @@ s32 Duel_GetBaseCardStat(s32 arg0, s32 arg1) {
     } while (0);
     t = gDuel_adwCardStats;
     k = arg0 - 1;
+#ifdef MEMORIES_PC
+    s += Duel_GetTerrainBoostCard(arg0, (t[k] >> CARD_STAT_TYPE_SHIFT) & CARD_STAT_TYPE_MASK);
+#else
     s += Duel_GetTerrainBoost((t[k] >> CARD_STAT_TYPE_SHIFT) &
                               CARD_STAT_TYPE_MASK);
+#endif
 
     if (s < 0) {
         return 0;

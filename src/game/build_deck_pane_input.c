@@ -129,7 +129,7 @@ void BuildDeck_UpdateChestPaneInput(BuildDeckTransitionState *state)
 #ifdef MEMORIES_PC
             /* Three, or a mod's "deck_copies" (tables.h). */
             state->deck_card_quantities[r] <
-                Tables_Value(TABLES_VALUE_DECK_COPIES, DECK_CARD_COPY_LIMIT)) {
+                Tables_CardCopies((s32)r, DECK_CARD_COPY_LIMIT)) {
 #else
             state->deck_card_quantities[r] < DECK_CARD_COPY_LIMIT) {
 #endif

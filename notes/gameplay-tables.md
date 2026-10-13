@@ -57,6 +57,14 @@ A card a mod `replace`s keeps its disc name here: `"Turtwig"` names nothing
 (the Mods window says so) even when a mod renamed a card to it, so name such
 a card by its number.
 
+## Unique drops
+
+`"unique_drops": {"Simon Muran": "Kuriboh", "Teana": "Magician of Faith"}` makes a disc duelist give that card, in
+place of the one his pools roll, until he is **unlocked for Free Duel** (the campaign unlocks a duelist when you
+first beat him: story flag `0x6E0 + n`). From then on his pools decide. Every roll is the pool's own roll first, so
+the random numbers the game draws are the same; only the card changes. A duelist a mod adds has no such flag and is
+not affected. The latest mod that names a duelist wins.
+
 ## Fusions
 
 `"fusions"` is a list of rules:
@@ -104,6 +112,7 @@ The AI fuses by the same rules as the player.
 | `add` | cards, or monster types (`"Dragon"`, `"Winged Beast"`), it may now equip |
 | `remove` | cards or types it may no longer equip |
 | `replace` | `true`: it equips only what `add` names, and nothing the disc listed |
+| `any_card` | `true`: the card need not be an equip card. A magic card (or a monster) with equip rules equips what they name when it is combined with it in the hand, and gives it its `bonus`; played alone it does what it did |
 
 Within one entry a named card is surer than a type and a type surer than
 `replace`, so `"add": ["Dragon"], "remove": ["Curse of Dragon"]` equips every
@@ -323,6 +332,17 @@ in points, with a sign:
 }
 ```
 
+A terrain may also name **cards**, which get their own bonus over their type's:
+
+```json
+"terrain_bonus": {
+    "Yami": {"Fiend": -200, "cards": {"Black Luster Soldier": 500, "Gate Guardian": 500}}
+}
+```
+
+A card named there gets exactly that bonus on that terrain, whatever its type; the latest mod that names the pair wins, and a copy of a card has
+its base's. A card not named keeps its type's.
+
 Terrains are named as the field cards are, `Forest`, `Wasteland`,
 `Mountain`, `Sogen`, `Umi` and `Yami` (also `Meadow`, `Sea` and `Dark`, or
 1 to 6), and types as a card's are (`"Winged Beast"`, `"Beast-Warrior"`).
@@ -361,6 +381,20 @@ a lower threshold would never spring. Values are whole points, 0 to 65535;
 a trap no mod names keeps the disc's threshold. A copy of a trap springs as
 its selected retail effect (`effect`), even when the original effect card is
 replaced or renamed.
+
+`"trap_effects"` gives an attack trap one more effect than stopping the
+attacker:
+
+```json
+"trap_effects": {"House of Adhesive Tape": "destroy_all"}
+```
+
+`"destroy_all"` (Mirror Force): when the trap springs, every other monster on
+the attacker's side is removed from the field with the attacker. They go as a
+destroyed monster's card does, without a battle of their own. `"none"` takes
+the effect off again. The name is the trap's retail name, whatever the
+card is called now. Only the six attack traps take an effect; a trap that
+springs as another (a copy, `effect`) has the effect of the trap it springs as.
 
 The FM Editor's Cards tab also supports an independent threshold on an
 individual card:
@@ -516,6 +550,7 @@ no mod sets it, so without one nothing changes:
 | Key | Meaning | The game's | Range |
 |---|---|---|---|
 | `deck_copies` | the copies of a card Build Deck lets into the deck (the count turns red there); an Exodia piece stays one, and the CPU's decks keep three | 3 | 1-40 |
+| `card_copies` | an object of cards and the copies a deck may hold of each, over `deck_copies`: `{"Raigeki": 1, "Novox's Prayer": 0}` (0 keeps a card out of every deck; the list's count turns red at the card's own limit); an Exodia piece stays one | | 0-40 |
 | `swords_turns` | the opponent's turns Swords of Revealing Light stops their attacks for (the field's card bar counts them down) | 3 | 1-9 |
 | `crush_card` | Crush Card destroys the opponent's monsters with this ATK or more | 1500 | 0-32767 |
 | `spellbinding_circle` | what Spellbinding Circle takes off each of the opponent's monsters' ATK and DEF (and shows) | 500 | 0-9999 |

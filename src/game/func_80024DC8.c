@@ -8,10 +8,17 @@
 #include "main_mode_state.h"
 #include "ai_opponent_data.h"
 #include "duel_terrain_boost.h"
+#ifdef MEMORIES_PC
+#include "pc/free_duel/duelists.h"
+#endif
 
 void func_80024DC8(s32 arg0, s32 arg1, s32 arg2, s32 arg3)
 {
     gDuel_wBgmId = 0x7270;
+#ifdef MEMORIES_PC
+    /* A duelist's own song (duelists.h "music"): the sound driver's song number in the id's high nibbles. */
+    if (Duelists_Music(arg1) >= 0) gDuel_wBgmId = (s16)(0x7000 + (Duelists_Music(arg1) << 4));
+#endif
     D_8009B374 = 0x7280;
     D_8009B360 = arg0;
     gDuel_bOpponentID = arg1;

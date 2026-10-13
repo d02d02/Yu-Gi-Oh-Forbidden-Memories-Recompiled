@@ -47,6 +47,8 @@ typedef struct {
     int base;
     signed char ai[DUELIST_AI_FIELDS];
     signed char sight;             /* 1 reads face-down cards, 0 does not, -1 the base's */
+    short music;                   /* the song its Free Duel plays ("music"): 0x7000 + 16 * music, -1 for the disc's */
+    signed char ai_mode;           /* what its AI script reads as variable 15 ("ai" "mode"), -1 for the script's own */
     unsigned char has_ai;          /* else its base's row */
     unsigned char *portrait;       /* PORTRAIT_RECORD bytes, or NULL for its base's */
     char *art;                     /* the PNG it was made from, for the scaled picture */
@@ -196,6 +198,18 @@ int Duelists_HidesFaceDown(int duelist, int script)
        id (AiScript_LoadOpponentID). */
     if (!one || one->sight < 0) return script;
     return !one->sight;
+}
+
+int Duelists_Music(int duelist)
+{
+    const Duelist *one = entry_at(duelist);
+    return one ? one->music : -1;
+}
+
+int Duelists_AiMode(int duelist)
+{
+    const Duelist *one = entry_at(duelist);
+    return one ? one->ai_mode : -1;
 }
 
 const signed char *Duelists_AiRow(int duelist)
@@ -718,8 +732,10 @@ static void read_one_duelist(const char *mod, const char *mod_directory, const J
      * reads the disc where that duelist does. */
     if (over) {
         target = Duelists_Named(Json_String(over, NULL));
-        if (target <= 0 || target >= DUELISTS_RETAIL_COUNT) {
-            Mods_Note(mod, "duelists[%d]: replace names no stock duelist (1-%d)",
+        /* Duelist 0, the unused row the Kuriboh mod plays its Yugi and Atem duel from, may be taken over for its
+         * "ai" alone: it is no Free Duel cell. */
+        if (target < 0 || target >= DUELISTS_RETAIL_COUNT) {
+            Mods_Note(mod, "duelists[%d]: replace names no stock duelist (0-%d)",
                       index, DUELISTS_RETAIL_COUNT - 1);
             return;
         }
@@ -728,7 +744,7 @@ static void read_one_duelist(const char *mod, const char *mod_directory, const J
     /* The base is what the disc answers for: without one there is no
      * portrait, no deck and no AI to fall back on. */
     base = over ? target : Duelists_Named(copy);
-    if (base <= 0 || base >= DUELISTS_RETAIL_COUNT) {
+    if ((over ? base < 0 : base <= 0) || base >= DUELISTS_RETAIL_COUNT) {
         Mods_Note(mod, "duelists[%d]: copy names no retail duelist (1-%d)",
                   index, DUELISTS_RETAIL_COUNT - 1);
         return;
@@ -738,6 +754,8 @@ static void read_one_duelist(const char *mod, const char *mod_directory, const J
     one.base = base;
     one.story = -1;
     one.sight = -1;                /* the base's, until "ai" says otherwise */
+    one.ai_mode = -1;
+    one.music = -1;
     one.replace = target;
     one.slot = -1;
     one.mod = mod;
@@ -832,6 +850,15 @@ static void read_one_duelist(const char *mod, const char *mod_directory, const J
             }
         }
     }
+    {   /* "music": the song a Free Duel against it plays, as the sound driver's song number (retail plays 39 for everyone). */
+        const JsonValue *music = Json_Member(entry, "music");
+        if (music) {
+            long song = Json_Number(music, -1);
+            if (Json_TypeOf(music) != JSON_NUMBER || song < 0 || song > 255)
+                Mods_Note(mod, "duelists[%d]: music is a song number from 0 to 255", index);
+            else one.music = (short)song;
+        }
+    }
     {   /* Its own way of playing, over its base's: up to nine numbers, and
          * what is left out is the base's. An object may name a duelist to
          * take the whole row from instead -- kept as it was written, since
@@ -867,6 +894,13 @@ static void read_one_duelist(const char *mod, const char *mod_directory, const J
          * array, which is the numbers alone. */
         if (Json_Member(ai, "sight")) {
             one.sight = (signed char)(Json_Bool(Json_Member(ai, "sight"), 0) != 0);
+        }
+        /* "mode": a number the script reads as its variable 15 whatever it stores there (the Kuriboh mod's campaign
+         * duelists 10-13 and 15 branch on it). */
+        if (Json_Member(ai, "mode")) {
+            long mode = Json_Number(Json_Member(ai, "mode"), -1);
+            if (mode < 0 || mode > 127) Mods_Note(mod, "duelists[%d]: ai mode is a number from 0 to 127", index);
+            else one.ai_mode = (signed char)mode;
         }
         one.has_ai = one.ai_copy[0] != 0;
         for (field = 0; field < DUELIST_AI_FIELDS; field++)

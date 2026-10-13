@@ -18,7 +18,7 @@ Used by hd_assets_pack.py (a build) and anime_frame_patch.py (an already built m
 STYLE_OF_KIND = {"monster": "gold", "magic": "green", "trap": "pink", "ritual": "blue", "orange": "orange"}
 
 RITUAL_SETTING = {
-    "key": "ritual_own_frame", "label": "Ritual spells: own frame", "type": "bool", "default": 0,
+    "key": "ritual_own_frame", "label": "Ritual spells: own frame", "type": "bool", "default": 1,
     "description": "Ritual spells wear their own (blue) frame instead of the green spell frame."}
 
 # (class, the style it wears, the style it falls back to when that has no picture)

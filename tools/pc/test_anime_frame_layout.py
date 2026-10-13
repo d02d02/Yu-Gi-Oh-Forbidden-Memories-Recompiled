@@ -38,7 +38,7 @@ def main():
     assert all(r["class"] != "effect_monster" for r in layout["frame_for"])
     # A ritual picture: a sub-option, off, before the green rule; the green rule stays after it.
     layout, settings = L.build(frames("monster", "magic", "trap", "ritual"))
-    assert [s["key"] for s in settings] == ["ritual_own_frame"] and settings[0]["default"] == 0
+    assert [s["key"] for s in settings] == ["ritual_own_frame"] and settings[0]["default"] == 1
     rules = layout["frame_for"]
     assert rules[0] == {"class": "ritual_spell", "style": "blue", "setting": "ritual_own_frame"}
     assert rules[1] == {"class": "ritual_spell", "style": "green"}

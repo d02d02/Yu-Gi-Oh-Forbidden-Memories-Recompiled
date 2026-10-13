@@ -160,7 +160,7 @@ void func_80031874(DisplayObject *obj, GsOT *ot)
                    ids 0x11-0x15. */
 #ifdef MEMORIES_PC
                 /* At a mod's "deck_copies" (tables.h), else the three. */
-                if (n >= Tables_Value(TABLES_VALUE_DECK_COPIES, 3) ||
+                if (n >= Tables_CardCopies(id, 3) ||
                     ((u32)(id - 0x11) < 5 && n != 0)) {
 #else
                 if (n >= 3 || ((u32)(id - 0x11) < 5 && n != 0)) {

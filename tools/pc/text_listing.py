@@ -152,6 +152,9 @@ class Op:
         self.targets = list(targets)
 
 
+OVERLAPS: list = []   # strings that start inside another string's op, found by decode_bank
+
+
 def decode_bank(image: Image, bank: Bank, glyphs: dict[int, str]) -> tuple[dict[int, Op], set[int]]:
     """Every op reachable from the bank's strings, by offset, and the offsets
     something jumps to."""
@@ -258,9 +261,17 @@ def decode_bank(image: Image, bank: Bank, glyphs: dict[int, str]) -> tuple[dict[
             else:
                 item = Op(here, 1, "end")
                 follow = False
-            for other in range(here + 1, here + item.length):
-                if other in ops or other in starts:
-                    raise DecodeError(f"{bank.name}: {here:#x} overlaps {other:#x}")
+            clash = next((other for other in range(here + 1, here + item.length)
+                          if other in ops or other in starts), None)
+            if clash is not None:
+                if clash in starts:
+                    # A string that starts inside this op (a mod's text edit
+                    # left the pointer there): the walk stops before the op
+                    # and the tail of this string is lost, not the bank.
+                    OVERLAPS.append(f"{bank.name}: the op at {here:#x} runs over the string that starts at "
+                                    f"{clash:#x}; the first string's end is dropped")
+                    break
+                raise DecodeError(f"{bank.name}: {here:#x} overlaps {clash:#x}")
             ops[here] = item
             for target in item.targets:
                 if not target:

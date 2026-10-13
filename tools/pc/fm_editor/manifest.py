@@ -918,7 +918,7 @@ def equip_rules(project: Project, entries, messages: list, kept: list = None) ->
             if kept is not None:
                 kept.append(entry)
             continue
-        if project.cards[equip].type != 23:
+        if project.cards[equip].type != 23 and not _json_bool(entry.get("any_card"), False):
             messages.append(f"{where}: \"card\" is not an equip card; left out")
             continue
         if kept is not None:

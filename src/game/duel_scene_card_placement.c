@@ -588,7 +588,13 @@ request_combination:
                 D_8009B174 |= 0xC0;
                 func_80019BA0(slots[1], 0, 64, 8);
                 object = D_800E9EF0[0];
+#ifdef MEMORIES_PC
+                /* A magic card a mod lets equip ("any_card", tables.h) chosen first is the equip: its combination
+                   with the monster is a table answer for it, as an equip's is. */
+                if (object->field_68 != 23 && object->field_68 != 20)
+#else
                 if (object->field_68 != 23)
+#endif
                 object = slots[1];
                 D_8009B206 = PLACEMENT_REPLAY_CARD(object).card_id;
                 return;

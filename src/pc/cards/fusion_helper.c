@@ -50,7 +50,7 @@ static FusionCard card(int id)
     result.type = (int)(stats >> CARD_STAT_TYPE_SHIFT & CARD_STAT_TYPE_MASK);
     result.attack = (int)(stats & CARD_STAT_VALUE_MASK) * CARD_STAT_SCALE;
     result.defense = (int)(stats >> CARD_STAT_DEFENSE_SHIFT & CARD_STAT_VALUE_MASK) * CARD_STAT_SCALE;
-    result.terrain = Duel_GetTerrainBoost(result.type);
+    result.terrain = Duel_GetTerrainBoostCard(id, result.type);
     return result;
 }
 

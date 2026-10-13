@@ -331,6 +331,17 @@ available from the start, or hold one back.
 
 ---
 
+### `music` — what plays in Free Duel
+
+A number, 0 to 255: the sound driver's song a Free Duel against the duelist
+plays (`0x7000 + 16 * n`). Retail plays song 39 for every duelist. The
+campaign's own duels take their music from the dialogue script, which this
+does not touch.
+
+```json
+"music": 43
+```
+
 ### `ai` — how it plays
 
 Nine numbers. Give them as a list, or as an object that borrows another
@@ -346,6 +357,7 @@ duelist's row and writes over part of it.
 | `search` | byte 0 on its own |
 | `values` | a list, from byte 0. Shorter than nine is fine; the rest come from `copy`, or from the base |
 | `sight` | whether it reads face-down cards — see below. Not a byte in the row |
+| `mode` | a number, 0 to 127, that the duelist's AI script reads as its variable 15 whatever the script stores there. Not a byte in the row. The Kuriboh mod's campaign duelists 10 to 13 and 15 use it: its scripts branch on the number |
 
 That row reads: look 20 cards deep, change behaviour below 2000 life points
 (byte 1 is the threshold ÷100), clamp the fusion search once 10 cards are left,

@@ -435,8 +435,8 @@ def _read_entry(project, value, key, origin: str, where: str, messages: list):
     over = value.get("replace")
     if over is not None:
         base = duelist_named(over) if isinstance(over, (str, int)) and not isinstance(over, bool) else -1
-        if not 1 <= base < DUELIST_COUNT:
-            messages.append(f"{where}: replace names no disc duelist (1-39); kept as written")
+        if not 0 <= base < DUELIST_COUNT:       # 0, the unused row, may be replaced for its "ai"
+            messages.append(f"{where}: replace names no disc duelist (0-39); kept as written")
             return None
     else:
         copy = value.get("copy")
@@ -759,8 +759,8 @@ def check(project, out: list):
         if len(keys[e.key.lower()]) > 1:
             add("error", f"the id {e.key} is used {len(keys[e.key.lower()])} times; the game keeps the first "
                          "and leaves the rest out (a file system that ignores case keeps only one file)")
-        if not 1 <= e.base < DUELIST_COUNT:
-            add("error", "copies no disc duelist (1 to 39)")
+        if not (0 if e.replace else 1) <= e.base < DUELIST_COUNT:
+            add("error", "replaces no disc duelist (0 to 39)" if e.replace else "copies no disc duelist (1 to 39)")
             continue
         if e.name and len(e.name) > NAME_MAX:
             add("warning", f"a name of {len(e.name)} letters: the game matches on the first {NAME_MAX}")

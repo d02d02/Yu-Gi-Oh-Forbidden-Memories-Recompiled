@@ -18,6 +18,8 @@
 #include "game/card_constants.h"
 #include "game/duel_rewards.h"
 #include "game/save_data.h"
+#include "game/campaign_flags.h"
+#include "pc/free_duel/duelists.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,23 +45,32 @@ static int owned(int id)
  * card for SPOILS. One card is the console's single roll. Each roll is the
  * game's Duel_SelectCardDrop, which a code mod may hook to change which
  * card a roll gives (notes/card-drops.md, "Mods"). */
+/* One roll: the game's own, unless this duelist gives a unique card until he is unlocked for Free Duel
+ * (tables.h "unique_drops"; the story flag 0x6E0 + n is "duelist n is unlocked"). */
+static int roll_once(int pool)
+{
+    int card = Duel_SelectCardDrop(pool), duelist = Tables_OpponentId(), unique = Tables_UniqueDrop(duelist);
+    if (unique && duelist > 0 && duelist < DUELISTS_RETAIL_COUNT && !Campaign_TestStoryFlag(0x6E0 + duelist)) return unique;
+    return card;
+}
+
 int CardDrops_Roll(int pool)
 {
     int wanted = Settings_Get(SET_CARD_DROPS), i;
     CardDrops_Begin();
-    if (wanted <= 1) return Duel_SelectCardDrop(pool);
+    if (wanted <= 1) return roll_once(pool);
     if (wanted > CARD_DROPS_MAX) wanted = CARD_DROPS_MAX;
     Memories_Rand();
     for (i = 1; i < wanted; i++) {
         int burn, card;
         for (burn = 0; burn < 6; burn++) Memories_Rand();
-        card = Duel_SelectCardDrop(pool);
+        card = roll_once(pool);
         if (!Cards_Valid(card)) continue; /* an empty table */
         gCardDrops.fresh[gCardDrops.count] = owned(card) == 0;
         gCardDrops.cards[gCardDrops.count++] = (u16)card;
     }
     for (i = 0; i < 6; i++) Memories_Rand();
-    return Duel_SelectCardDrop(pool);
+    return roll_once(pool);
 }
 
 void CardDrops_Award(void)

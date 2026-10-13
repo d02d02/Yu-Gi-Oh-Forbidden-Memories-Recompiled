@@ -86,8 +86,13 @@ void DuelEffect_ApplyTerrain(void) {
     i = 0;
     do {
         if ((q->flags & DUEL_CARD_FLAG_OCCUPIED) != 0) {
+#ifdef MEMORIES_PC
+            q->terrain_modifier =
+                Duel_GetTerrainBoostCard(q->card_id, ((DisplayObject *)q->object)->field_68);
+#else
             q->terrain_modifier =
                 Duel_GetTerrainBoost(((DisplayObject *)q->object)->field_68);
+#endif
         }
         i++;
         q++;

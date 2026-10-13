@@ -234,8 +234,17 @@ static int chest_limit;                  /* copies the chest keeps; 0: the disc'
 #define TERRAINS 6                        /* DUEL_TERRAIN_COUNT: Forest to Yami, 1-6 */
 static short terrain_bonus[TERRAINS][CARD_TYPE_MAGIC];
 static unsigned char terrain_listed[TERRAINS][CARD_TYPE_MAGIC];
+/* A terrain's bonus for one card ("cards" in "terrain_bonus"): in the order the mods gave them, the latest for a pair wins. */
+#define TERRAIN_CARDS_MAX 4096
+static struct {
+    unsigned char terrain;
+    short card;
+    short points;
+} terrain_card[TERRAIN_CARDS_MAX];
+static int terrain_card_count;
 static long trap_threshold[DUEL_ATTACK_TRAP_COUNT];   /* House of Adhesive Tape to Widespread Ruin */
 static unsigned char trap_listed[DUEL_ATTACK_TRAP_COUNT];
+static unsigned char trap_sweeps[DUEL_ATTACK_TRAP_COUNT];   /* "trap_effects": the trap also destroys the attacker's other monsters */
 static const char *trap_from[DUEL_ATTACK_TRAP_COUNT];      /* the mod that set it */
 /* Which pools have an edit, per duelist. It grows with the duelist list
  * (pc/free_duel/duelists.h), so a duelist a mod added is named by "drops" and
@@ -576,8 +585,8 @@ static void read_equips(const char *mod, const JsonValue *list)
         if (!Mods_EntryUsed(mod, entry, where)) continue;
         equip = card(mod, where, Json_Member(entry, "card"));
         if (!equip) continue;
-        if (Cards_Type(equip) != CARD_TYPE_EQUIP) {
-            Mods_Note(mod, "%s: \"card\" is not an equip card", where);
+        if (Cards_Type(equip) != CARD_TYPE_EQUIP && !Json_Bool(Json_Member(entry, "any_card"), 0)) {
+            Mods_Note(mod, "%s: \"card\" is not an equip card (\"any_card\": true lets another card equip)", where);
             continue;
         }
         read_equip_bonus(mod, i, equip, entry, order);
@@ -1556,6 +1565,7 @@ static void read_terrain_bonus(const char *mod, const JsonValue *table)
     if (Json_Bool(Json_Member(table, "replace"), 0)) {
         memset(terrain_bonus, 0, sizeof(terrain_bonus));
         memset(terrain_listed, 1, sizeof(terrain_listed));
+        terrain_card_count = 0;
     }
     for (i = 0; i < Json_Count(table); i++) {
         const JsonValue *entry = Json_At(table, i);
@@ -1574,8 +1584,36 @@ static void read_terrain_bonus(const char *mod, const JsonValue *table)
         }
         for (j = 0; j < Json_Count(entry); j++) {
             const JsonValue *member = Json_At(entry, j);
-            int type = Cards_TypeNamed(Json_Name(member));
+            int type, k;
             long points = Json_Number(member, 0);
+            if (!strcmp(Json_Name(member), "cards")) {
+                if (Json_TypeOf(member) != JSON_OBJECT) {
+                    Mods_Note(mod, "%s \"cards\": an object of cards and their bonus", where);
+                    continue;
+                }
+                for (k = 0; k < Json_Count(member); k++) {
+                    const JsonValue *one = Json_At(member, k);
+                    int id = Cards_Named(Json_Name(one));
+                    long extra = Json_Number(one, 0);
+                    if (id <= 0) {
+                        Mods_Note(mod, "%s \"cards\": no card \"%s\"", where, Json_Name(one));
+                        continue;
+                    }
+                    if (Json_TypeOf(one) != JSON_NUMBER || extra < -TABLES_LIMIT_STAT_MAX || extra > TABLES_LIMIT_STAT_MAX) {
+                        Mods_Note(mod, "%s \"cards\" \"%s\": a bonus is a whole number of points, -%d to %d", where,
+                                  Json_Name(one), TABLES_LIMIT_STAT_MAX, TABLES_LIMIT_STAT_MAX);
+                        continue;
+                    }
+                    if (terrain_card_count < TERRAIN_CARDS_MAX) {
+                        terrain_card[terrain_card_count].terrain = (unsigned char)terrain;
+                        terrain_card[terrain_card_count].card = (short)id;
+                        terrain_card[terrain_card_count].points = (short)extra;
+                        terrain_card_count++;
+                    }
+                }
+                continue;
+            }
+            type = Cards_TypeNamed(Json_Name(member));
             if (type < 0 || type >= CARD_TYPE_MAGIC) {
                 Mods_Note(mod, "%s \"%s\": not a monster type", where, Json_Name(member));
                 continue;
@@ -1599,6 +1637,21 @@ int Tables_TerrainBonus(int terrain, int type, int *bonus)
     if (!terrain_listed[terrain - 1][type]) return 0;
     *bonus = terrain_bonus[terrain - 1][type];
     return 1;
+}
+
+/* A card's own bonus on this terrain, over its type's (tables.h): the latest mod's, for the card or its base. */
+int Tables_TerrainBonusCard(int terrain, int card, int *bonus)
+{
+    int i, base;
+    if (terrain < 1 || terrain > TERRAINS || card <= 0) return 0;
+    base = Cards_BaseId(card);
+    for (i = terrain_card_count - 1; i >= 0; i--) {
+        if (terrain_card[i].terrain == terrain && (terrain_card[i].card == card || terrain_card[i].card == base)) {
+            *bonus = terrain_card[i].points;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /* --- attack traps --------------------------------------------------- */
@@ -1663,6 +1716,41 @@ int Tables_TrapThreshold(int trap, int retail)
 {
     if (trap < 0 || trap >= DUEL_ATTACK_TRAP_COUNT || !trap_listed[trap]) return retail;
     return (int)trap_threshold[trap];
+}
+
+/* "trap_effects": { trap: effect }, what an attack trap does besides stopping the attacker. The only effect is
+ * "destroy_all" (Mirror Force): every monster of the attacker's side goes with it. */
+static void read_trap_effects(const char *mod, const JsonValue *table)
+{
+    int i;
+    char where[128];
+    if (!table) return;
+    if (Json_TypeOf(table) != JSON_OBJECT) {
+        Mods_Note(mod, "\"trap_effects\" is an object of attack traps and what each does: {\"House of Adhesive Tape\": \"destroy_all\"}");
+        return;
+    }
+    for (i = 0; i < Json_Count(table); i++) {
+        const JsonValue *member = Json_At(table, i);
+        const char *name = Json_Name(member), *effect = Json_String(member, NULL);
+        int id = Cards_Named(name), trap;
+        snprintf(where, sizeof(where), "trap_effects \"%s\"", name);
+        trap = id > 0 ? Cards_BaseId(id) - DUEL_ATTACK_TRAP_FIRST_CARD_ID : -1;
+        if (trap < 0 || trap >= DUEL_ATTACK_TRAP_COUNT) {
+            Mods_Note(mod, "%s: not one of the attack traps (House of Adhesive Tape, Eatgaboon, Bear Trap, "
+                      "Invisible Wire, Acid Trap Hole, Widespread Ruin)", where);
+            continue;
+        }
+        if (!effect || (strcmp(effect, "destroy_all") && strcmp(effect, "none"))) {
+            Mods_Note(mod, "%s: the effect is \"destroy_all\" (or \"none\" to take it off)", where);
+            continue;
+        }
+        trap_sweeps[trap] = strcmp(effect, "none") != 0;
+    }
+}
+
+int Tables_TrapDestroysAll(int trap)
+{
+    return trap >= 0 && trap < DUEL_ATTACK_TRAP_COUNT && trap_sweeps[trap];
 }
 
 /* --- the chest ------------------------------------------------------ */
@@ -1956,6 +2044,78 @@ static void read_values(const char *mod, const JsonValue *limits)
     }
 }
 
+/* "unique_drops": { duelist: card }, the card a duelist gives instead of the pool's until he is unlocked for Free Duel
+ * (a first victory over him in the campaign unlocks him). The latest mod's for a duelist. */
+static short unique_drop[128];
+
+static void read_unique_drops(const char *mod, const JsonValue *table)
+{
+    int i;
+    if (!table) return;
+    if (Json_TypeOf(table) != JSON_OBJECT) {
+        Mods_Note(mod, "\"unique_drops\" is an object of opponents and the card each gives the first time");
+        return;
+    }
+    for (i = 0; i < Json_Count(table); i++) {
+        const JsonValue *entry = Json_At(table, i);
+        const char *name = Json_Name(entry);
+        int duelist = Duelists_Named(name), id;
+        char where[128];
+        if (duelist < 0 || duelist >= (int)(sizeof(unique_drop) / sizeof(unique_drop[0]))) {
+            Mods_Note(mod, "unique_drops: no opponent \"%s\"", name);
+            continue;
+        }
+        snprintf(where, sizeof(where), "unique_drops \"%s\"", name);
+        id = card(mod, where, entry);
+        if (id) unique_drop[duelist] = (short)id;
+    }
+}
+
+int Tables_UniqueDrop(int duelist)
+{
+    return duelist >= 0 && duelist < (int)(sizeof(unique_drop) / sizeof(unique_drop[0])) ? unique_drop[duelist] : 0;
+}
+
+/* "card_copies" in "limits": {card: copies} the deck holds of that card (0 keeps it out), over "deck_copies". */
+static signed char card_copies[CARD_TABLE_ID_END];
+static unsigned char card_copies_set[CARD_TABLE_ID_END];
+
+static void read_card_copies(const char *mod, const JsonValue *list)
+{
+    int i;
+    if (!list) return;
+    if (Json_TypeOf(list) != JSON_OBJECT) {
+        Mods_Note(mod, "limits: \"card_copies\" is an object of cards and the copies a deck may hold of each");
+        return;
+    }
+    for (i = 0; i < Json_Count(list); i++) {
+        const JsonValue *one = Json_At(list, i);
+        int id = Cards_Named(Json_Name(one));
+        long n = Json_Number(one, -1);
+        if (id <= 0 || id >= CARD_TABLE_ID_END) {
+            Mods_Note(mod, "limits card_copies: no card \"%s\"", Json_Name(one));
+            continue;
+        }
+        if (Json_TypeOf(one) != JSON_NUMBER || n < 0 || n > DECK_SIZE) {
+            Mods_Note(mod, "limits card_copies \"%s\": copies are a whole number from 0 to %d", Json_Name(one), DECK_SIZE);
+            continue;
+        }
+        card_copies[id] = (signed char)n;
+        card_copies_set[id] = 1;
+    }
+}
+
+long Tables_CardCopies(int card, long retail)
+{
+    int base;
+    if (card > 0 && card < CARD_TABLE_ID_END) {
+        if (card_copies_set[card]) return card_copies[card];
+        base = Cards_BaseId(card);
+        if (base > 0 && base < CARD_TABLE_ID_END && card_copies_set[base]) return card_copies[base];
+    }
+    return Tables_Value(TABLES_VALUE_DECK_COPIES, retail);
+}
+
 long Tables_Value(int which, long retail)
 {
     if (which < 0 || which >= TABLES_VALUE_COUNT || !value_given[which]) return retail;
@@ -1993,14 +2153,14 @@ static void read_limits(const char *mod, const JsonValue *limits)
         static const char *const keys[] = {"stats", "attack", "defense", "life_points", "two_player", "starchips",
                                             "chest", "free_duel_record", "two_player_record", "deck_copies",
                                             "swords_turns", "crush_card", "spellbinding_circle", "shadow_spell",
-                                            "rank_score", "starchip_prize", "new_game_starchips"};
+                                            "rank_score", "starchip_prize", "new_game_starchips", "card_copies"};
         const char *name = Json_Name(Json_At(limits, i));
         size_t k;
         for (k = 0; k < sizeof(keys) / sizeof(keys[0]) && strcmp(name, keys[k]); k++) {}
         if (k == sizeof(keys) / sizeof(keys[0]))
             Mods_Note(mod, "limits: no limit \"%s\" (stats, attack, defense, life_points, two_player, starchips, chest, "
                       "free_duel_record, two_player_record, deck_copies, swords_turns, crush_card, "
-                      "spellbinding_circle, shadow_spell, rank_score, starchip_prize, new_game_starchips)", name);
+                      "spellbinding_circle, shadow_spell, rank_score, starchip_prize, new_game_starchips, card_copies)", name);
     }
 #define STAT_STORAGE "the game keeps (a 16-bit number; more would mean widening every card record)"
     if (limit_number(mod, "\"stats\"", Json_Member(limits, "stats"), 0, TABLES_LIMIT_STAT_MAX, STAT_STORAGE, &n))
@@ -2040,6 +2200,7 @@ static void read_limits(const char *mod, const JsonValue *limits)
                      TABLES_LIMIT_TWO_PLAYER_RECORD_MAX, "the save keeps (a 16-bit number)", &n))
         limit_two_player_record = (int)n;
     read_values(mod, limits);
+    read_card_copies(mod, Json_Member(limits, "card_copies"));
 }
 
 int Tables_StatCap(int defense)
@@ -2390,6 +2551,8 @@ void Tables_AddFrom(const char *mod, const char *directory, const JsonValue *man
     read_chest_overflow(mod, Json_Member(manifest, "chest_overflow"));
     read_terrain_bonus(mod, Json_Member(manifest, "terrain_bonus"));
     read_trap_thresholds(mod, Json_Member(manifest, "trap_thresholds"));
+    read_trap_effects(mod, Json_Member(manifest, "trap_effects"));
+    read_unique_drops(mod, Json_Member(manifest, "unique_drops"));
     read_passwords(mod, Json_Member(manifest, "passwords"));
     read_limits(mod, Json_Member(manifest, "limits"));
     /* And a file to a duelist, beside the folder of duelists. */

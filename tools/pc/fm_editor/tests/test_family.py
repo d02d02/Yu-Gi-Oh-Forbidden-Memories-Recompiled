@@ -20,12 +20,15 @@ def imported(f, slus=None, wa=None):
     return result, "\n".join(result.report)
 
 
+GENERIC = 0xFA0000      # archive bytes the importer has no name for (not a card's art, a portrait, a pool, a table)
+
+
 class ArchiveTest(unittest.TestCase):
     def test_many_changes_replace_the_whole_file(self):
         f = fixture()
         wa = bytearray(f.wa)
-        for k in range(importer.WA_PATCHES_MOST + 1):             # small changes all over the pictures
-            wa[0x169000 + 0x1000 * k] ^= 0x5A
+        for k in range(importer.WA_PATCHES_MOST + 1):             # small changes all over the archive
+            wa[GENERIC + 0x40 * k] ^= 0x5A
         equip = g.TERRAIN_BASE + g.EQUIP_OFFSET
         wa[equip:equip + 8] = b"\x99" * 8                          # a table in a format mod.json carries otherwise
         starters = bytearray(g.STARTER_LENGTH)                     # starter decks as counts of 40
@@ -37,7 +40,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(built["data"], [{"file": importer.WA_FILE, "replace": "WA_MRG.MRG"}])
         whole = result.project.files["WA_MRG.MRG"]
         self.assertEqual(len(whole), len(f.wa))
-        self.assertEqual(whole[0x169000], wa[0x169000])            # the mod's bytes
+        self.assertEqual(whole[GENERIC], wa[GENERIC])            # the mod's bytes
         self.assertEqual(whole[equip:equip + 8], f.wa[equip:equip + 8])      # the table as retail's
         self.assertEqual(whole[g.STARTER_BASE:g.STARTER_BASE + g.STARTER_LENGTH],
                          f.wa[g.STARTER_BASE:g.STARTER_BASE + g.STARTER_LENGTH])
@@ -60,22 +63,22 @@ class ArchiveTest(unittest.TestCase):
         wa = bytearray(f.wa)
         sector, sectors, what = g.PROGRAMS[0]
         wa[sector * 2048 + 100] ^= 0xFF                       # the mod's code in a program the port runs itself
-        wa[0x300] = 9
+        wa[GENERIC] = 9
         result, report = imported(f, wa=bytes(wa))
         data = manifest.build(result.project)["data"]
-        self.assertEqual(data, [{"file": importer.WA_FILE, "patch": [{"at": "0x300", "bytes": "09"}]}])
+        self.assertEqual(data, [{"file": importer.WA_FILE, "patch": [{"at": f"0x{GENERIC:X}", "bytes": "09"}]}])
         self.assertIn(f"{what} (sector {sector}) differs in 1 bytes", report)
 
     def test_few_changes_stay_patches_at_retail_sectors(self):
         f = fixture()
         wa = bytearray(f.wa)
-        wa[0x200] = 1
-        wa[0x169000:0x169000 + 5000] = bytes([7]) * 5000
-        wa[0x169000 + 6000:0x169000 + 11000] = bytes([8]) * 5000   # the same or the next sectors: one region
+        wa[GENERIC - 0x800] = 1
+        wa[GENERIC:GENERIC + 5000] = bytes([7]) * 5000
+        wa[GENERIC + 6000:GENERIC + 11000] = bytes([8]) * 5000   # the same or the next sectors: one region
         result, report = imported(f, wa=bytes(wa))
         data = manifest.build(result.project)["data"]
-        self.assertEqual(data[0]["patch"], [{"at": "0x200", "bytes": "01"}])
-        self.assertEqual(data[1:], [{"lba": 10102 + 0x169000 // 2048, "sectors": 6, "replace": "data/wa_002D2.bin"}])
+        self.assertEqual(data[0]["patch"], [{"at": f"0x{GENERIC - 0x800:X}", "bytes": "01"}])
+        self.assertEqual(data[1:], [{"lba": 10102 + GENERIC // 2048, "sectors": 6, "replace": f"data/wa_{GENERIC // 2048:05X}.bin"}])
 
 
 def bitmap_record(key: int, ids) -> bytes:

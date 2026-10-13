@@ -273,7 +273,10 @@ def deals_by_count(retail_slus: bytes, slus: bytes) -> bool:
     start, end = SHUFFLE_DECK
     if memory.bytes(start, end - start) == retail.bytes(start, end - start):
         return False
-    return any(ins.is_slti() and ins.imm == DECK_SIZE for ins in instructions(memory, start, (end - start) // 4 + 2))
+    # Retail's loop already ends its deal at forty (slti n, 40), so the test is a loop that gained one.
+    def sizes(mem):
+        return sum(1 for ins in instructions(mem, start, (end - start) // 4 + 2) if ins.is_slti() and ins.imm == DECK_SIZE)
+    return sizes(memory) > sizes(retail)
 
 
 def dealt_by_count(pool: dict) -> dict:
@@ -369,6 +372,145 @@ def chest_overflow(retail_slus: bytes, slus: bytes):
     return limit, pay
 
 
+STAT_PENALTY = 0x80025D30, 0x80025EE0     # DuelEffect_ApplyStatPenalty
+PENALTIES = {-500: "spellbinding_circle", -1000: "shadow_spell"}
+
+
+def stat_penalties(retail_slus: bytes, slus: bytes) -> dict:
+    """{"spellbinding_circle": n, "shadow_spell": n} for the penalties the mod's DuelEffect_ApplyStatPenalty
+    changed: the addiu of -500 (-1000) in retail is another number in the mod, the same at every site."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    found: dict = {}
+    for address in range(STAT_PENALTY[0], STAT_PENALTY[1], 4):
+        old, new = retail.word(address), memory.word(address)
+        if old is None or new is None or old == new or old >> 26 != 9 or new >> 26 != 9:
+            continue
+        before, after = old & 0xFFFF, new & 0xFFFF
+        before, after = before - 0x10000 if before > 0x7FFF else before, after - 0x10000 if after > 0x7FFF else after
+        if before in PENALTIES and after < 0 and (old >> 16) & 0x3FF == (new >> 16) & 0x3FF:
+            found.setdefault(PENALTIES[before], set()).add(-after)
+    return {key: next(iter(values)) for key, values in found.items() if len(values) == 1 and 0 <= min(values) <= 9999}
+
+
+EXODIA_SCORE_SITES = (0x800215F4, 0x800183D0, 0x800193DC)   # addiu 40 in Duel_CalcRankScore, the resume and Exodia scenes
+
+
+def exodia_score(retail_slus: bytes, slus: bytes):
+    """What a win by Exodia adds to the rank sum in the mod (retail 40), when its three sites were changed to the
+    same other number (Kuriboh: -127, which ends the rank as an S on technique); else None."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    values = set()
+    for address in EXODIA_SCORE_SITES:
+        old, new = retail.word(address), memory.word(address)
+        if old is None or new is None or old >> 16 != new >> 16 or old & 0xFFFF != 0x28 or new == old:
+            return None
+        value = new & 0xFFFF
+        values.add(value - 0x10000 if value > 0x7FFF else value)
+    return values.pop() if len(values) == 1 else None
+
+
+PLACEMENT_HOOK = 0x8001A814          # DuelScene_UpdateCardPlacement: a jal to the mod's table of bonuses (Kuriboh)
+
+
+def placement_bonuses(retail_slus: bytes, slus: bytes) -> dict:
+    """{card: points} of the bonuses the mod's placement hook gives particular cards as equips: a jal at
+    PLACEMENT_HOOK to code that compares the placed card with immediates (addiu $v0,$zero,card; beq $v1,$v0,L) and
+    at each L loads the bonus (addiu $v1,$zero,points)."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    word = memory.word(PLACEMENT_HOOK)
+    if word is None or word == retail.word(PLACEMENT_HOOK) or word >> 26 != 3:
+        return {}
+    code = jump_target(word, PLACEMENT_HOOK)
+    out, previous = {}, None
+    for address in range(code, code + 0x80, 4):
+        w = memory.word(address)
+        if w is None or w == 0x03E00008:               # jr $ra
+            break
+        if w >> 26 == 9 and (w >> 21) & 31 == 0 and (w >> 16) & 31 == 2:      # addiu $v0,$zero,card
+            previous = w & 0xFFFF
+        elif w >> 26 == 4 and (w >> 21) & 31 == 3 and (w >> 16) & 31 == 2 and previous is not None:   # beq $v1,$v0,L
+            offset = w & 0xFFFF
+            target = address + 4 + 4 * (offset - 0x10000 if offset > 0x7FFF else offset)
+            at = memory.word(target)
+            if at is not None and at >> 26 == 9 and (at >> 21) & 31 == 0 and (at >> 16) & 31 == 3:
+                out[previous] = at & 0xFFFF
+            previous = None
+    return out
+
+
+TERRAIN_CARD_HOOK = 0x80024FF4        # DuelEffect_ApplyTerrain: a jal into the mod's per-card terrain code (Kuriboh)
+
+
+def terrain_card_lists(retail_slus: bytes, slus: bytes) -> dict:
+    """{terrain 1-6: ({card: points}, ...)} the cards the mod gives their own bonus on a terrain (instead of the
+    type's): the hooked code walks 32-byte rows (halfword card ids to a 0, the points in the last halfword) at the
+    base its first `lui $v1` / `addiu $v1` pair builds, a row a terrain."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    word = memory.word(TERRAIN_CARD_HOOK)
+    if word is None or word == retail.word(TERRAIN_CARD_HOOK) or word >> 26 != 3:
+        return {}
+    code = jump_target(word, TERRAIN_CARD_HOOK)
+    high = low = None
+    for address in range(code, code + 0x40, 4):
+        w = memory.word(address)
+        if w is None:
+            return {}
+        if w >> 26 == 15 and (w >> 16) & 31 == 3 and high is None:                 # lui $v1, high
+            high = w & 0xFFFF
+        elif w >> 26 == 9 and (w >> 21) & 31 == 3 and (w >> 16) & 31 == 3 and high is not None:   # addiu $v1,$v1,low
+            low = w & 0xFFFF
+            low = low - 0x10000 if low > 0x7FFF else low
+            break
+    if high is None or low is None:
+        return {}
+    base = (high << 16) + low
+    out = {}
+    for terrain in range(1, 7):
+        row = memory.bytes(base + 32 * terrain, 32)
+        if len(row) < 32:
+            return {}
+        cards = {}
+        for i in range(0, 30, 2):
+            card = struct.unpack_from("<h", row, i)[0]
+            if card == 0:
+                break
+            cards[card] = struct.unpack_from("<h", row, 30)[0]
+        if cards:
+            out[terrain] = cards
+    return out
+
+
+COPIES_HOOK = 0x80033868           # BuildDeck_UpdateChestPaneInput: a j into the mod's per-card copy limit code (Kuriboh)
+COPIES_TABLE = 0x801CF02F          # one byte a card id: the copies a deck holds of it
+EXODIA_PIECES = (17, 18, 19, 20, 21)
+
+
+def card_copies(retail_slus: bytes, slus: bytes) -> dict:
+    """{card id: copies} where the mod's table is not three (the Exodia pieces stay one in the game anyway)."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    word = memory.word(COPIES_HOOK)
+    if word is None or word == retail.word(COPIES_HOOK) or word >> 26 != 2:
+        return {}
+    table = memory.bytes(COPIES_TABLE, 723)
+    return {card: table[card] for card in range(1, min(len(table), 723)) if table[card] != 3 and card not in EXODIA_PIECES}
+
+
+UNIQUE_HOOK = 0x80021884           # Duel_SelectCardDrop's return: a j into the mod's unique-drop code (Kuriboh)
+UNIQUE_TABLE = 0x801DB330          # one halfword card id a duelist, 40 of them
+
+
+def unique_drops(retail_slus: bytes, slus: bytes) -> dict:
+    """{duelist 1-39: card} the card each gives the first time (until he is unlocked for Free Duel)."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    word = memory.word(UNIQUE_HOOK)
+    if word is None or word == retail.word(UNIQUE_HOOK) or word >> 26 != 2:
+        return {}
+    data = memory.bytes(UNIQUE_TABLE, 80)
+    if len(data) < 80:
+        return {}
+    return {d: card for d, card in enumerate(struct.unpack("<40H", data)) if d and card}
+
+
 ATTACK_TRAP = 0x8001F0F0         # Duel_SelectAttackTrap
 TRAP_THRESHOLDS = 0x8009AF24     # retail: six bytes, hundreds of ATK
 ATTACK_TRAPS = ("House of Adhesive Tape", "Eatgaboon", "Bear Trap", "Invisible Wire", "Acid Trap Hole",
@@ -388,6 +530,48 @@ def trap_thresholds(retail_slus: bytes, slus: bytes):
     if not all(values) or list(values) != sorted(values) or max(values) > 655:
         return None
     return {trap: value * 100 for trap, value in zip(ATTACK_TRAPS, values)}
+
+
+FREE_DUEL_BGM_FUNCTION = 0x80024DC8      # func_80024DC8: retail plays song 39 in every Free Duel
+FREE_DUEL_BGM_TABLE = 0x801DB010         # the mod's song number for each disc duelist 1-39, one byte each
+RETAIL_FREE_DUEL_SONG = 0x27
+
+
+def free_duel_music(retail_slus: bytes, slus: bytes):
+    """{duelist: song} for the disc duelists the mod gives another song than retail's 39 in Free Duel (its rewritten
+    func_80024DC8 plays 0x7000 + 16 * table[opponent]), or None."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    if memory.bytes(FREE_DUEL_BGM_FUNCTION, 0x5C) == retail.bytes(FREE_DUEL_BGM_FUNCTION, 0x5C):
+        return None
+    table = memory.bytes(FREE_DUEL_BGM_TABLE, 40)
+    if len(table) != 40:
+        return None
+    return {d: table[d] for d in range(1, 40) if table[d] != RETAIL_FREE_DUEL_SONG} or None
+
+
+TRAP_SWEEP_HOOK = 0x8001F2A8     # Duel_SelectAttackTrap: a j into the mod's cave when an attack trap is chosen
+TRAP_SWEEP_CAVE = 0x801CE00C     # the cave: when the chosen trap is card id 0x2A9 it clears the attacker side's five monster records
+
+
+def attack_trap_sweep(retail_slus: bytes, slus: bytes):
+    """The attack trap whose effect the mod widened to every monster of the attacker's side (Kuriboh's Mirror Force, the
+    disc's House of Adhesive Tape), by its retail name, or None."""
+    retail, memory = Memory(retail_slus), Memory(slus)
+    word = memory.word(TRAP_SWEEP_HOOK) if hasattr(memory, "word") else None
+    if word is None:
+        raw = memory.bytes(TRAP_SWEEP_HOOK, 4)
+        word = struct.unpack("<I", raw)[0] if len(raw) == 4 else None
+    if word is None or word == struct.unpack("<I", retail.bytes(TRAP_SWEEP_HOOK, 4))[0] or word >> 26 != 2:
+        return None
+    if (((TRAP_SWEEP_HOOK + 4) & 0xF0000000) | ((word & 0x03FFFFFF) << 2)) != TRAP_SWEEP_CAVE:
+        return None
+    # the cave compares the chosen trap with `addiu $a0, $zero, id`
+    code = memory.bytes(TRAP_SWEEP_CAVE, 0x40)
+    for i in range(0, len(code) - 3, 4):
+        word = struct.unpack_from("<I", code, i)[0]
+        if word >> 16 == 0x2404 and 0x299 <= (word & 0xFFFF) < 0x299 + 40:
+            return ATTACK_TRAPS[(word & 0xFFFF) - 0x2A9] if 0 <= (word & 0xFFFF) - 0x2A9 < len(ATTACK_TRAPS) else None
+    return None
 
 
 TERRAIN_BOOST = 0x800909D4       # gDuel_aTerrainBoost: s8 [20 monster types][6 terrains], tens of points

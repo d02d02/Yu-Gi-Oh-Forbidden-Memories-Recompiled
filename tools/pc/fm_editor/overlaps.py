@@ -1037,6 +1037,8 @@ class _Check:
             if not 1 <= terrain <= 6:
                 continue
             for type_name, value in _obj(types).items():
+                if type_name == "cards":           # a terrain's bonus for named cards: not a type
+                    continue
                 self.claim(TERRAIN, mod, ("t", terrain, letters(type_name)), SET, canonical(value), value,
                            f"{TERRAINS[terrain]} bonus of {_cut(type_name, 60)}")
 

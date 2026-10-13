@@ -221,6 +221,10 @@ enum {
 #define TABLES_VALUE_SWORDS_MAX 9      /* one digit on the field's card bar */
 #define TABLES_VALUE_PRIZE_MAX 1000    /* past the row's eight pictures, one and "xN" (starchip_prize.h) */
 long Tables_Value(int which, long retail);
+/* The copies of one card a deck may hold: its "card_copies", else "deck_copies", else `retail`. */
+long Tables_CardCopies(int card, long retail);
+/* The card a duelist gives the first time (his "unique_drops"), or 0. */
+int Tables_UniqueDrop(int duelist);
 /* What a duel's end adds to the winner's rank score: `tag` is the side's
  * result_adjustment, 40 (DUEL_RANK_ADJUST_EXODIA_WIN) and -40
  * (DUEL_RANK_ADJUST_DECK_OUT_WIN) the mod's "exodia" and "deck_out" when it
@@ -232,11 +236,15 @@ int Tables_RankAdjustment(int tag);
  * *bonus; 0 when no mod lists the pair (nor replaced the table), and the
  * disc's table decides. */
 int Tables_TerrainBonus(int terrain, int type, int *bonus);
+/* A card's own bonus on a terrain ("cards" in "terrain_bonus"): nonzero when a mod gave one. */
+int Tables_TerrainBonusCard(int terrain, int card, int *bonus);
 
 /* The attack, in points, at or under which attack trap `trap` springs (0
  * House of Adhesive Tape to 5 Widespread Ruin): a mod's "trap_thresholds",
  * else `retail`, the disc's. */
 int Tables_TrapThreshold(int trap, int retail);
+/* Whether attack trap `trap` also destroys every monster of the attacker's side (a mod's "trap_effects": "destroy_all"). */
+int Tables_TrapDestroysAll(int trap);
 
 /* The Password screen's record for card `id` (any loaded card) as the mods'
  * "passwords" have it: `price` and `password` come in as the disc's table

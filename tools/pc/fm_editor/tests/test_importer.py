@@ -45,7 +45,7 @@ class ImporterTest(unittest.TestCase):
         modded_files.wa_lba = 9173        # a modified disc lays its files out elsewhere: the lba stays retail's
         result = importer.import_modded(retail_files, modded_files, "community")
         report = "\n".join(result.report)
-        self.assertIn("AI parameters", report)
+        self.assertIn("Unused", report)   # duelist 0's row is read with rows 1-39 (read_ai_rows)
         self.assertIn("cards: 3 changed", report)
         self.assertNotIn("in the names bank", report)               # the changed names are text, not code
         self.assertIn("where the retail text was", report)     # card 7's shorter text leaves old bytes behind
@@ -59,11 +59,11 @@ class ImporterTest(unittest.TestCase):
             self.assertIn("Heishin X", text)
             self.assertNotIn("Dark Card", text)          # card names go in cards[]
             self.assertEqual(data["text"], "text.txt")
-            patch = data["data"][0]
-            self.assertEqual(patch["patch"], [{"at": "0x100", "bytes": "01 02 03 04"}])
-            sectors = data["data"][1]
-            self.assertEqual((sectors["lba"], sectors["sectors"]), (10102 + 0x169000 // 2048, 3))
-            self.assertEqual((folder / sectors["replace"]).read_bytes(), modded_files.wa[0x169000:0x169000 + 3 * 2048])
+            # The changes were all in card 1's art record and thumbnail sector: carried as the card's art (a texture
+            # pack and a title file the editor makes), not as data over the archive.
+            self.assertNotIn("data", data)
+            self.assertIn("art: ", report)
+            self.assertTrue((folder / "textures").exists())
             self.assertTrue((folder / "import-report.txt").exists())
             # Opened over retail, the mod is the modified game's tables.
             opened, messages = manifest.open_mod(f.game(), folder)

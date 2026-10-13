@@ -25,7 +25,7 @@ MANIFEST_KEYS = ("id", "name", "version", "author", "description", "library", "e
                  "legacy_setting", "data", "textures", "assets", "cards", "audio", "min_api", "game", "requires", "after",
                  "conflicts", "priority", "settings", "fusions", "equips", "rituals", "drops", "decks", "duelists", "text",
                  "font",
-                 "chest_overflow", "terrain_bonus", "trap_thresholds", "equip_bonus_default", "passwords",
+                 "chest_overflow", "terrain_bonus", "trap_thresholds", "trap_effects", "unique_drops", "equip_bonus_default", "passwords",
                  "starter", "starter_pools", "limits", "guardian_stars", "packs", "pack_shop", "card_text_colors", "card_layout",
                  "palette_ramps", "title", "menu", "ui")
 

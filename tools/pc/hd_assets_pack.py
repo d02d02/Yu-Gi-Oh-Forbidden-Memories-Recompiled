@@ -59,7 +59,7 @@ Each PNG is a frame STYLE (gold, green, pink, blue, orange) and the mod's
 card_layout "frame_for" rules say which cards wear which (anime_frame_layout.py;
 notes/modding.md): ritual spells are green, as in the anime, effect monsters
 orange. A ritual PNG does not replace that: it becomes the player's sub-option
-"Ritual spells: own frame" (off). "none" as a flag's value gives a kind no PNG
+"Ritual spells: own frame" (on). "none" as a flag's value gives a kind no PNG
 even where tools/pc/hd_recipes has one (--anime-frame-orange none: effect
 monsters wear the monster frame).
 

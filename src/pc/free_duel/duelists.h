@@ -158,6 +158,12 @@ const unsigned char *Duelists_Portrait(int duelist);
 #define DUELIST_AI_FIELDS 9
 const signed char *Duelists_AiRow(int duelist);
 
+/* What the duelist's AI script reads as its variable 15 ("ai" "mode"), or -1 when the script's own value stands. */
+int Duelists_AiMode(int duelist);
+
+/* The song number a Free Duel against the duelist plays ("music"), or -1 for the disc's own (39, the same for everyone). */
+int Duelists_Music(int duelist);
+
 /* Whether the opponent's searches may read a face-down card.
  *
  * The disc decides this in the AI script's own bytecode, which tests the

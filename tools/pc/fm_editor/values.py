@@ -104,7 +104,7 @@ ALL_FIELDS = tuple(field for _, fields in GROUPS for field in fields)
 FIELD = {field[0]: field for field in ALL_FIELDS}
 TOP_KEYS = ("stats", "attack", "defense", "life_points", "two_player", "starchips", "chest", "free_duel_record",
             "two_player_record", "deck_copies", "swords_turns", "crush_card", "spellbinding_circle", "shadow_spell",
-            "rank_score", "starchip_prize", "new_game_starchips")
+            "rank_score", "starchip_prize", "new_game_starchips", "card_copies")
 LIFE_KEYS = ("start", "player", "opponent", "max", "duelists")
 # The sections whose members are all fields: their keys, and the example a
 # wrong kind of value is told.
@@ -211,6 +211,9 @@ def check(limits, named=None) -> list:
     for key in limits:
         if key not in TOP_KEYS:
             out.append(("error", key, f"no value \"{key}\" ({', '.join(TOP_KEYS)})"))
+    copies = limits.get("card_copies")
+    if copies is not None and not isinstance(copies, dict):
+        out.append(("error", "card_copies", "an object of cards and the copies a deck may hold of each"))
     life = limits.get("life_points")
     if life is not None and (isinstance(life, bool) or not isinstance(life, (int, dict))):
         out.append(("error", "life_points", "a number (both sides' start) or an object of start, player, opponent, "
