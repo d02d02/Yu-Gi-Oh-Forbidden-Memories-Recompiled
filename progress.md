@@ -1,776 +1,107 @@
 # Progress
 
-What is current: decisions, state, what's left. Tracked, so it travels between the
-Windows and Linux machines (see "Switching machines"). Finished and superseded work,
-with the full investigation write-ups, is in **`history.md`**; each section here
-points there where it has more. Research files live in `tmp/pc/todo-research/` (not
-committed). Update in place as work continues instead of re-deriving it next session.
+Current state, decisions, what's left. Finished work and write-ups: `history.md`. Cross-worktree lessons: `notes/worktree-lessons.md`. Shared recipes: `C:\Users\mdahh\.claude\shared\yfm-notes\INDEX.md`. Research files: `tmp/pc/todo-research/` (not committed). Compacted 2026-10-13; the full earlier text is in git history (commit c99c0dafb).
 
-## Start of every session: sync first (Windows or Linux)
+## Session start: sync first
+Remotes: `origin` = fork `d02d02/...`, `upstream` = `Unchiga/...` (moves daily). Before work, *ask* before any pull/reset/rebase:
+1. `git status` (uncommitted work: say so, never overwrite). 2. `git fetch origin`, `git fetch upstream`.
+3. Per working branch: ahead/behind `origin/<branch>` and upstream/master commits missing.
+4. Behind origin only -> `merge --ff-only`; origin force-pushed -> `reset --hard origin/<branch>` only if nothing unpushed; upstream moved -> rebase, rebuild, `--force-with-lease`.
+5. After a rebuild, old save states may not load (item 6): redo `scene_measure.py state`.
+Before a PR: `git log upstream/master -- <files>` (a fix of ours was upstream the same day once). Cherry-pick to a clean branch, never PR a working branch. `play.bat`/`play.sh` rebuild the checked-out branch each launch.
+Everything needed to resume is pushed to `origin` except the disc (`game/*.bin`, gitignored). Work branches: `dev` (tools/docs), `feat/test-scenes`, PR branch `feat/precise-geometry-menu`.
 
-The user works on two machines (Windows, native Linux) through the fork
-(`origin` = `d02d02/...`), and upstream (`upstream` = `Unchiga/...`) moves daily.
-**At the start of every session, before any work, Claude checks and *asks*;
-nothing is pulled, reset or rebased without the user's yes:**
+## How to test
+- Fresh-install check: `python tools/pc/reset_fresh_user.py --build game32dbg --launch` (or `game32master`); rebuilds `tmp/pc/<build>-fresh-user` each run (a saved `settings.txt` always beats a mod default, so used profiles hide shipped-default bugs). `--copy-memory-card` copies `saves/` only, never `states/`; `--link-mods` junctions `tmp/pc/shared-mods/<name>`.
+- Debug build `tmp/pc/game32dbg`, user dir `tmp/pc/game32dbg-user`: `$env:MEMORIES_USER_DIR="tmp\pc\game32dbg-user"; tmp\pc\game32dbg\memories-pc.exe` (`MEMORIES_LOAD_STATE=N` starts from a state slot).
+- Reach a screen with no save: options smoke input + `MEMORIES_MODE_AT=1000:<mode>` (`src/game/main_modes.h`: 4 Library, 7 Build Deck, 9 Name entry, 10 Password): `MEMORIES_INPUT="910:0008,916:0000,1000:0040,1006:0000,1020:0040,1026:0000,1040:0040,1046:0000,1060:0040,1066:0000,1100:4000,1106:0000" MEMORIES_MODE_AT=1000:9`.
+- Dump: `MEMORIES_DUMP_FRAME=1500 MEMORIES_DUMP_PICTURE=1 MEMORIES_DUMP_PATH=out.ppm` (+`MEMORIES_DUMP_VRAM=1`, drops bit 15). **GL-only effects (PGXP, HD text) need a real window**: with `MEMORIES_HEADLESS=1` no GL context exists and the dump is the software picture. Use `MEMORIES_DETERMINISTIC=1` for fast stepping with a window. Frame count is the run's own (a loaded state resumes near frame 30). PPM->PNG/crop: `python tmp/pc/hd-text-split/crop.py in.ppm out.png [x y w h zoom]`.
+- **`MEMORIES_INPUT` hex = raw PSX SIO bits, not `input.h`'s `PAD_BUTTON_*`:** 0001 Select, 0002 L3, 0004 R3, 0008 Start, 0010 Up, 0020 Right, 0040 Down, 0080 Left, 0100 L2, 0200 R2, 0400 L1, 0800 R1, 1000 Triangle, 2000 Circle, 4000 Cross, 8000 Square. Format `frame:code`, `0000` releases. Campaign duel with a 3D model: replay `tests/pc/smoke/duel-3d-monsters.json` `input` (frame 6760, placement reticle; Cross places, Start ends turn); 2D Monsters: `duel-2d-monsters.json` with `mod.2d-monsters` on, `mod.3d-monsters` off (they conflict).
+- A state from the user's `game32` build does not load in `game32dbg` (even with equal `buildid`). Build a state inside `game32dbg`: script input with `MEMORIES_SAVE_STATE="<frame>:<path>"`, reload with `MEMORIES_LOAD_STATE` (~60 frames), iterate cheaply.
+- `MEMORIES_MOD_3D_MONSTERS_TEST=<id>` fills every zone (`id + zone*2 + side`); `CACHE 8` model slots < 10 zones thrash: one-frame dumps only.
+- OneDrive + WSL resolve to the same files: Linux (ELF) and Windows (COFF) builds share `tmp/pc/game32/obj` and stomp each other (link errors, "string table does not end the file"). Delete `tmp/pc/game32/obj`, or build WSL into `tmp/pc/game32-wsl`.
+- Headless build: `PATH="$PWD/tmp/pc/tools/llvm-mingw/llvm-mingw-20260922-ucrt-x86_64/bin:$PATH" python3 tools/pc/build_game32.py --target windows --build tmp/pc/game32dbg` (full path; a bare name makes a stray repo-root dir). `scene_measure.py capture(options, path, pgxp, scale, frame, input=...)` screenshots deterministically: run it before asking the user to test shared-engine-state changes (VRAM, ordering tables). Confirmed scripts (2026-09-29): bare field `""`; card view `"60:1000,66:0000"`; fusion Hitotsu-me Giant (3) + Baby Dragon (4) -> Koumori Dragon `"60:0020,66:0000,120:0020,126:0000,180:4000,186:0000,240:0020,246:0000,300:4000,306:0000,360:0020,366:0000,420:0020,426:0000,480:0020,486:0000,540:4000,546:0000"` (mid-animation ~frame 620). Reference captures: `tmp/pc/measure/2d-monsters-regression/` (gitignored).
 
-1. `git status` — uncommitted work here? Say so first; never overwrite it.
-2. `git fetch origin` and `git fetch upstream` (read-only, safe to just do).
-3. Report, per working branch (`feat/precise-geometry`, `feat/test-scenes`,
-   ...): behind/ahead of `origin/<branch>` (the other machine pushed?), and how
-   many commits `upstream/master` has that the branch lacks.
-4. **Ask** before each change:
-   - behind `origin` only → fast-forward (`git merge --ff-only origin/<branch>`);
-   - `origin` was force-pushed (a rebase from the other machine: local and
-     `origin` both "ahead") → `git reset --hard origin/<branch>`, only if
-     nothing local is unpushed;
-   - upstream moved → rebase the branches onto `upstream/master`, rebuild,
-     rerun `tools/pc/scene_measure.py state` + `controls`, force-push with
-     `--force-with-lease`, fast-forward the fork's `master`.
-5. After any rebuild: a save state from the old build may not load (or crash
-   on the title jump, item 6); `scene_measure.py state` must be redone.
-
-**Before preparing any PR:** fetch upstream and `git log upstream/master --
-<files touched>` — on 2026-09-28 a 3D Monsters fix we made was already
-upstream the same day.
-
-`play.bat` / `play.sh` rebuild the checked-out branch on every launch, so the
-user's play build follows whatever branch is checked out.
-
-## Switching machines
-
-Everything needed to resume is committed and pushed to `origin` (the fork), except
-the disc image (`game/*.bin`, gitignored; supply it locally): this file,
-`history.md`, `notes/*.md`, and a copy of the real memory card
-(`memcards/slot01.sav`, `memcards/README.md`: not a save state, see that README).
-Working branch: **`feat/test-scenes`** (precise geometry work, the test scenes mod,
-the measuring tools); the PR branch is `feat/precise-geometry-menu`. On the other
-machine, after the sync check above: `git checkout feat/test-scenes` and, if the
-branch was rebased, `git reset --hard origin/feat/test-scenes` (only with nothing
-unpushed there).
-
-## How to test things
-
-- **Fresh-install check** (what a brand-new player, or the next release, actually
-  looks like with no settings/saves/mods baggage): `tools/pc/reset_fresh_user.py`.
-  A real profile (the player's own, or any profile ever used for this before)
-  can never answer that again once it's been played on — a saved `settings.txt`
-  always wins over a mod's own default, so leftover dev-testing state silently
-  masks shipped-default bugs as something else. The script wipes/rebuilds
-  `tmp/pc/<build>-fresh-user` from scratch every run instead:
-  `python tools/pc/reset_fresh_user.py --build game32dbg --launch` (or
-  `game32master`, rebuilt from a `master` checkout to see the *next* release,
-  since Releases lag behind `upstream/master`). `--copy-memory-card` pulls in
-  just `saves/` (the real card collection + duelist progress) from another
-  profile, never `states/` (full engine snapshots, tied to a build's own
-  compiled checksums, known to fail loading across builds even at the same
-  commit). `--link-mods` junctions in hand-installed mods from
-  `tmp/pc/shared-mods/<name>` (not copies — one real folder, linked into every
-  profile that wants it, so e.g. the HD pack `assets-hd` never goes out of sync
-  or gets duplicated). Shipped mods (this repo's own `mods/`, compiled into
-  every `tmp/pc/game32*/mods/` at build time) always show in the list
-  regardless of profile freshness — that's correct; only `shared-mods` holds
-  the hand-installed kind.
-- My debug build: `tmp/pc/game32dbg`, with its own user folder `tmp/pc/game32dbg-user`
-  (saves, states and settings kept apart from the real game).
-- Run it (PowerShell, repo root):
-  `$env:MEMORIES_USER_DIR = "tmp\pc\game32dbg-user"; tmp\pc\game32dbg\memories-pc.exe`
-  (add `$env:MEMORIES_LOAD_STATE = "N"` to start from state slot N).
-- Reach a screen with no save needed: the options smoke input plus `MEMORIES_MODE_AT=1000:<mode>`
-  (modes in `src/game/main_modes.h`: 4 Library, 7 Build Deck, 9 Name entry, 10 Password, ...):
-  `MEMORIES_INPUT="910:0008,916:0000,1000:0040,1006:0000,1020:0040,1026:0000,1040:0040,1046:0000,1060:0040,1066:0000,1100:4000,1106:0000" MEMORIES_MODE_AT=1000:9`
-- Dump a frame: `MEMORIES_DUMP_FRAME=1500 MEMORIES_DUMP_PICTURE=1 MEMORIES_DUMP_PATH=out.ppm`
-  (add `MEMORIES_DUMP_VRAM=1` for VRAM; it drops bit 15 of each word).
-  **Needs a real window to show anything GL-only (PGXP, HD text): with `MEMORIES_HEADLESS=1`,
-  `Platform_Open` never creates a GL context at all, so the dump is the software GPU's picture
-  and is byte-identical regardless of any GL-only setting.** Drop `MEMORIES_HEADLESS` (a real,
-  visible window pops up) or add `MEMORIES_DETERMINISTIC=1` alongside it (same fast
-  frame-stepping as headless, but a real window/GL context still gets created) to actually
-  see a GL-pass effect in a dump. `MEMORIES_DUMP_FRAME`'s frame count is *this run's own*,
-  starting from 0 at boot — after `MEMORIES_LOAD_STATE`, it does **not** jump to the frame
-  number the state was originally saved at; the state resumes around frame 30 and the count
-  keeps going from there.
-- PPM to PNG, or a zoomed crop: `python tmp/pc/hd-text-split/crop.py in.ppm out.png [x y w h zoom]`.
-- **`MEMORIES_INPUT`'s hex bits are the raw PSX controller (SIO) layout, *not*
-  `src/game/input.h`'s `PAD_BUTTON_*` enum** — those are two different encodings in this
-  codebase and it's easy to grab the wrong one (cost real time this session):
-  `0001` Select, `0002` L3, `0004` R3, `0008` **Start**, `0010` Up, `0020` Right, `0040` Down,
-  `0080` Left, `0100` L2, `0200` R2, `0400` L1, `0800` R1, `1000` Triangle, `2000` Circle,
-  `4000` **Cross**, `8000` Square. Confirmed against `mods/hand-camera`'s own hard-coded
-  defaults (`turn_right`=R1=`0x0800`, `turn_left`=L1=`0x0400`, `zoom_in`=L3=`0x0002`,
-  `zoom_out`=R3=`0x0004`). A known-good deterministic path from cold boot into a real
-  campaign duel with a 3D-Monsters model on the field: replay
-  `tests/pc/smoke/duel-3d-monsters.json`'s own `input` field verbatim (reaches frame 6760,
-  a card-placement reticle screen) with `mod.3d-monsters`/`mod.hand-camera` on; from there,
-  `<frame>:4000,<frame+6>:0000` (Cross) places the highlighted card face-up in its default
-  (Attack) position, `<frame>:0008,<frame+6>:0000` (Start) ends the turn.
-- The same path with **2D Monsters** instead (item 8 below): replay
-  `tests/pc/smoke/duel-2d-monsters.json`'s own `input` field verbatim (same
-  recording, same frame 6760) with `mod.2d-monsters` on and `mod.3d-monsters`
-  **off** — they conflict, same software-GPU texture-bank range.
-- **A save state made by the user's real `game32` build will not load in the debug
-  `game32dbg` build**, even when both report the identical `buildid` — cross-build state
-  loading fails outright (`state load failed`, likely the mods' own compiled checksums
-  differing between a release and a debug build). Don't try to copy the user's states over.
-  Instead, **build a state from inside `game32dbg` itself**: script the input above (or drive
-  it live, windowed, no `MEMORIES_DUMP_FRAME`/`MEMORIES_HEADLESS`, and press F5 by hand) with
-  `MEMORIES_SAVE_STATE="<frame>:<path>"`, then reload that state as many times as needed with
-  `MEMORIES_LOAD_STATE=<same path or slot>` — each reload only needs ~60 frames to resume and
-  is fast, so do the slow scripted/live part once, then iterate cheaply from the saved state.
-- `MEMORIES_MOD_3D_MONSTERS_TEST=<card id>` (undeclared, not in the Mods window) fills *every*
-  field zone with a different monster at once (`id + zone*2 + side`), bypassing the
-  face-up/occupied check entirely — good for a forced-visible stress test, bad for realism:
-  with only `CACHE 8` model slots in `mods/3d-monsters/field_models.c` but up to 10 zones
-  requested, it thrashes reloading models every frame and runs very slowly. Fine for a single
-  frame dump; don't run it live/windowed for long, and don't read anything into the slowdown
-  itself — it's a separate, pre-existing, unrelated limitation of this test tool, not of
-  whatever is actually being tested.
-- **The repo lives on OneDrive and both machines' checkouts, plus a Claude Code (WSL) session,
-  can all resolve to the *same physical files* — not just the same commits.** The user's Windows
-  checkout at `C:\Users\mdahh\OneDrive\...\Yu-Gi-Oh-Forbidden-Memories-Recompiled` and a WSL
-  session's `/mnt/c/Users/mdahh/OneDrive/...` are one and the same directory on disk. Both
-  `play.bat` and `tools/pc/build_game32.py`'s default `--build` resolve to `tmp/pc/game32` on
-  either OS, so a Linux-side build (gcc, ELF objects) and a Windows-side build (clang/MSVC, PE/COFF
-  objects) share one `obj/` cache and stomp each other's object files — surfaces as link errors
-  (`undefined reference`, a relocation against a COFF-style underscore-prefixed symbol) or the
-  other direction (`the string table does not end the file` when Windows tries to parse a leftover
-  ELF `.o`). **Fix when hit:** delete the stale object(s), or the whole `tmp/pc/game32/obj`
-  (or, to be sure, all of `tmp/pc/game32`), then rebuild on the OS you're actually testing on.
-  **To avoid causing it:** when testing from a WSL/Linux session on a checkout the user also
-  builds on Windows, build into a directory the Windows side never touches, e.g.
-  `python3 tools/pc/build_game32.py --build tmp/pc/game32-wsl`, instead of the shared default.
-- **Claude can build and run the game headlessly, without the user** — the llvm-mingw
-  toolchain `play.bat` fetches is already under `tmp/pc/tools/`, just not on a fresh shell's
-  `PATH`. Add it, then build straight into the debug dir (pass the full `tmp/pc/game32dbg`
-  path — a bare `--build game32dbg` creates a stray directory at the repo root instead):
-  `PATH="$PWD/tmp/pc/tools/llvm-mingw/llvm-mingw-20260922-ucrt-x86_64/bin:$PATH" python3
-  tools/pc/build_game32.py --target windows --build tmp/pc/game32dbg`. From there,
-  `tools/pc/scene_measure.py`'s `capture(options, path, pgxp, scale, frame, input=...)` takes
-  any `MEMORIES_INPUT` script and dump frame and screenshots it deterministically — a
-  regression check Claude can run and diff *before* asking the user to test something live,
-  not just a way to reach the test scene. Scripted and confirmed working this way (2026-09-29,
-  raw SIO codes, `frame:code` pairs, `0000` releases): the bare field view (no input, all ten
-  zones' art); the card-detail view, one Triangle (`"60:1000,66:0000"`); and a fusion —
-  Hitotsu-me Giant (card 3) + Baby Dragon (card 4) → Koumori Dragon, the one combo entirely
-  within the test scene's own cards (`notes/research/fusion-and-drop-tables/fusions.csv`) —
-  with `"60:0020,66:0000,120:0020,126:0000,180:4000,186:0000,240:0020,246:0000,300:4000,
-  306:0000,360:0020,366:0000,420:0020,426:0000,480:0020,486:0000,540:4000,546:0000"` (moves the
-  hand cursor to it, opens the two-row fusion picker, confirms the pairing), mid-animation
-  around frame 620. Reference captures themselves are local/gitignored
-  (`tmp/pc/measure/2d-monsters-regression/`); this recipe is what needs to survive between
-  sessions. Born from item 8's HD-art regression (`history.md`) — reuse it before any future
-  change to shared engine state (VRAM, ordering tables, and the like), not just for that mod.
-
----
-
-## Status board (2026-09-29)
-
-| # | Item | Status | Branch | Next step |
+## Status board
+| # | Item | Status | Branch | Next |
 |---|---|---|---|---|
-| **P** | **Precise geometry, level 1 (Textures)** | Three fixes done and measured, cross-OS confirmed on Linux; PR branch **rebased onto current upstream/master and pushed**, **PR not opened** | `feat/precise-geometry-menu` (PR), `feat/test-scenes` (work + tools) | User's visual check of the rebased branch; then open the PR |
-| P2 | Precise geometry, level 2 (positions) | Designed (`draw_id`), an early version was built and tested on since-deleted branches | — | After the PR: see "Level 2" below |
-| 1 | Name entry: slots guard | Main work merged upstream (#110); follow-up left | — | Identify the cells by checksum, not position |
-| 2 | Duel results letters HD | Not started, plan ready | — | Extend the digit `Sheet` to the alphabet |
-| 3 | Lettering follow-ups (PR #107 review) | Not started, latent | — | Word-width clamp; sibling redraw |
-| 4 | Tests for HD text | Not started | — | One smoke case, name entry at 4x |
-| 5b | Trade: browse cards Up/Down | Done, rebased onto current upstream/master and pushed; code-reviewed against the already-working Build Deck version (close structural match, pad-isolation logic looks right) but **still not live-tested** — headless `MEMORIES_MODE_AT` jump into Trade leaves both inventories empty (it only overwrites the mode byte, skipping the real trade setup, and `MEMORIES_DEBUG_CHEST`/`_DECK` need `Cheats_SaveLoaded()` which needs a real new/continue game first) | `feat/card-viewer-browse-trade` | A live session (real new/continue game, actually enter a trade with cards owned) — no further headless shortcut found |
-| 5c | Library: browse cards Up/Down | Not started, assessed (big) | — | Start with "replay retail steps" |
-| 5d | Pre-duel deck-edit: browse cards Up/Down | Investigating 2026-10-04: this is the actual priority (not Trade) — the screen right before a duel starts where you prepare/edit your deck has no card browsing. Which main mode it runs under not yet confirmed | `fix/card-browse-pre-duel` (branched off current `upstream/master`, pushed, no commits yet) | Find which main mode this screen runs under, then add a `move_*_cursor` + `screens[]` entry in `card_browse.c` the same way Build Deck/Trade did |
-| 6 | Crash: title jump after a cross-build state load | Cause likely found | — | Verify `state_remap.c` remaps `D_800E9DC0` |
-| 7c | HD model textures (`MODEL.MRG`) | Blocked: tags lost before the pack lookup | — | Trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
-| 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
-| 8 | 2D Monsters mod → folded into 3D Monsters as its "Card art" style, per Unchiga's review | **PR #201 open**, updated with the fold-in, the battle-presentation gating fix, and a Mods-window `choice`-wrap bugfix found along the way; awaiting re-review | `feat/2d-monsters` (PR) | Wait on Unchiga |
-| 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
-| 10 | Anime style mod (standalone mod) | Planned, nothing built; scope of the upstream issue undecided | `anime-style-mod` (worktree `.claude/worktrees/anime-mod`) | Decide issue scope, then data work — see section 10 |
-| 11 | `field_art` (3D Monsters' Card art style) cropped/distorted mod art | Two of three original bugs fixed and verified at native (1x) resolution, on a real asset (Duel Links-style art, `artes_duel_links_fm/5_Ryukishin.png`, tall wingtips): (1) fixed 102x96 crop — `CardArt_FieldArtFit` sizes each cutout to its own PNG's ratio, capped at 256 either side; (2) colour fringe from an unweighted average — premultiplied before resample's box filter, undone after. Bug (3), the alpha cutoff, went through two iterations: first an ordered (Bayer) dither (kept a texel in proportion to its own alpha) — **wrong call**, confirmed live: the cutout is small enough on screen that dithering reads as visible static/a sieve of holes, especially on a deliberately translucent surface (a wing membrane drawn at a steady ~75% alpha throughout, not just a fade). Replaced with a much lower flat cutoff (32, down from 128) instead — verified clean (solid wings, full tips, no noise) at 1x, with and without the 3D Monsters mod's own glow effect. **Two new problems found after that, neither investigated yet:** (a) the wings' left/right edges and bottom are hard-clipped (straight cutoff lines, not a gradient issue — see `clippedwings2.png`, user-provided, not yet pulled into the repo) at *native* 1x resolution, cause unknown — possibly `CardArt_FieldArtFit`'s width computation, possibly something in `field_art.c`'s on-field quad sizing; not yet determined whether this predates this session's fixes or is new; (b) the HD texture-pack path (`forbidden-memories-hd` mod + `MEMORIES_INTERNAL_SCALE=4`) renders the cutout **broken**, not just imperfect — a real window screenshot (`MEMORIES_WINDOW_SHOT`, see `notes/pc-headless-testing.md`) showed a blank white background instead of the duel field, the wing as a sparse dotted outline with no fill, and a garbled/corrupted card rectangle — looks like a real rendering bug in that path, not a follow-on of the alpha-fringe issue flagged earlier. All fixes rebased onto current upstream/master and pushed. **2026-10-06: consolidated onto a single branch** — `feat/field-art-shape` is now the only branch for this item (transparent + transparent-gradient + not-clipped, one PR). `fix/field-art-alpha-fringe` deleted (local + origin): its two commits were a strict subset, same content already present in `feat/field-art-shape`'s history (`5894fbd76`/`02e3d0752`), so nothing lost. `feat/field-art-fit` (shape only, no alpha fixes) was likewise already deleted as redundant once `feat/field-art-shape` existed. Mid-investigation debug `say()` logging (clipping repro) carried from this session's `dev` work onto `feat/field-art-shape` as a WIP commit, to be squashed/dropped before the branch is PR-ready. **`feat/field-art-shape`'s base is ~153 commits behind current `upstream/master`** — predates this repo's `CLAUDE.md`/root `progress.md` convention entirely (still has the old `notes/progress.md` layout) — needs a rebase onto current upstream before opening the PR; do that after the clipping fix lands, not before, to avoid rebasing twice | `feat/field-art-shape` (shape-fit + both alpha fixes combined, 3 commits, plus an uncommitted-turned-WIP debug-logging commit for the active clipping investigation) | **Next session, in order, all on `feat/field-art-shape`:** (1) pull `clippedwings2.png` findings — investigate the left/right/bottom clipping at 1x first, it's the more isolated problem; check `CardArt_FieldArtFit`'s width math and `field_art.c`'s `width_px` quad sizing; (2) separately investigate the HD/4x path's broken render — start from the real window screenshot repro command in `notes/pc-headless-testing.md`'s "Known pitfalls" section (`MEMORIES_WINDOW_SHOT`, not the internal `MEMORIES_DUMP_PATH` dump, which doesn't capture the GL path reliably); (3) rebase onto current `upstream/master`, drop the debug-logging WIP commit; (4) open the single PR |
-| — | Game > Restart | Parked | — | — |
-| — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
-
----
+| P | Precise geometry level 1 (Textures) | 3 fixes measured, Linux-confirmed; rebased on upstream, pushed, PR not opened | `feat/precise-geometry-menu` (PR), `feat/test-scenes` | User's visual check, open PR |
+| P2 | Level 2 (positions) | Designed (`draw_id`); built once on deleted branches | `feat/pgxp-level2` (main checkout; notes in shared `pgxp-level2.md`) | After the PR |
+| 1 | Name entry slot guard | merged upstream (#110) | - | identify cells by checksum |
+| 2 | Duel results letters HD | plan ready | - | extend digit `Sheet` to letters |
+| 3 | Lettering follow-ups (#107) | latent | - | word-width clamp; sibling redraw |
+| 4 | HD text tests | none | - | smoke case: name entry at 4x |
+| 5b | Trade browse Up/Down | pushed, not live-tested | `feat/card-viewer-browse-trade` | live session |
+| 5c | Library browse | assessed (big) | - | "replay retail steps" |
+| 5d | Pre-duel deck-edit browse | the real priority (2026-10-04), mode unknown | `fix/card-browse-pre-duel` | find the main mode, add `move_*_cursor` + `screens[]` in `card_browse.c` |
+| 6 | Crash: title jump after cross-build state load | cause likely | - | verify `state_remap.c` remaps `D_800E9DC0` |
+| 7c | HD model textures | blocked, tags lost | - | trace `model_texture_transfer.c` / `model_apply_texture_tint.c` |
+| 7d | Field tile bright sliver | not PGXP, not started | - | more repros |
+| 8 | 2D Monsters -> 3D Monsters "Card art" style | PR #201 open, awaiting Unchiga | `feat/2d-monsters` | wait |
+| 9 | MIPS-interpreted subsystems | not started | - | pick one |
+| 10 | Anime style mod | frame merged upstream (#294); standalone Anime Style 1.2.3 + frame-slots PR ready, see shared `anime-frame-release-status.md` | `adhoc-anime-art-mod`, `fix/frame-slots-cache` | user decisions there |
+| 11 | `field_art` cropped/distorted art | alpha + shape fixed; clipping and HD-4x bugs open | `feat/field-art-shape` | see 11 |
+| 12 | Duel Links 2D Arts (code mod) | v2.4 released 2026-10-13 | `feat/duel-links-mod` | Discord post; host UI features idea |
+| 13 | Kuriboh ROM-hack port | working tree only in old `-kuriboh` folder; notes `notes/kuriboh-*.md`, tools `tools/pc/kuriboh/` | `feat/kuriboh-mod` (history lost) | see notes/kuriboh-mod.md "LATEST STATE" |
+| - | Game > Restart | parked | - | - |
+| - | Test scenes: boot straight to the duel | parked | - | - |
 
 ## P. Precise geometry (PGXP)
+Goal: level 1 (perspective-correct textures) accepted upstream with checkable evidence, then level 2 (exact positions), measured the same way; the user's wider aim is HD model textures/higher-poly models (7c).
+History: upstream #49 `pgxp`, #67, #71 (merged); #83 Unchiga disabled level 2 ("opened gaps in small monsters"); **#139** ours, closed: "visible distortion", his video shows the duel-field edge on RTX 4090 + XWayland. Our Intel machines never showed it. Full story `history.md`.
 
-**Goal.** Get level 1 (perspective-correct textures) accepted upstream with evidence
-Unchiga can check, then level 2 (exact positions, no wobble), measured the same way.
-The user's wider aim is HD model textures and higher-poly models (7c); HD textures
-make level 1 matter more, since warping shows more on detailed art.
+**PR branch `feat/precise-geometry-menu`** (rebased on upstream/master 2026-09-29, `5a269da67`; code only; 4 commits):
+1. Video > Precise geometry Off/Textures (`SET_PGXP` max 1; greyed below 2x or without GL3; default Off).
+2. `gte.c`: widen rtp's window by the truncation it allows (up to ~3.6 px): near camera 2437 rejected -> 0, mixed 927 -> 4.
+3. `libgs.c`/`pgxp.c`: `GsSortPoly` hands on precise vertices it copies (3D duel cards were found only by value; `Pgxp_AddPrimMoved`): mixed 24 -> 0 (duel), 18 -> 0 (turned 90 deg), 4 -> 0 (near).
+4. `pgxp.c`/`libgpu.c`: per-frame tables (this + last frame, 65536 slots, stamped by frame) and `DrawOTag` skips words outside +-2048 (old 32768-slot tables held ~32000 live entries with 10 monsters: 30 fps; found live by the user).
+With Off the picture is upstream's (all behind `Pgxp_Active`; six smoke screenshots byte-identical). Tests `tests/pc/pgxp_test.c`; CTests not run on Windows (CI does). PR text: observed problem -> fix -> observed result, mark seen-by-eye vs measured; Unchiga-style names `Area: what the player sees`; avoid used branch names; ask him to retry at Textures and, if it still shows, send Off vs Textures of one frame + his internal resolution. **Left:** user's visual check of this exact rebased branch, then open the PR.
 
-**Background.** Upstream history: #49 `pgxp`, #67 `pgxp-textures`, #71 `pgxp-native`
-(MaChInEgUn3, merged); #83 `fix/disable-precise-geometry` (Unchiga: level 2 opened
-gaps in small monsters, disabled everything); **#139** (ours, level 1 option, closed
-by Unchiga: *"visible distortion when you enable it"*; his video shows it on the
-**edge of the duel field**, on Nvidia RTX 4090 + XWayland). Our Intel machines
-(Windows, Linux) never showed distortion by eye. Full story: `history.md`.
+**Measuring** (`tools/pc/scene_measure.py` on `feat/test-scenes`; Test scenes mod: hold L1 + confirm Option on the title = duel with Simon Muran, zones from the mod's settings/`field.json`):
+`state` (boot -> scene -> save state; redo after every rebuild), `controls` (must print "controls: pass"), `compare [--scales 2,4]`, `trace [--camera turn:<deg>|near|near-half] [--scales 2]` (needs fork-only `MEMORIES_PGXP_MEASURE`: texel shift M1, mixed triangles M2, vertex offset M4, `rejects.csv`, `misses.csv`, overlay), `bench --pgxp 0,1 --scale 4 --speed -1 --repeat 5 --build <label>` (a fixed benchmark turn; ms/frame, fps, state hash; rows to `bench.csv`).
+Gotchas: scale is `MEMORIES_INTERNAL_SCALE` (not `MEMORIES_SCALE`); deterministic only uncapped (`MEMORIES_SPEED=-1`); time on mains power with `--out` outside OneDrive; end states always differ in sound RAM (~`0x801E1650`, SPU).
 
-### The PR: `feat/precise-geometry-menu` (rebased and pushed to the fork, not opened)
+**Results (Intel Iris Xe, 4x):** level 1 shows on the floor, not monsters (2x: 8.06% pixels change, mostly floor edges; shifts up to 4.6 px at 2x, 15-25 px close; monsters median 0.01 px). Cost (game/draw ms per frame, Off -> Textures): before speed fix 2.59/1.04 -> 5.40/1.29 (+2.81/+0.25); with fixes 2.68/1.09 -> 3.35/1.26 (**+0.67/+0.17**); Linux (Mesa, 2026-09-29) +0.66/+0.18; both settings 59.94 fps capped. Extra cost split: rtp math 18%, `Pgxp_Project` 16%, `StoreAt/AddPrim` 25%, `FindAt/DrawOTag` 9%, GL `polygon` 19%, cache 13%. Behaviour unchanged: 0 bytes differ outside sound regions over 10 runs/build.
+**Unchiga's distortion:** not reproduced; best match is fix 3; we lack his Nvidia proprietary driver 610.57.04 + KDE Wayland/XWayland. Our machines: Win11 24H2 and Kali (X11 XFCE), i5-1345U, Iris Xe (Intel 32.0.101.7088 / Mesa 26.1.6), SDL 3.4.16, clang 23.1.2 (llvm-mingw) / clang 19.1.7 + gcc 14.2.0. Linux 32-bit needs `dpkg --add-architecture i386` + `libgl1:i386 libgl1-mesa-dri:i386 libpulse0:i386`; card at `~/.local/share/YFM Re-Decomp/saves/slot01.sav`.
 
-**Rebased onto current `upstream/master`, 2026-09-29** (was `6ad201fbf`, 77 merged
-PRs stale; now `5a269da67`) — clean, no conflicts, checked with a dedicated agent:
-no upstream commit since the old base touched the PGXP core files (`pgxp.c/h`,
-`gte.c`, `libgpu.c`, `libgs.c`); only `menu.c`/`settings.c` saw unrelated upstream
-churn, which merged without incident. `upstream/fix/disable-precise-geometry`
-(PR #83, Unchiga's own "level 2 opened gaps, disabled everything") is already an
-ancestor of the `upstream/master` this rebases onto — not parallel work, already
-accounted for. `feat/precise-geometry` (the older, shorter-named branch also on
-`origin`) is an ancestor of `feat/test-scenes`, fully superseded; not the PR base.
-Code only (no `progress.md`, `memcards/`, tools, test scenes or measure code;
-keep it that way: cherry-pick, never PR a working branch). Same four commits:
+**Level 2:** `snap_seams` (`libgpu.c`) pairs vertices by rounded screen word, so unrelated vertices snap (the #83 gaps). Design: a `draw_id` per `GsSortUnit`, threaded through `PgxpVertex` and the tables; pair only same-draw vertices (built once, no gaps with ten small monsters; redo on current code). `PGXP_VERTEX_WORDS`: `gl_picture.c` records/replays `PgxpVertex` as a word count; growing the struct without updating both corrupted the arena. Optimise (decided): drop the by-value table (~10 of ~8737 words a frame, 0.13 ms, glues unrelated vertices) after an address path; direct index instead of GL binary search; **not** rtp in floats (rounding is the wobble level 2 removes). M4 bias: precise positions +0.77 px right/down of the floored pixel (2x: +1.52/+1.57): decide on pixel+0.5. Measure gaps before/after (M5) and a blind A/B pan for wobble (M6).
+**Thresholds (fixed 2026-09-28; change only in writing here):** level 1 visibly changed at texture shift >= 1 px, clearly >= 2, invisible < 0.5; level 2 rounding noticeable at >= 1 px; a crack = any seam spread > 0; a scene "shows level 1" only if clearly visible pixels >= 1% or blind A/B picks it >= 8/10.
+Next: PR; scenes `model`, `battle`, `small`, `control`; level 2, then runner for Unchiga (M7); reuse tools for 7c.
 
-1. **Video: re-enable precise geometry (Textures).** Video > Precise geometry,
-   Off / Textures; `SET_PGXP` max 1 (level 2 not offered); greyed below 2x or
-   without OpenGL 3. Default Off.
-2. **PGXP: widen rtp's window by the truncation it allows** (`gte.c`). Up close the
-   GTE's truncated IR1/IR2 and SZ3 move the word up to ~3.6 px from the true
-   position, so rtp dropped precise positions; the window now widens by
-   `(H + distance from the centre) / SZ3`. Near camera: 2437 rejected → 0, mixed
-   927 → 4. Duel distance unchanged.
-3. **PGXP: GsSortPoly hands on the precise vertices it copies** (`libgs.c`, `pgxp.c`).
-   The 3D duel cards (`func_80015EF4`) go through LIBGS `GsSortPoly`, which never
-   tagged them: found only by value, one corner per card collided with another
-   vertex on the same pixel. `Pgxp_AddPrimMoved`. Mixed 24 → 0 (duel distance),
-   18 → 0 (turned 90°, field edge in view), 4 → 0 (near).
-4. **PGXP: keep a full duel field at full speed** (`pgxp.c`, `libgpu.c`). The
-   lookup tables (32768 slots) held ~32000 live entries with 10 monsters and every
-   miss walked all probes: 30 fps. Per-frame tables (this frame's and the last's,
-   65536 slots, a slot empty unless stamped with its frame), and `DrawOTag` skips
-   words outside ±2048. Found by the user live.
+## 1-4. HD text
+1. Name entry arrows/END pictures sit in unused Shift-JIS slots of the large font (merged #110). Left: other screens/fonts may hold other pictures there; identify by pixel checksum (like `PANEL_SUM`); check modes 9, 10, save names, dialogue.
+2. Duel results "You"/"Simon"/"OFFENSE STATISTICS" are blocky: `{f8 04 01}` draws an 8x8 alphabet from page 704,0 palette 656,250 (v 80 A-P, 88 Q-Z, 96 a-p, 104 q-z, 112 digits = already HD, `sheets[1]` in `hd_text.c`); "You"/"Simon" are the port's swap for YOU/COM (`translation.c`). Plan: extend the digit `Sheet` to letters (measure baseline/caps/x-height as `measure_retail` does; `render_at`; only where the retail sheet matches by checksum).
+3. Latent (#107 review): word width can overflow (`sx = sv` in `set_text`, clamp to what fits); siblings not redrawn when one member changes (remember the measurement drawn from).
+4. No automated HD text check: add a smoke case (`tests/pc/smoke/*.json`) at 4x on the name entry (reachable with `MODE_AT`).
 
-With Off, the picture is upstream's: every change is behind `Pgxp_Active`; the six
-smoke screenshots are byte-identical. Tests: `tests/pc/pgxp_test.c` (window case
-fails on the old code; `GsSortPoly` copy). CTests not run on Windows (no CMake
-configure here); CI runs them.
+## 5. Browse cards (Up/Down)
+Build Deck merged (#111): setting `card_browse`, `src/pc/cards/card_browse.c` `screens[]` per main mode; stops at ends, skips empty rows. Trade needs a live session with an owned deck (route: escape Simon's duel to the shop, save, Circle to title, Trade); deprioritized 2026-09-27; headless `MODE_AT` leaves inventories empty. Library has its own state machine (`library_runtime.c`, `func_8002ACA4`): card flies out, panel slides, grid fades, model loads (`Model_LoadMonsterMerge`), fly-back to its cell. Approach 1 (recommended): Up/Down triggers the normal close, then moves the grid cursor and reopens (~1-2 s per card; all retail code). Approach 2: swap in place (needs the 3D model view understood). Check after: chest/deck panes, empty rows, sorted lists, first/last card, duel card view unchanged.
 
-**Description:** drafted, to be rediscussed with the user (structure each fix as
-observed problem → fix → observed result, and mark what was seen by eye vs only
-measured). Naming: Unchiga's style, `Area: what the player sees`; avoid used names
-(`pgxp`, `pgxp-textures`, `pgxp-native`, `fix/disable-precise-geometry`,
-`feat/pgxp-video-option`). Ask Unchiga to retry at Textures and, if it still shows,
-send Off vs Textures of the same frame and his internal resolution.
+## 6. Crash: title jump after a cross-build state load
+Load a state from another build ("N code addresses moved") then Debug > Jump to > Title: access violation in `Main_Init` (+0x144/+0x166), also in the play.bat build (not ours). Likely: `TitleJump_Execute` (`src/pc/overrides/title_jump.c`) longjmps to `D_800E9DC0` saved at boot; `state_remap.c` (~190 addresses) probably does not remap it. Repro: `MEMORIES_LOAD_STATE=<foreign state> MEMORIES_TITLE_AT=120` with the other build's `symbols/`.
 
-**Left to do:** user's visual check of this exact rebased 4-commit branch (not
-yet done — earlier live confirmation was on an older, since-rewritten single
-commit); then open the PR against `upstream:master`.
+## 7. Model looks
+**7c HD model textures (blocked):** the pack matches by provenance tag (disc byte offset per VRAM upload, `texture_dump.c`) + palette. With `MEMORIES_DUMP_TEXTURES` on the `duel-3d-monsters` smoke: 623 tagged from `WA_MRG.MRG`, 32 `SU.MRG`, **0 from `MODEL.MRG`** (351 MB; `notes/image-remaster.md` lists it "Not done"). Leads: `model_texture_transfer.c` copies through work buffers (`D_801DD000`) dropping tags; `model_apply_texture_tint.c` computes palettes the pack can never match. Then `extract_images.py`/`upscale_pack.py` apply; pilot a few monsters; do perspective-correct mapping (7b) first (HD detail makes affine warp worse). Route to a state with cards: after Simon's duel to the shop, save, Circle to title, Library, click a card, Right; L1/R1 in battle rotates the camera.
+**7d (2026-09-27):** thin bright yellow-white diagonal sliver across a tile corner next to the field-card slot, intermittent with small camera moves; not PGXP (toggle changed little, present before `draw_id`). Likely seam/z-fight between tile and slot decal. Need more repros (PGXP Off).
 
-### Measuring: `tools/pc/scene_measure.py` (on `feat/test-scenes`)
+## 8. 2D Monsters mod (`mods/2d-monsters/`)
+Camera-facing cutout of a card's art instead of a model; folded into 3D Monsters as "Card art" (PR #201). Sizing and depth-sort fixed (three wrong assumptions borrowed from 3D Monsters). An HD-pack attempt broke opponent art, a fusion animation and the card title and was reverted. Validated HD design (unbuilt): `LoadImage` art to scratch VRAM, wait one frame (`TexturePack_EntryFor` resolves on the next service tick), `TexturePack_EntryImage` pulls the HD image (e.g. 408x384 `card-001.png`), bake into the private bank, then restore the scratch VRAM; needs a two-frame pending state per cache slot and RGBA->bank resampling. Decided: ship without HD (3D Monsters has the same limit); HD support deserves its own PR. Clean branch `feat/2d-monsters-mod` (4 commits on upstream/master 2026-09-29). Left: user tests Windows then Linux, then PR.
 
-The **Test scenes mod** (`mods/test-scenes/`): hold **L1 + Cross on Option** on the
-title menu → a duel with Simon Muran, the ten monster zones filled from
-`field.json` (player 1-5, opponent 6-10), face up. Hand: the player's cards 1-5,
-cursor on Blue-Eyes. Design and research: `history.md`.
+## 9. MIPS-interpreted subsystems (run via `src/pc/guest/mips.c`, correct, not native C)
+(1) shared duel effects bank `0x80146000` (entry `0x801462B0`; fusion, damage, destruction, magic/trap/ritual/terrain/field up to id 23; `MEMORIES_DUEL_EFFECTS=native` = old bring-up); (2) credits module (`Main_RunCredits` phase 2, `func_800507D0`, loads MIPS at `0x80180000`); (3) monster attack choreographies, the big one: MODEL.MRG 621 records, 1,181 distinct variant modules (`MEMORIES_MODEL_MODULES=native` = spark burst). Not started; a 2026-09-21 scan found only instructions the interpreter handles (no GTE opcodes): translation volume only, independent pieces. Detail `notes/pc-build.md`; end state "no reachable MIPS fallback" in `notes/pc-port-plan.md`.
 
-```
-python tools/pc/scene_measure.py state      # boot → scene → save state (redo after every rebuild)
-python tools/pc/scene_measure.py controls   # must print "controls: pass"
-python tools/pc/scene_measure.py compare [--scales 2,4]          # Off vs Textures image diff
-python tools/pc/scene_measure.py trace [--camera turn:<deg>|near|near-half] [--scales 2]
-python tools/pc/scene_measure.py bench --pgxp 0,1 --scale 4 --speed -1 --repeat 5 --build <label>
-```
+## 10. Anime style mod
+Design and ranked engine candidates: `notes/anime-style-mod-plan.md`. Frame shipped upstream (#294, in Forbidden Memories HD). Standalone Anime Style (mod id `anime-art`, branch `adhoc-anime-art-mod`, 1.2.3) and the frame-slots/cache engine PR (`fix/frame-slots-cache`, PR not opened): status and decisions in shared `anime-frame-release-status.md`. Doc fixes owed upstream: stale "Known limitation" paragraph in `notes/modding.md` (~line 993); `modapi.h` lists API up to 9, code is 10.
 
-- **trace** (needs the fork-only `MEMORIES_PGXP_MEASURE` code): per textured
-  triangle, the texel shift level 1 makes (M1), mixed triangles (M2), each vertex's
-  offset from its console pixel (M4), why projections lost their precise position
-  (`rejects.csv`), why frame words got none (`misses.csv`), and an overlay PNG.
-- **bench**: the benchmark turn from the state (checked with the user): Cross picks
-  Blue-Eyes, Right turns it face up, Cross, Right to the second zone, Cross, Cross
-  takes Sun, Start as soon as the field phase takes input (540), the opponent's
-  whole turn, end at 2520 as the player's turn returns. Game and draw ms per frame,
-  fps, wall time, and a hash of the state saved at the end; rows to `bench.csv`.
-- **Gotchas:** internal resolution is `MEMORIES_INTERNAL_SCALE` (not
-  `MEMORIES_SCALE`, the window). Deterministic only uncapped: the tool sets
-  `MEMORIES_SPEED=-1` (at 100, Textures runs drifted by a VBlank). **Time only on
-  mains power, with `--out` outside OneDrive** (it syncs the 7.5 MB states; on
-  battery the numbers were twice as noisy). End states always differ in the sound
-  regions (the sound driver's RAM near `0x801E1650` and the SPU's voices; the mixer
-  is real-time, `MEMORIES_NO_AUDIO` does not stop it): compare outside those.
+## 11. `field_art` (3D Monsters "Card art") cropped/distorted mod art
+Fixed on `feat/field-art-shape` (real asset `artes_duel_links_fm/5_Ryukishin.png`): fixed 102x96 crop (`CardArt_FieldArtFit` sizes to the PNG's ratio, cap 256); colour fringe (premultiply before the box filter, undo after); alpha cutoff (Bayer dither was wrong: reads as static; flat cutoff 32, down from 128). Open: (a) wings' left/right/bottom hard-clipped at 1x (`clippedwings2.png`; suspect `CardArt_FieldArtFit` width or `field_art.c` `draw_one` `width_px`); (b) HD pack path at `MEMORIES_INTERNAL_SCALE=4` renders broken (blank background, dotted wing, garbled card): repro with `MEMORIES_WINDOW_SHOT`, not `MEMORIES_DUMP_PATH`. Single branch now (`fix/field-art-alpha-fringe`, `feat/field-art-fit` deleted as subsets); debug `say()` WIP commit to drop; base ~153 commits behind upstream: rebase after the clipping fix, then one PR. Order: (1) clipping, (2) HD/4x, (3) rebase, (4) PR.
 
-### Results so far (Windows, Intel Iris Xe, 4x unless said)
-
-**Level 1 is visible on the floor, not on the monsters.** Off vs Textures, default
-camera, 2x: 8.06% of pixels change, almost all the field floor and its edges; the
-largest texel shifts are the big near floor triangles (up to 4.6 px at 2x, 15-25 px
-close up). Monsters: median shift ~0.01 px. No monster seam breaks seen at any
-camera, before or after the fixes.
-
-**Mixed triangles (some corners corrected, others not):**
-
-| Camera (2x) | Before the fixes | After |
-|---|---|---|
-| Duel distance | 24 | 0 |
-| Turned 90° (field edge in view) | 18 | 0 |
-| Close up (Hand camera, 300) | 927 | 0 |
-
-**Cost** (benchmark turn, uncapped, 5 alternating runs, medians, game / draw ms per frame):
-
-| Build | Off | Textures | Extra |
-|---|---|---|---|
-| Before the speed fix | 2.59 / 1.04 | 5.40 / 1.29 | +2.81 / +0.25 |
-| With all fixes | 2.68 / 1.09 | 3.35 / 1.26 | **+0.67 / +0.17** |
-| Without fixes 2-3 (A/B) | 2.62 / 1.05 | 3.24 / 1.24 | +0.62 / +0.19 |
-
-The mixed-triangle fixes cost ~0.05 ms; the rest is precise geometry itself. At real
-speed both settings hold 60 fps (user's live session with a full field too).
-
-**Confirmed on Linux, 2026-09-29** (native X11, Mesa, same laptop/GPU as the Windows
-numbers above, mains power, `feat/test-scenes` at `aa6653172`): Off 3.17 / 1.31,
-Textures 3.83 / 1.49, extra **+0.66 / +0.18** — matches Windows' +0.67 / +0.17 almost
-exactly. Baseline is higher on Linux (driver/CPU overhead, not precise geometry); the
-*added* cost of the setting is what was being checked, and it holds across OS and
-driver. At real speed (capped, `--speed 100`): both settings 59.94 fps avg, matching
-Windows. `bench_linux_pgxp1_4x_uncapped_r0.png` checked: expected end-of-turn scene
-(two Blue-Eyes among the ten monsters). Raw rows: `tmp/pc/measure/bench.csv`.
-
-**Where the +0.8 ms goes** (sampling profiler, 3 runs each, shares of the extra):
-`rtp`'s precise math 18% (0.14 ms), every projection into the by-value table
-`Pgxp_Project` 16% (0.13), `Pgxp_StoreAt`/`AddPrim` 25% (0.20), `Pgxp_FindAt`/
-`DrawOTag` 9% (0.07), OpenGL `polygon` (binary search per vertex, perspective
-setup) 19% (0.15), indirect (cache pressure, likely) 13% (0.11).
-
-**Behaviour: precise geometry changes nothing in the game.** End states of the
-benchmark turn, 10 runs per build (both settings): 0 bytes differ outside the sound
-regions.
-
-### Open question: Unchiga's distortion
-
-Not reproduced. The best match found is fix 3 (half-corrected 3D cards, the part of
-the field his video shows), but on Intel it was not visible by eye. Nothing we tested
-has his two variables: the Nvidia driver and XWayland.
-
-| Component | Unchiga | Ours (Linux) | Ours (Windows) |
-|---|---|---|---|
-| GPU | Nvidia RTX 4090 (discrete) | Intel Iris Xe (integrated) | Intel Iris Xe (integrated) |
-| Driver | Nvidia proprietary 610.57.04, OpenGL 4.6.0 | Mesa 26.1.6 | Intel 32.0.101.7088, OpenGL 4.6.0 |
-| Game's log line (`MEMORIES_TRACE=window`) | — | `OpenGL renderer Mesa Intel(R) Iris(R) Xe Graphics (RPL-U), version 4.6 (Compatibility Profile) Mesa 26.1.6-1, video x11` | — |
-| Display | KDE Plasma on Wayland, game through XWayland | XFCE on native X11 | Windows (no X11) |
-| SDL video driver | x11 | x11 | windows |
-
-Our machines in full:
-
-| Component | Windows | Linux |
-|---|---|---|
-| OS | Windows 11 Pro 24H2, build 10.0.26100 | Kali GNU/Linux Rolling, kernel 6.12.25-amd64, X11 XFCE |
-| CPU | 13th Gen Intel Core i5-1345U | same laptop (dual boot) |
-| GPU / driver | Intel Iris Xe, OpenGL 4.6.0 Build 32.0.101.7088 | Intel Iris Xe (Raptor Lake-P), Mesa 26.1.6 (amd64 + i386) |
-| SDL | 3.4.16 | 3.4.16 (built into `tmp/pc/sdl-m32-portable`) |
-| Compiler | clang 23.1.2, `i686-w64-mingw32` (llvm-mingw 20260922, ucrt) | clang 19.1.7 / gcc 14.2.0; links against Debian 11's i386 sysroot |
-
-Linux setup: the 32-bit build needs `dpkg --add-architecture i386` and
-`libgl1:i386 libgl1-mesa-dri:i386 libpulse0:i386`. The memory card goes to
-`~/.local/share/YFM Re-Decomp/saves/slot01.sav`.
-
-### Level 2 (after the PR)
-
-- **Seams without gluing:** `snap_seams` (`libgpu.c`) pairs vertices only by their
-  rounded screen word, so on small models unrelated vertices get snapped (the #83
-  gaps). Design: a `draw_id` per `GsSortUnit` call, threaded through `PgxpVertex`
-  and the tables; `snap_seams` only pairs vertices of the same draw. Built and
-  tested once on since-deleted branches (no gaps with ten small monsters); redo it
-  on the current code. **`PGXP_VERTEX_WORDS`:** `gl_picture.c` records and replays
-  `PgxpVertex` as a word count; growing the struct without updating both caused
-  the arena corruption found then. Full design, the bug hunt and its lessons:
-  `history.md` (7b, 7b-bug).
-- **Optimisations, decided with the user against level 2 and HD models:** drop the
-  by-value table (serves ~10 of ~8737 vertex words a frame, costs 0.13 ms, and is
-  what glues unrelated vertices), after giving those words an address path; a
-  direct index instead of the OpenGL binary search. **Not** `rtp`'s math in floats:
-  level 2 draws those positions, and float rounding is the wobble it removes.
-  HD meshes drawn natively would not need PGXP at all; pushed through the GTE
-  path, the per-vertex cost would scale with them (decision pending on how HD
-  models will be drawn).
-- **M4 bias:** precise positions average +0.77 console px right and down of the
-  console's floored pixel (at 2x: +1.52, +1.57 px). Level 2 would move every model
-  by that against the 2D elements; decide whether to compare against the pixel + 0.5.
-- **Measure before and after:** a measurement build with the clamp at 2 gives the
-  gaps' "before"; then the `draw_id` commit and "after" (M5), and a blind A/B of a
-  slow pan for the wobble (M6; needs a frame-range dump).
-
-**Thresholds (fixed before measuring, 2026-09-28):** level 1, a triangle is visibly
-changed at a texture shift ≥ 1 screen px, clearly at ≥ 2 px, invisible below 0.5;
-level 2, a vertex's rounding is noticeable in motion at ≥ 1 px; a crack is any seam
-spread > 0; a scene "shows level 1" only if clearly visible pixels are ≥ 1% of the
-frame or the blind A/B picks it ≥ 8 of 10. Change a threshold only in writing here,
-with the reason.
-
-### Next steps (in order)
-
-1. The user's visual check on the PR branch; rediscuss the description; open the PR.
-2. Scenes `model` (a monster filling the screen), `battle`, `small`, `control`.
-3. Level 2 (above), then the runner packaged for Unchiga (M7).
-4. Reuse the tools for the model work (7c).
-
----
-
-## 1. Name entry: guard the picture slots
-
-The name entry's <-, -> and END (pictures in unused Shift-JIS slots of the large font)
-are HD, and the large font's `: ; < = > ?` column typo is fixed: merged upstream
-(PR #110; full write-up in `history.md`).
-
-**Left to do:** the same Shift-JIS slots may hold other pictures on other screens or
-fonts. Identify the cells by their pixels (a checksum of the retail cell, as the card
-view's panel does with `PANEL_SUM`), not just by position. Check after: the name
-entry screen (mode 9), Password (mode 10), save names, the campaign dialogue.
-
----
-
-## 2. Duel results: "You" and "Simon" are not HD
-
-**Seen:** duel results screen, the "You" / "Simon" headers (and probably "VICTORY
-CONDITIONS", "OFFENSE STATISTICS", ...) are blocky retail pixels; the bars cut their feet,
-as in retail. A save state was in `tmp/pc/game32dbg-user/states/slot2.state` (may have been
-overwritten since).
-
-**Cause (verified):** not the text font. `{f8 04 01}` in the results strings (0x40-0x45)
-draws a separate tiny 8x8 alphabet from the menus' sheet, page 704,0, palette 656,250, as
-plain 8x8 sprites (no glyph mark):
-
-| v | row |
-|---|---|
-| 80 | A-P (u 128, 136, ... 248) |
-| 88 | Q-Z |
-| 96 | a-p |
-| 104 | q-z |
-| 112 | 0-9 (already HD: `sheets[1]` in `hd_text.c`) |
-
-"You" / "Simon" are the port's own swap for YOU / COM (`translation.c`, with Video >
-Opponent's name for COM), set in that alphabet; "OFFENSE / DEFENSE STATISTICS" too. HD
-numbers and labels redraws that sheet's digits but not its letters, so the letters stay
-blocky and uneven.
-
-**Decided, not started:** extend the digit `Sheet` (`hd_text.c`) to that sheet's letters:
-measure the alphabet's lines together (baseline, capitals, x-height, as `measure_retail` does
-for the font pages: the `Lettering` principle) and set each letter with `render_at` in the
-sheet's ramp, as the digits are. Only where the retail sheet is (checksum), like the digits.
-Check: results pages (all three), and wherever else the menus use that alphabet.
-
----
-
-## 3. Lettering follow-ups (from the review of PR #107)
-
-Not bugs today, latent:
-1. **Word width can overflow:** a label in a lettering is set in the font's proportions
-   (`sx = sv` in `set_text`) with no check against its sprite's width. ATK/DFD fit; a longer
-   word (a translation) would be clipped. Fix: `sx = min(sv, what fits)`.
-2. **Siblings are not redrawn:** a label is only remade when its own texels change; if one
-   member of a lettering changes and another does not, the other keeps the old ink/height.
-   Fix: each label remembers the lettering measurement it was drawn from and is redrawn when
-   that changes.
-
----
-
-## 4. Tests for HD text
-
-No automated check covers HD text; everything was checked by eye from save states. A smoke
-case (`tests/pc/smoke/*.json`: input, frame, SHA-256) with HD text on at 4x on the name
-entry screen (reachable with `MEMORIES_MODE_AT`, no save needed) would catch regressions.
-
----
-
-## 5. Browse cards from the card view (Up / Down): Trade and Library
-
-Build Deck is done and merged upstream (#111): setting `card_browse`, Game > Browse
-cards, `src/pc/cards/card_browse.c` with a `screens[]` table per main mode; stops at
-the ends, skips empty rows. How it works and the decisions: `history.md`.
-
-**Left to do:**
-- **Trade needs a live session with an owned deck** (ideally two pads) to confirm Up/Down
-  actually works, same as Build Deck needed. **Deprioritized by the user, 2026-09-27** — not
-  worth a test session right now. Manual route to a save with cards, whenever it does become
-  a priority: after escaping Simon's duel to the shop, save, Circle back to the title, then
-  into Trade.
-- **Library: not started, assessed.** Its own card display (`library_runtime.c`,
-  `func_8002ACA4`, opened with Cross from `library_grid_cursor.c`), not the shared viewer.
-  Its own state machine, much more involved than Build Deck's:
-  1. loads the card into slot 0 and sets up a 3D camera;
-  2. the card flies out of its grid cell to the centre while spinning, the description
-     panel slides in;
-  3. the grid fades out, the card fades in;
-  4. in parallel, once the card has loaded, and if it's a monster: loads its 3D model
-     (`Model_LoadMonsterMerge`), then shows a "view model" icon;
-  5. **showing**: Circle closes; Triangle/Cross on a monster goes to stage 4's 3D model
-     view (camera, lights, animation) — a still bigger state, not investigated;
-  6. the grid fades back, the card **flies back into its grid cell**, then everything is
-     released.
-  Extra problems past Build Deck's: releasing/loading a 3D model mid-swap without a crash
-  or leak; the card's fly-back animation targets *the cell it came from*, so browsing to
-  another card must retarget it; the grid scrolls, so the next card may be off-page; locked
-  ("?") cards must be skipped like Build Deck's empty rows.
-
-  **Two approaches, recommendation: start with 1:**
-  1. **Replay the retail steps (safe, slower):** Up/Down triggers the normal close (card
-     flies back), then, once the grid is back, moves the grid cursor and opens the next
-     card automatically (flies out again). Every animation, the model load and the grid
-     scroll are the game's own code — the same principle that already worked for Build Deck
-     and Trade. Cost: ~1-2s of fly-back/fly-out animation per card.
-  2. **Swap in place (nicer, much more work):** stay in stage 5, release/reload the card and
-     its model, retarget the fly-back cell, keep the panel. Needs the 3D model loading and
-     stage-4 view understood first. Move to this only if approach 1's animation feels too
-     slow once tried.
-
-**Check after (once live-tested):** chest pane and deck pane, empty rows, sorted lists, the
-last and first card, Trade with an owned deck, and that the duel's card view (same viewer)
-is unchanged.
-
----
-
-## 6. Crash: jump to title after loading a state from another build
-
-**Seen:** crash reports `tmp/pc/crash-26952.txt`, `crash-26680.txt` (and reproduced):
-load a save state made by a different build ("state from build X carried over to Y: N code
-addresses moved"), then Debug > Jump to > Title Screen: access violation in `Main_Init`
-(+0x144 / +0x166).
-
-**Verified (2026-09-27):** not caused by our branches. No state, or a state made by the same
-build: fine, in every build. A state converted from another build, then the title jump:
-crashes in the `play.bat` build too, which has no card browsing. Upstream master built fresh
-passed the one test tried, but its conversion moved only 7 addresses (vs ~190).
-
-**Likely cause, not yet verified:** the title jump longjmps to the resume point `Main_Init`
-saves at boot (`D_800E9DC0`, `TitleJump_Execute` in `src/pc/overrides/title_jump.c`). The
-state carries that buffer; the carry-over (`src/pc/guest/state_remap.c`) seems not to remap
-the native addresses in it, so the jump lands on a stale address.
-
-**Left to do:** confirm `state_remap.c` doesn't touch `D_800E9DC0`'s buffer, then remap it
-like the ~190 other addresses the conversion already moves.
-
-**Repro:** `MEMORIES_LOAD_STATE=<state from another build> MEMORIES_TITLE_AT=120` with the
-other build's symbol table in `symbols/`.
-
----
-
-## 7. Model looks: HD textures, and a field tile artefact
-
-(7a and 7b, precise geometry, are section P above; their history is in `history.md`.)
-
-### 7c. Low-res, blurry model textures (the HD pack) — blocked, no path yet
-
-**Cause (traced, not fixed):** the HD texture pack mechanism (`texture_pack.c`) replaces
-disc pixels by *provenance*: every VRAM upload is tagged with the disc byte offset it came
-from (`texture_dump.c`), and a pack image is matched to that tag plus the palette. Tested
-directly: ran the `duel-3d-monsters` smoke case with `MEMORIES_DUMP_TEXTURES` on — **zero**
-of the model's own textures were tagged (623 tagged from `WA_MRG.MRG`, 32 from `SU.MRG`, 0
-from `MODEL.MRG`, out of the archive's 351 MB). `notes/image-remaster.md` lists `MODEL.MRG`
-under "Not done" for the same reason. So an HD pack **cannot** replace model textures today,
-even with redrawn art in hand — this is a separate, independent axis from PGXP (7a/7b): PGXP
-never touches pixel content, only how existing textures get mapped and where vertices land.
-
-**Leads for why the tags are lost** (not yet followed): `model_texture_transfer.c` copies
-textures through work buffers (`D_801DD000` etc.) rather than a straight disc-read-to-VRAM
-copy, which may be where the tag drops; `model_apply_texture_tint.c` recomputes palette
-entries for a model's tint/lighting, and the pack also requires the *palette* to match the
-one the image was captured through, which a computed tint palette never will.
-
-**Once textures are taggable**, the existing pipeline (`tools/pc/extract_images.py`,
-`upscale_pack.py`) applies unchanged: extract, redraw or upscale, pack. A sensible next step
-after 7a/7b: pick a handful of common monsters as a pilot before committing to all ~700+.
-Worth doing 7b (perspective-correct mapping) first or alongside — upscaled detail makes
-affine texture warp *more* visible, not less, so shipping HD model textures without it would
-look worse in places than the low-res original.
-
-**Manual test routes the user gave me, for later sessions (not yet used):**
-- After escaping Simon's duel to the shop: save, Circle back to the title, Library, click a
-  card, press Right — a quick way back into a state with cards and a model to inspect.
-- L1/R1 during the battle animation rotates the camera around the model (see 7b above).
-
-### 7d. Duel field tile: a thin bright diagonal sliver, intermittent — new, not started
-
-**Seen, 2026-09-27** (three screenshots from the user, same duel, same camera area, a few
-seconds apart): a tile just past the field-card slot is clean in two of the three shots, but
-in the third a thin bright yellow-white diagonal sliver cuts across its corner — a small chunk
-of the tile's normal shading replaced by this streak. Comes and goes with small camera moves.
-
-**Confirmed NOT PGXP**: the user toggled Precise geometry Textures/Off at the same spot —
-"did not change much". This is on `fix/pgxp-snap-seams-identity` before any of this session's
-`draw_id`/arena changes exist in the tree (only commit 1, the menu option, was applied), so it
-can't be the arena-corruption class of bug either. Likely a pre-existing seam/z-fighting
-artifact between the tile and the card-slot decal, or something in the base (non-PGXP)
-rendering — not yet traced.
-
-**Left to do:** get a few more repro screenshots (ideally with Precise geometry Off, to rule
-out PGXP definitively rather than "did not change much"), and find what two overlapping pieces
-of geometry are fighting at that seam.
-
----
-
-## 8. 2D Monsters mod
-
-**What it is:** `mods/2d-monsters/` — an alternative to 3D Monsters: an enlarged,
-camera-facing cutout of a card's own art floats over it instead of a loaded
-battle model. Cherry-picked here from `claude/2d-art-replace-3d-models-bbpme7`;
-a clean copy also lives at `feat/2d-monsters-mod` for eventually PRing upstream.
-
-**Current state:** sizing and depth-sort are fixed and confirmed live (three
-unrelated bugs, each traced to a plausible-but-wrong assumption borrowed from
-the 3D Monsters mod). An attempt to add HD texture pack support broke three
-unrelated systems live (opponent card art, a fusion animation, the card-detail
-title) and was fully reverted; confirmed working normally again afterward.
-Full investigation, both fixes, the failed attempt, and the lesson each left
-behind: `history.md`. The regression this drove led to a headless
-build-and-capture recipe, now in "How to test things" above, for checking any
-future shared-engine-state change before it ever reaches the user live.
-
-**HD pack support: a validated mechanism found, not yet built.** Combining the
-texture-pack system's own query API with the 3D Monsters mod's transient-touch
-discipline: on a cache miss, `LoadImage` a card's art to scratch VRAM (as
-before), but instead of drawing from it directly, wait one frame (the pack's
-own match only resolves on its next per-frame service tick, confirmed live —
-`TexturePack_EntryFor` returns 0 the same frame as the write, a real entry the
-frame after), then call `TexturePack_EntryImage` to pull the actual
-replacement (confirmed live: the real HD pack's own 408x384 `card-001.png`,
-correct crop info included), bake it into the mod's private bank at that
-resolution, and only then restore the scratch VRAM — the entry stops resolving
-the instant that VRAM is overwritten, but the image data is already copied out
-by then. Exposure is ~1 frame, on a cache miss only, not persistent — a much
-smaller and more defensible bet than the reverted attempt. Not yet implemented
-(needs the two-frame pending-state machine per cache slot and RGBA-to-bank
-resampling); the two experimental probes that found this are not on any
-branch (built and discarded in the debug build only).
-
-**PR prepared and pushed, 2026-09-29:** `feat/2d-monsters-mod` (on `origin`)
-rebased onto current `upstream/master` (was 25 merged PRs stale) and updated
-with the confirmed fix, as a clean 4-commit branch: the original add, its
-smoke fixture, the size/depth-sort fix (code only — the fixture's `sha256` is
-now recorded), all with no `progress.md`/`history.md` changes mixed in (those
-files don't exist upstream). Diff against `upstream/master` is exactly
-`mods/2d-monsters/` and the one smoke fixture, nothing else. Decided (with the
-user): ship this now without HD support rather than hold it — the 3D Monsters
-mod has the same limitation today (item 7c), so this isn't a step backward,
-and HD support is a novel-enough mechanism to deserve its own PR and review
-later rather than riding in on this one.
-
-**Left to do:** user tests the pushed `feat/2d-monsters-mod` on Windows, then
-Linux; only then open the PR against `upstream:master`.
-
----
-
-## 9. Remaining MIPS-interpreted subsystems (not decompiled)
-
-User-requested tracking, 2026-09-29: three pieces of duel code exist only as MIPS
-bytes and currently run through the interpreter in `src/pc/guest/mips.c` rather
-than as native C — working correctly today, but not yet decompiled. Full technical
-detail: `notes/pc-build.md` ("MIPS-only effects", "Credits").
-
-1. **The shared duel effects bank** (`0x80146000`, entered at `0x801462B0`):
-   fusion, battle damage, destruction, and the magic/trap/ritual/terrain/field
-   effects up to id 23. `MEMORIES_DUEL_EFFECTS=native` restores the older
-   bring-up behaviour (only ids 1-3 interpreted, others complete at once) for
-   comparison.
-2. **The credits module**: the ending's credits (`Main_RunCredits` phase 2,
-   `func_800507D0`) load MIPS into `0x80180000` (where the main menu overlay is
-   otherwise linked natively) and call it directly.
-3. **Monster attack choreographies** — the bigger of the three: the per-monster
-   MODEL control modules swapped into the two duel arena slots with each
-   monster. A primary module is trivial (`return 2` in every record seen), but
-   the variant module holding a monster's actual attack choreography and impact
-   particles is not — MODEL.MRG has 621 records and **1,181 distinct variant
-   modules**. `MEMORIES_MODEL_MODULES=native` substitutes the resident spark
-   burst instead, for comparison.
-
-**Left to do:** not started. A code-following scan (`tmp/`, 2026-09-21) found
-only instructions the interpreter already handles (no GTE opcodes) across the
-WA effect bank and all 1,181 variant modules, so nothing here is blocked on a
-missing capability — it's translation volume, mostly in the choreographies.
-Decompiling any one is independent of the others; no particular order is
-required. `notes/pc-port-plan.md`'s roadmap calls the end state "no reachable
-MIPS fallback" (its "Full gameplay" milestone).
-
----
-
-## 10. Anime style mod (standalone `mods/anime-style-mod/`)
-
-Not HD, not core: restyle what the player sees and hears; story and rules untouched.
-Design and ranked engine candidates: `notes/anime-style-mod-plan.md` (read its
-"Candidate issues" section first). The anime card frame itself shipped upstream
-(PR #294, merged, folded into Forbidden Memories HD); the frame branches are obsolete.
-Worktree `.claude/worktrees/anime-mod` (branch `anime-style-mod`, at upstream/master
-`ee0f8d836`, nothing committed) is the old home of this item.
-
-- Locked: mod id and branch `anime-style-mod`; one mod folder; FMV out of scope for the
-  first release; do not touch the merged HD frame option.
-- Open (user): where the anime audio/video/art comes from, and whether the mod ships it
-  or a tool builds it from files the player supplies.
-- Open (user): what the upstream issue covers. Code-verified top candidates:
-  (1) `setting` gating for `audio`/`title`/`menu`/`card_layout`,
-  (2) event audio (`host->play_sound`, then `audio.events`),
-  (3) image blit in overlays. `gh` is not installed, so the user posts the issue.
-- Next: decide the issue scope and draft it from the plan's pitches; meanwhile data work
-  needing no engine change (frame + `assets` UI skin, then title/menu).
-- Doc fixes owed upstream: stale "Known limitation" paragraph in `notes/modding.md`
-  (~line 993); `modapi.h` header lists API up to 9, the code is 10.
-
----
+## 12-13. Duel Links 2D Arts, Kuriboh
+See `notes/worktree-lessons.md` (+ shared `duel-links-mod.md`; Kuriboh: `notes/kuriboh-*.md`).
 
 ## Parked
-
-- **3D Monsters' `pixels`/`scale` need a restart; Card art's own `pixels`
-  inherited that** (found 2026-09-30, not started, and deliberately not
-  wanted right now): the 3D-Monsters-merge (item 8) made Card art share
-  3D Monsters' `pixels` setting (identical defaults in both, so nothing to
-  duplicate there originally) rather than keep its own copy. But 3D
-  Monsters' `pixels` and `scale` carry `"restart": true`
-  (`mods/3d-monsters/mod.json`) — a real, functional flag
-  (`src/pc/mods/mods.c`: a setting so marked keeps the value it was applied
-  with, per `Mods_RuntimeOption`'s own comment, not just a UI note) — so
-  Card art's "Target height" now also needs a restart to apply, when the
-  standalone 2D mod's own `pixels` had no such flag and changed live
-  (`fit_height()` recomputes every frame, no caching to invalidate).
-  Investigated why 3D Monsters needs it: `fit()` (`field_models.c`) doesn't
-  touch disc or VRAM at all — a monster's geometry is already resident in
-  its arena by the time `fit()` runs; it only re-measures and rescales
-  what's already loaded (~5 cheap in-memory trials), so the restart
-  requirement looks like the simpler, safer choice rather than a hard
-  technical necessity. Porting it to live would mean: tracking the last-seen
-  `pixels`/`scale` and re-running `fit()` on every cached monster when
-  either changes (cheap, confirmed no disc/VRAM cost), after verifying
-  nothing else assumes a cached monster's scale is fixed once loaded (the
-  one thing not yet checked live: whether a model's packet buffer, sized at
-  load time, could be affected by a later rescale — probably not, since
-  scaling only multiplies vertex coordinates, not triangle count, but
-  unverified). User's call: not worth the risk of touching `fit()`/`acquire()`
-  in the file every player's 3D Monsters already runs, for a minor
-  convenience on the newer Card art style. Alternative that was NOT
-  chosen either, and would need no changes to 3D Monsters at all: give Card
-  art its own separate height key instead of sharing `pixels`, accepting a
-  small amount of setting duplication in exchange for zero risk to 3D
-  Monsters and no restart requirement for Card art.
-
-- **Per-card glow colour override** (user request 2026-09-30, not started): the
-  2D Monsters mod's glow (item 8) is one uniform, mod-wide colour today
-  (`glow_r`/`g`/`b` settings). The idea: let a specific card glow its own
-  colour always — Blue-Eyes White Dragon in white, say — the same way
-  `field_art` overrides one card's picture alone. Scoped down on purpose after
-  discussion: only the *colour*, not the full glow dynamics (thickness, pulse
-  speed, reach) per card too — that would need a separate per-card table and
-  fallback for each one, real design surface for a much rarer ask than "this
-  card should always glow a certain colour." Shape: one new `cards.c` table
-  (`glow_colors[CARD_TABLE_ID_END]`, alongside `field_art_records`), one new
-  `cards` JSON key (`"glow_color"`), one getter (`Cards_GlowColor`), read in
-  `draw_glow` before falling back to the mod's own settings. Deliberately
-  *not* bundled into the field_art transparency work or the 3D-Monsters-merge
-  refactor in flight — a follow-up once those land.
-
-- **Custom 3D models: how a mod could replace or add one** (user request
-  2026-09-30, not started): today a card's `"model"` key (`notes/more-cards.md`)
-  can only *borrow* one of the disc's own retail monster models — there is no
-  importer for a wholly new mesh. Upstream has a branch that may already bear
-  on this: `feat/model-replace`
-  (https://github.com/Unchiga/Yu-Gi-Oh-Forbidden-Memories-Recompiled/tree/feat/model-replace) —
-  read it first before designing anything here, it may cover geometry, UVs,
-  textures, and/or a save/build pipeline already. Related but distinct from
-  item 7's HD *texture* work on existing models, and from item 8's 2D Monsters
-  `field_art`, which only ever swaps a flat picture, never geometry.
-
-- **Game > Restart** (dropped for now): `Platform_RestartGame()` already relaunches the
-  game (used by the Mods window); a menu item would need to wait for a safe point like
-  `TitleJump_Poll` (not while the memory card is written or the save menu is open).
-  "Return to title" exists under Debug > Jump to > Title Screen.
-
-- **Test scenes: boot straight into the duel** (user request 2026-09-29, later — not
-  now): the **Test scenes mod** (`mods/test-scenes/`, "Measuring" above) already reaches
-  its duel (Simon Muran, ten monster zones from `field.json`) from the title screen with
-  L1 + Cross on Option, but that still means waiting through the title screen and
-  whatever's in between. The ask: skip straight to the duel on boot — wait only for the
-  game's own data load, no title screen, no intro animation, nothing to hold or press.
-  Likely shaped like `MEMORIES_MODE_AT` (`progress.md`'s own "Reach a screen with no save
-  needed" note under "How to test things") or `scene_measure.py`'s own boot-to-state
-  flow, but triggered unconditionally at startup rather than needing a state load or a
-  title-screen hotkey. Would speed up manual live-testing of test-scenes work (like this
-  session's 2D Monsters mod checks) as well as automated runs.
+- **3D Monsters `pixels`/`scale` need a restart and Card art inherited that** (2026-09-30): shared `pixels` key carries `"restart": true`. `fit()` (`field_models.c`) only re-measures resident geometry (no disc/VRAM), so live would be cheap (track last-seen values, refit cached monsters; unverified: packet buffer size vs rescale). User: not worth touching `fit()`/`acquire()`. Alternative: Card art's own height key (small duplication, zero risk).
+- **Per-card glow colour** (2026-09-30): only colour, via `cards.c` table `glow_colors[CARD_TABLE_ID_END]`, `cards` key `"glow_color"`, getter `Cards_GlowColor`, read in `draw_glow` before settings; after the field_art and 3D-merge work.
+- **Custom 3D models** (2026-09-30): `"model"` only borrows disc models; read upstream `feat/model-replace` first.
+- **Game > Restart:** `Platform_RestartGame()` exists (Mods window); a menu item must wait for a safe point like `TitleJump_Poll`.
+- **Test scenes: boot straight to the duel** (2026-09-29): skip the title, shaped like `MEMORIES_MODE_AT`/`scene_measure.py`'s boot flow, triggered at startup.
