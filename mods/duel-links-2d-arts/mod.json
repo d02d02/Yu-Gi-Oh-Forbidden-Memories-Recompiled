@@ -2,7 +2,7 @@
     "id": "duel-links-2d-arts",
     "name": "Duel Links 2D Arts",
     "author": "WillliTo & d02d02",
-    "version": "2.0",
+    "version": "2.1",
     "description": "Stands a high-resolution, Duel Links style 2D artwork on each face-up monster of the duel field, always facing the camera, with an optional glow. A mod of its own: it does not need 3D Monsters, and it never changes a card's name or text. Turn 3D Monsters off to use it: both draw a monster on the field, and together they would double up.",
     "library": "duel-links-2d-arts",
     "conflicts": [

@@ -57,6 +57,7 @@ typedef struct {
     int w, h;      /* its texture's size in texels (u and v go to w-1, h-1) */
     int clut_y;    /* where its CLUT sits in the bank, below the pixels */
     int semi;      /* whether its CLUT flags some colours half transparent */
+    int level;     /* which size of its texture is loaded (level_heights), -1 for a disc picture */
 } Art;
 
 static Art cache[CACHE];
@@ -106,23 +107,37 @@ static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 }
 
 /* The mod's own texture for a card (make_art_table.py's art_files.h names the
- * file; prepare_art.py writes it): a 256-colour picture up to 256x256, much
- * finer than the game's own 102x96 field-art slot (which CardArt_
- * FieldArtFromImage would force it into). Layout, little-endian: u16 width,
- * u16 height (width even), 256 CLUT words (BGR555, 0 = clear), then width x
- * height index bytes. Returns the number of bytes read into `texture`, 0 when
- * the card has none or the file is not one. */
-#define TEX_MAX 256
-#define TEX_HEADER 4
-#define TEX_CLUT 512
-static unsigned char texture[TEX_HEADER + TEX_CLUT + TEX_MAX * TEX_MAX];
+ * file; prepare_art.py writes it): 256-colour pictures of the same card at
+ * several sizes, since the renderer samples a texture point by point and a
+ * picture drawn much smaller than it is turns to noise (a 241-texel picture
+ * at 40 game pixels, at the usual 1x resolution). The one nearest the
+ * on-screen size is loaded. Layout, little-endian: u16 level count, then per
+ * level (largest first) u16 width (even), u16 height, 256 CLUT words (BGR555,
+ * 0 is clear, bit 15 half transparent) and width x height index bytes.
+ * Returns 1 and the level's own pieces, 0 when the card has none or the file
+ * is not one. */
+#define TEX_LEVELS 4
+#define TEX_FILE_MAX 200000
+static const int level_heights[TEX_LEVELS] = {241, 120, 60, 30};   /* prepare_art.py's LEVELS */
+static unsigned char texture[TEX_FILE_MAX];
 
-static int own_texture(int card, int *w, int *h)
+/* The smallest size that is not smaller than what is drawn, `rendered` pixels
+ * tall: a texel is then never skipped more than about one in two. */
+static int level_for(int rendered)
+{
+    int i;
+    for (i = TEX_LEVELS - 1; i > 0; i--) {
+        if (level_heights[i] >= rendered) return i;
+    }
+    return 0;
+}
+
+static int own_texture(int card, int level, int *w, int *h, const u16 **clut, const u16 **pixels)
 {
     char path[1200];
     FILE *file;
-    size_t got;
-    int base = Cards_BaseId(card), low = 0, high = (int)(sizeof(art_files) / sizeof(art_files[0])) - 1;
+    size_t got, at;
+    int base = Cards_BaseId(card), low = 0, high = (int)(sizeof(art_files) / sizeof(art_files[0])) - 1, count, i;
     while (low <= high) {
         int middle = (low + high) / 2;
         if (art_files[middle].card == base) {
@@ -134,14 +149,30 @@ static int own_texture(int card, int *w, int *h)
             }
             got = fread(texture, 1, sizeof(texture), file);
             fclose(file);
-            *w = texture[0] | (texture[1] << 8);
-            *h = texture[2] | (texture[3] << 8);
-            if (*w < 2 || *w > TEX_MAX || (*w & 1) || *h < 1 || *h > TEX_MAX ||
-                got != (size_t)(TEX_HEADER + TEX_CLUT + *w * *h)) {
-                say("card %d: %s is not a texture of this mod (%d x %d, %d bytes)\n", card, path, *w, *h, (int)got);
+            count = got >= 2 ? texture[0] | (texture[1] << 8) : 0;
+            if (count < 1 || count > TEX_LEVELS) {
+                say("card %d: %s is not a texture of this mod\n", card, path);
                 return 0;
             }
-            return 1;
+            if (level >= count) level = count - 1;
+            at = 2;
+            for (i = 0; i < count; i++) {
+                int lw, lh;
+                if (at + 4 + 512 > got) break;
+                lw = texture[at] | (texture[at + 1] << 8);
+                lh = texture[at + 2] | (texture[at + 3] << 8);
+                if (lw < 2 || lw > 256 || (lw & 1) || lh < 1 || lh > 256 || at + 4 + 512 + (size_t)lw * lh > got) break;
+                if (i == level) {
+                    *w = lw;
+                    *h = lh;
+                    *clut = (const u16 *)(texture + at + 4);
+                    *pixels = (const u16 *)(texture + at + 4 + 512);
+                    return 1;
+                }
+                at += 4 + 512 + (size_t)lw * lh;
+            }
+            say("card %d: %s is cut short\n", card, path);
+            return 0;
         }
         if (art_files[middle].card < base) low = middle + 1;
         else high = middle - 1;
@@ -149,7 +180,7 @@ static int own_texture(int card, int *w, int *h)
     return 0;
 }
 
-static int load_art(Art *art, int card)
+static int load_art(Art *art, int card, int level)
 {
     int base, sectors, w = CARD_ART_WIDTH, h = CARD_ART_HEIGHT;
     u16 *bank;
@@ -159,10 +190,10 @@ static int load_art(Art *art, int card)
     /* The mod's own texture first, at its own size; failing that a card's
      * "field_art" from another mod, then the card's own picture off the disc,
      * both the game's 102x96. */
-    if (own_texture(card, &w, &h)) {
-        clut = (const u16 *)(texture + TEX_HEADER);
-        pixels = (const u16 *)(texture + TEX_HEADER + TEX_CLUT);
+    art->level = level;
+    if (own_texture(card, level, &w, &h, &clut, &pixels)) {
     } else {
+        art->level = -1;
         w = CARD_ART_WIDTH;
         h = CARD_ART_HEIGHT;
         field_art = Cards_FieldArtRecord(card);
@@ -218,28 +249,43 @@ static int load_art(Art *art, int card)
     return 1;
 }
 
-static Art *acquire(int card)
+/* `rendered` is how many pixels tall the cutout is drawn, at the internal
+ * resolution. A cached card keeps its size while that stays a fair match
+ * (no more than about 2.3x too big, never much too small), so the camera
+ * moving does not reload it every frame. */
+static Art *acquire(int card, int rendered)
 {
     Art *art = NULL;
-    int i;
+    int i, level = level_for(rendered);
     for (i = 0; i < CACHE; i++) {
         if (cache[i].card == card) {
-            cache[i].used = frame;
-            return &cache[i];
-        }
-    }
-    for (i = 0; i < CACHE; i++) {
-        if (!cache[i].card) {
-            art = &cache[i];
+            Art *held = &cache[i];
+            if (held->level >= 0 && held->level != level) {
+                int current = level_heights[held->level];
+                if (current * 100 >= rendered * 85 && current * 100 <= rendered * 230) level = held->level;
+            }
+            if (held->level < 0 || held->level == level) {
+                held->used = frame;
+                return held;
+            }
+            art = held;   /* the same card, at the size it needs now */
             break;
         }
-        if (!art || cache[i].used < art->used) {
-            art = &cache[i];
+    }
+    if (!art) {
+        for (i = 0; i < CACHE; i++) {
+            if (!cache[i].card) {
+                art = &cache[i];
+                break;
+            }
+            if (!art || cache[i].used < art->used) {
+                art = &cache[i];
+            }
         }
     }
     art->bank = (int)(art - cache) + 1;
     art->card = 0;
-    if (!load_art(art, card)) {
+    if (!load_art(art, card, level)) {
         return NULL;
     }
     art->used = frame;
@@ -482,11 +528,6 @@ static void draw_one(int index, int world_height)
         ((gDuel_adwCardStats[id - 1] >> 0x1A) & 0x1F) >= 0x14) {
         return; /* empty, face down, or a magic or trap card */
     }
-    art = acquire(id);
-    if (!art) {
-        return;
-    }
-
     wx = D_800908A0[index].x;
     wz = D_800908A0[index].y;
     depth = project(wx, -lift(), wz, &base_sx, &base_sy);
@@ -495,6 +536,10 @@ static void draw_one(int index, int world_height)
     height_px = base_sy - top_sy;
     if (height_px <= 0) {
         return; /* behind the camera, or degenerate */
+    }
+    art = acquire(id, height_px * SoftGpu_Scale());
+    if (!art) {
+        return;
     }
     width_px = height_px * CARD_ART_WIDTH / CARD_ART_HEIGHT; /* the shape every picture is fitted to (prepare_art.py) */
     cx = (base_sx + top_sx) / 2;
