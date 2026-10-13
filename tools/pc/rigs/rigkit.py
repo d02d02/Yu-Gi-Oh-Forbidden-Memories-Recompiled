@@ -6,6 +6,10 @@
   python -I rigkit.py scene --set trap --scale 4 --out DIR [--settings k=v ...] [--env K=V ...]
   python -I rigkit.py duel  --hand 100,332,683,301,364 --plays 0:up,0:down --scale 2 --out DIR
   python -I rigkit.py sets  --scale 2 --out DIR          (every scene set -> sheet.png)
+  python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
+      attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
+      --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
+      the first vblank each battle sub-step in --at is reached (names: attack-s<step>-vb<n>.png).
 
 duel = a free duel with a CONTROLLED HAND (arrange_deck) and one play per own turn ("slot:up|down";
 slot is the hand slot at that moment): the way to get traps, spells, equips, rituals on the field
@@ -34,6 +38,44 @@ def load_client(repo):
     return yfm_control
 
 
+# The battle phase (scene phase 9) runs a sub-step machine in the low nibble of D_8009B174. Observed 2026-10-13,
+# monster attacks monster, ~225 vblanks, deterministic: (vblank from the start of the battle phase, sub-step)
+#   0:1 camera tween 334->600 (12) | 12:2 | 13-30:3 | 54:4 | 103:7 | 148:10 | 206:6 | 208:11 | 225: back to field (phase 5)
+# (the high bits of the byte, 0x80/0x40, are wait flags: always mask with 0xF).
+BATTLE = 9
+BATTLE_STEPS = (1, 2, 3, 4, 7, 8, 10, 6, 11)
+
+
+def battle_step(g):
+    """The battle sub-step (low nibble of D_8009B174), or None outside the battle phase."""
+    return g.u8("D_8009B174") & 0xF if g.phase() == BATTLE else None
+
+
+def wait_battle_step(g, step, timeout=900):
+    """Step one vblank at a time until the battle is in `step`; returns the vblanks it took."""
+    return g.wait_until(lambda g: battle_step(g) == step, timeout, what=f"battle step {step}")
+
+
+def camera_read(g):
+    """(angle, distance) of the duel camera (D_800F2848: s16 distance at +0, s16 angle at +2)."""
+    import struct
+    distance, angle = struct.unpack("<hh", g.peek("D_800F2848", 4))
+    return angle, distance
+
+
+def camera_pin(g, angle=None, distance=None):
+    """Hold the duel camera at angle (0..4095, 1024 = the usual view) and/or distance (200..1400) in every scene
+    phase, through the camera-pin mod's pad-2 mailbox (mod must be enabled in the run AND in the run that saved a
+    state: a state loads only with the same mods and mod settings). camera_pin(g) clears the pin."""
+    if angle is None and distance is None:
+        g.pad(0x2000, 2); g.step(1)
+    if angle is not None:
+        g.pad(0x4000 | (angle & 0xFFF), 2); g.step(1)
+    if distance is not None:
+        g.pad(0x8000 | (distance & 0x7FF), 2); g.step(1)
+    g.pad(0, 2)
+
+
 def find_set(repo, name):
     """sets/<name>.json from the repo's test-scenes, else the dev worktree's (only dev tracks the sets)."""
     for root in (Path(repo), Path(DEFAULT_REPO)):
@@ -58,7 +100,7 @@ def title_to_option_scene(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -67,6 +109,8 @@ def main():
     ap.add_argument("--opponent", type=int, default=3)
     ap.add_argument("--hand", default="100,332,683,301,364", help="duel: the opening hand, 5 card ids")
     ap.add_argument("--plays", default="0:up", help="duel: one 'slot:up|down' per own turn")
+    ap.add_argument("--camera", default="", help="attack: angle[,distance] pinned (4096-unit turn, 1024 usual; 200..1400, 600 usual)")
+    ap.add_argument("--at", default="1,2,3,4,7,8,10,6,11", help="attack: battle sub-steps to shoot (see BATTLE_STEPS)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
     ap.add_argument("--settings", nargs="*", help="key=value player settings, e.g. mod.anime-art=1")
     ap.add_argument("--env", nargs="*", help="KEY=VALUE extra MEMORIES_* variables")
@@ -87,6 +131,8 @@ def main():
             env[f"MEMORIES_MOD_TEST_SCENES_O{i+1}"] = str(sc["opponent"][i])
         settings.setdefault("mod.test-scenes", "1")
     base = dict(executable=a.exe)
+    if a.kind == "attack":
+        return run_attack(a, yc, out, settings, env, base)
     # 1) the situation, once, at 1x
     with yc.Game(out=out / "make", settings={**settings, "internal_scale": 1}, env=env, **base) as g:
         build = f"{g.info()['build']:08x}"
@@ -118,6 +164,34 @@ def main():
         g.step(a.steps)
         png = g.shot(out / f"{a.kind}-x{a.scale}.png")
         lap(f"shot {png}")
+
+
+def run_attack(a, yc, out, settings, env, base):
+    settings = {"mod.3d-monsters": 0, "mod.camera-pin": 1, **settings}
+    state = out / "attack-before-battle.state"
+    with yc.Game(out=out / "make", settings={**settings, "internal_scale": 1}, env=env, **base) as g:
+        g.goto("duel", opponent=a.opponent, deck=a.deck); g.duel_ready()
+        g.play_card(0, face_up=True); g.end_turn(); g.play_card(0, face_up=True)
+        col = next(i for i, c in enumerate(g.field()[2]) if c)
+        tgt = next((i for i, c in enumerate(g.field()[1]) if c), None)
+        g._settle = lambda *x, **k: g.save(state)       # the attack is committed; keep the moment before the battle
+        g.attack(col, tgt)
+    want = [int(x) for x in a.at.split(",") if x]
+    with yc.Game(out=out / "look", settings={**settings, "internal_scale": a.scale}, env=dict(env, MEMORIES_DUMP_PICTURE="1"), **base) as g:
+        g.load(state)
+        if a.camera:
+            ang, _, dist = a.camera.partition(",")
+            camera_pin(g, int(ang), int(dist) if dist else None)
+        start, seen, log = g.vblank, set(), []
+        while g.vblank - start < 900:
+            step = battle_step(g)
+            if step in want and step not in seen:
+                seen.add(step)
+                g.shot(out / f"attack-s{step}-vb{g.vblank - start}.png"); log.append((g.vblank - start, step, camera_read(g)))
+            if log and step is None and g.phase() != BATTLE and seen:
+                break
+            g.step(1)
+        print("battle log (vblank, step, (angle, distance)):", log)
 
 
 def run_sets(a):

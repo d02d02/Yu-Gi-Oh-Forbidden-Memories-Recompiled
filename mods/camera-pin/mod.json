@@ -1,0 +1,17 @@
+{
+    "id": "camera-pin",
+    "name": "Camera pin",
+    "version": "1.0",
+    "author": "DecompRecomp",
+    "description": "Test tool: holds the duel camera at a chosen angle and distance during chosen scene phases (default every phase). MEMORIES_MOD_CAMERA_PIN_ANGLE / _DISTANCE / _PHASES set them for one run.",
+    "library": "camera-pin",
+    "enabled": false,
+    "settings": [
+        {"key": "angle", "label": "Angle (-1 off)", "type": "int", "default": -1, "min": -1, "max": 4095, "step": 16,
+         "description": "The camera's heading in a 4096-unit turn; 1024 is the duel's usual view."},
+        {"key": "distance", "label": "Distance (0 off)", "type": "int", "default": 0, "min": 0, "max": 1400, "step": 10,
+         "description": "How far the camera is from the mat; 600 is usual, 200 closest."},
+        {"key": "phases", "label": "Phase mask", "type": "int", "default": 65535, "min": 1, "max": 65535, "step": 1,
+         "description": "Bit mask over the scene phase: 4 hand, 5 field, 9 battle. 65535 = every phase."}
+    ]
+}
