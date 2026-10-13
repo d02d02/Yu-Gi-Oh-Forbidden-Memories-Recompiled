@@ -3,7 +3,7 @@
 
   python prepare_art.py <folder of original PNGs> [<output folder>]
 
-The output folder defaults to artes_duel_links_fm beside this script.
+The output folder defaults to artes_duel_links_fm in the mod folder (shipped-art).
 
 The game stores a field cutout in a fixed 102x96 picture (the card art's
 size) whatever size the PNG is, and its own conversion is crude: it takes the
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     source = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "artes_duel_links_fm")
+    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shipped-art")
     os.makedirs(out, exist_ok=True)
     count = 0
     for name in sorted(os.listdir(source)):

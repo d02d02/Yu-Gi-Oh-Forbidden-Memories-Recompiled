@@ -96,7 +96,13 @@ static int tunable(const char *key, int fallback)
 #define PIXELS_X 0
 #define PIXELS_Y 0
 #define CLUT_X 0
-#define CLUT_Y CARD_ART_HEIGHT
+#define CLUT_Y 256   /* below the texture page's 256 rows, so the art may fill them */
+/* The picture starts this many rows down the bank, with clear rows (texel 0
+ * is transparent) above it and below: the float (draw_one) slides the picture
+ * inside its quad by less than a game pixel through the texture coordinates,
+ * and the quad then shows those rows. */
+#define TEX_TOP 7
+#define TEX_ROWS 256
 
 static void bank_put(u16 *bank, int x, int y, int w, int h, const u16 *pixels)
 {
@@ -176,7 +182,7 @@ static int read_texture(const char *path, int card, int level, int *w, int *h, c
         if (at + 4 + 512 > got) break;
         lw = texture[at] | (texture[at + 1] << 8);
         lh = texture[at + 2] | (texture[at + 3] << 8);
-        if (lw < 2 || lw > 256 || (lw & 1) || lh < 1 || lh > 256 || at + 4 + 512 + (size_t)lw * lh > got) break;
+        if (lw < 2 || lw > 256 || (lw & 1) || lh < 1 || lh > TEX_ROWS - TEX_TOP - 1 || at + 4 + 512 + (size_t)lw * lh > got) break;
         if (i == level) {
             *w = lw;
             *h = lh;
@@ -216,6 +222,9 @@ static int own_texture(int card, int level, int *w, int *h, const u16 **clut, co
     }
     return 0;
 }
+
+/* BGR555 gold (255, 200, 40) for the outline's palette. */
+#define OUTLINE_GOLD ((5 << 10) | (25 << 5) | 31)
 
 static int load_art(Art *art, int card, int level)
 {
@@ -276,11 +285,34 @@ static int load_art(Art *art, int card, int level)
         say("no bank %d\n", art->bank);
         return 0;
     }
-    bank_put(bank, PIXELS_X, PIXELS_Y, w / 2, h, pixels);
-    bank_put(bank, CLUT_X, h, 256, 1, clut);
+    {
+        int row;
+        for (row = 0; row < TEX_ROWS; row++) {
+            memset(bank + (size_t)row * SOFT_GPU_WIDTH, 0, 128 * 2);   /* 256 texels of 8 bits: the page's width */
+        }
+    }
+    bank_put(bank, PIXELS_X, PIXELS_Y + TEX_TOP, w / 2, h, pixels);
+    bank_put(bank, CLUT_X, CLUT_Y, 256, 1, clut);
+    /* The same palette in gold, one row below: the outline's quads sample the
+     * art through it, so every solid texel is gold and every clear one stays
+     * clear (and half transparent where the art's own is). */
+    {
+        u16 gold[256];
+        int i;
+        for (i = 0; i < 256; i++) {
+            gold[i] = clut[i] ? (u16)(OUTLINE_GOLD | (field_art == NULL ? (clut[i] & 0x8000) : 0)) : 0;
+        }
+        bank_put(bank, CLUT_X, CLUT_Y + 1, 256, 1, gold);
+        /* And once more with every solid texel flagged half transparent: the
+         * hairline outline, a ring only half as strong as the art. */
+        for (i = 0; i < 256; i++) {
+            gold[i] = clut[i] ? (u16)(OUTLINE_GOLD | 0x8000) : 0;
+        }
+        bank_put(bank, CLUT_X, CLUT_Y + 2, 256, 1, gold);
+    }
     art->w = w;
     art->h = h;
-    art->clut_y = h;
+    art->clut_y = CLUT_Y;
     /* Only the mod's own textures flag colours half transparent on purpose:
      * a disc picture's CLUT may carry the bit on every colour. */
     art->semi = 0;
@@ -571,7 +603,8 @@ static void draw_one(int index, int world_height)
     Art *art;
     int id = card->card_id;
     int wx, wz, base_sx, base_sy, top_sx, top_sy, depth;
-    int height_px, width_px, cx;
+    int height_px, width_px, cx, extra = 0, v_top, v_bottom;
+    double fraction = 0.0;
     POLY_FT4 prim;
     GsOT *table;
 
@@ -595,16 +628,32 @@ static void draw_one(int index, int world_height)
     width_px = height_px * CARD_ART_WIDTH / CARD_ART_HEIGHT; /* the shape every picture is fitted to (prepare_art.py) */
     cx = (base_sx + top_sx) / 2;
 
-    /* A gentle rise and fall ("bob" setting: amplitude in game pixels, 0 is
-     * off; "bob_period": frames per cycle), each zone a little out of step
-     * with the others so the monsters do not move as one. */
+    /* A gentle rise and fall, the art floating ("float" setting: height in
+     * game pixels, 0 is off; "float_period": frames per cycle), each zone a
+     * little out of step with the others so the monsters do not move as one.
+     * The console's coordinates are whole pixels, which would make the float
+     * step; so the quad moves by the whole pixels of it (whole), and the rest
+     * (fraction) slides the picture inside the quad through its texture
+     * coordinates, a few texels a pixel. The quad then stands one pixel taller
+     * below, so the picture has room to slide into, and the bank's clear rows
+     * above and below the picture (TEX_TOP) are what it slides over. */
     {
-        int amplitude = tunable("bob", 0), period = tunable("bob_period", 120);
+        int amplitude = tunable("float", 3), period = tunable("float_period", 180);
         if (amplitude > 0 && period > 0) {
-            int shift = (int)floor(amplitude * sin(2.0 * 3.14159265358979323846 * (double)((frame + (unsigned)index * 17) % (unsigned)period) / period) + 0.5);
-            top_sy += shift;
-            base_sy += shift;
+            double lift_px = amplitude * sin(2.0 * 3.14159265358979323846 * (double)((frame + (unsigned)index * 17) % (unsigned)period) / period);
+            int whole = (int)floor(lift_px);
+            fraction = lift_px - whole;
+            extra = 1;
+            top_sy += whole;
+            base_sy += whole;
         }
+    }
+    {
+        double texels_a_pixel = (double)(art->h - 1) / height_px;
+        int top_v = (int)floor(TEX_TOP - fraction * texels_a_pixel + 0.5);
+        int bottom_v = (int)floor(TEX_TOP + (art->h - 1) + (extra ? (1.0 - fraction) * texels_a_pixel : 0.0) + 0.5);
+        v_top = top_v < 0 ? 0 : top_v > 255 ? 255 : top_v;
+        v_bottom = bottom_v < 0 ? 0 : bottom_v > 255 ? 255 : bottom_v;
     }
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
@@ -619,19 +668,19 @@ static void draw_one(int index, int world_height)
     prim.x0 = (short)(cx - width_px / 2);
     prim.y0 = (short)top_sy;
     prim.u0 = 0;
-    prim.v0 = 0;
+    prim.v0 = (u8)v_top;
     prim.x1 = (short)(cx + width_px / 2);
     prim.y1 = (short)top_sy;
     prim.u1 = (u8)(art->w - 1);
-    prim.v1 = 0;
+    prim.v1 = (u8)v_top;
     prim.x2 = (short)(cx - width_px / 2);
-    prim.y2 = (short)base_sy;
+    prim.y2 = (short)(base_sy + extra);
     prim.u2 = 0;
-    prim.v2 = (u8)(art->h - 1);
+    prim.v2 = (u8)v_bottom;
     prim.x3 = (short)(cx + width_px / 2);
-    prim.y3 = (short)base_sy;
+    prim.y3 = (short)(base_sy + extra);
     prim.u3 = (u8)(art->w - 1);
-    prim.v3 = (u8)(art->h - 1);
+    prim.v3 = (u8)v_bottom;
 
     /* D_800E9D90[0] (what this used to target) is a real, but tiny, table in
      * this state -- 4 depth slots, confirmed live (table_length 2) -- meant
@@ -650,6 +699,28 @@ static void draw_one(int index, int world_height)
      * before using it here. */
     depth = depth / 4 - tunable("depth", DEPTH_STEPS);
     depth = depth < 0 ? 0 : depth >= (1 << table->length) ? (1 << table->length) - 1 : depth;
+    /* A gold outline ("outline" setting): the art drawn eight more times in
+     * gold, each a little to one side and a step behind the real one, so a
+     * ring of gold shows around its silhouette. The thinnest ("outline_width"
+     * 0, the hairline) is one game pixel too, but half transparent: a game
+     * pixel is the smallest step the console's coordinates have. */
+    if (tunable("outline", 0)) {
+        static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+        int choice = tunable("outline_width", 0), side, behind = depth + 1;
+        int hairline = choice <= 0, width = hairline ? 1 : choice;
+        if (behind >= (1 << table->length)) behind = (1 << table->length) - 1;
+        for (side = 0; side < 8; side++) {
+            POLY_FT4 ring = prim;
+            int dx = around[side][0] * width, dy = around[side][1] * width;
+            ring.x0 += dx; ring.y0 += dy;
+            ring.x1 += dx; ring.y1 += dy;
+            ring.x2 += dx; ring.y2 += dy;
+            ring.x3 += dx; ring.y3 += dy;
+            ring.clut = GetClut(CLUT_X, art->clut_y + (hairline ? 2 : 1));
+            if (hairline) setSemiTrans(&ring, 1);
+            GsSortPoly(&ring, table, (unsigned short)behind);
+        }
+    }
     GsSortPoly(&prim, table, (unsigned short)depth);
     draw_glow(table, (unsigned short)depth, cx, (top_sy + base_sy) / 2, width_px, height_px);
 }

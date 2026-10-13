@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerate art_files.h from the textures in artes_duel_links_fm/ (prepare_art.py) (each named
-<card id>_<Name>.png): python make_art_table.py  (run from this directory)."""
+"""Regenerate art_files.h from the textures in shipped-art/ (prepare_art.py) (each named
+<card id>_<Name>.png): python make_art_table.py  (from anywhere)."""
 import os, re
-here = os.path.dirname(os.path.abspath(__file__))
-folder = "artes_duel_links_fm"
+here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the mod folder, one up from tools/
+folder = "shipped-art"
 rows = []
 for name in os.listdir(os.path.join(here, folder)):
     m = re.match(r"(\d+)_.*\.tex$", name, re.I)
