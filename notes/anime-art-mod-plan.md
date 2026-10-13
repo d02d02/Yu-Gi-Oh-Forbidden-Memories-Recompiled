@@ -92,6 +92,22 @@ title screen: a Simon Muran duel with the ten monsters in its `field.json` face 
   (`MEMORIES_DUMP_FRAME=<n> MEMORIES_DUMP_PICTURE=1`, Internal 4x): the opponent's attack appears at frames about 1150-1600 (white flash at
   1200 and 1550, settled battle screen at 1500).
 
-## Open: a trap or a spell activated during an attack takes the attacking monster's frame
-Reported 2026-10-13: the card shown for an activated trap wears the attacker's (monster) frame. Not investigated; needs a save state with
-the right cards.
+## Trap/spell shown during an attack wore the attacker's frame (fixed, branch adhoc-anime-art-mod, uncommitted engine change)
+Reported 2026-10-13: for ~4 frames the activated trap's card was in the attacker's gold monster frame (empty ATK/DEF, trap icon), then switched
+to the trap frame. Reproduced headless (Widespread Ruin 686 as the whole deck, `rigs/trap_rig.py` in the shared notes) on the old engine.
+- **Not the style choice:** `MEMORIES_TRACE=card_layout` shows `CardLayout_SetCard` gets 192 -> monster frame and 686 -> trap frame on every draw.
+- **Cause:** `card_layout_art.c` held ONE frame image in ONE bank slot (FRAME_BANK 13, `bank_path`), rewritten on each draw while the quads are
+  sampled later; two cards of different styles on screen together fought over it. Any two different styles can hit it (retagged Slifer next to
+  a normal card, ritual vs normal, ...), timing decides.
+- **Fix:** FRAME_SLOTS = 3 frame styles resident in bank 13 (least recently used replaced), each with its own tile pages and its own palette
+  (row 254, halfword 256 * slot); the grid went 3x3 -> 2x2 tiles of 255x254 (4 pages a style, digits on page 12), `card_frame_window.py`
+  FRAME_TEXELS = (510, 508). Above 1x the texture pack's PNG is sampled, so only the 1x picture changes. Verified: old build shows the gold
+  frame on t0062-t0065, fixed build the trap frame from t0062 (same deterministic run).
+- **Limit:** a fourth style in the same frame would evict one in use; no duel screen shows that. More banks are not possible (bits 11-14 of the
+  texture word, bit 15 is HD_TEXT_MARK).
+
+## Open: card viewer rotation looks off (Anime Style)
+Reported 2026-10-13. Measured on the headless viewer rig (`rigs/view_rig.py`, vanilla vs Anime Style, same frames): the turn's geometry
+(silhouette edges, heights, per frame) is IDENTICAL to vanilla. What differs is the picture: the Anime Style card back has a seam halfway
+down (swirl does not line up between top and bottom halves) and is darker than vanilla's; the face's first frames differ. Next: find which
+the user sees, then look at how the back is drawn through `CardLayout_DrawArt` / art_layout in func_80028B08.c.
