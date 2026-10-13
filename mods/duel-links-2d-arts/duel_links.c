@@ -638,7 +638,7 @@ static void draw_one(int index, int world_height)
      * below, so the picture has room to slide into, and the bank's clear rows
      * above and below the picture (TEX_TOP) are what it slides over. */
     {
-        int amplitude = tunable("float", 3), period = tunable("float_period", 180);
+        int amplitude = tunable("float", 0), period = tunable("float_period", 180);
         if (amplitude > 0 && period > 0) {
             double lift_px = amplitude * sin(2.0 * 3.14159265358979323846 * (double)((frame + (unsigned)index * 17) % (unsigned)period) / period);
             int whole = (int)floor(lift_px);

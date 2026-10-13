@@ -38,7 +38,7 @@
             "key": "float",
             "label": "Float height",
             "type": "choice",
-            "default": 3,
+            "default": 0,
             "description": "How far each monster's art floats up and down, in game pixels.",
             "choices": [
                 "Off",
