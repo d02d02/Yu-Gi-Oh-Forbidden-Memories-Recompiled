@@ -176,12 +176,18 @@ static int rule_applies(const LayoutSource *source, const JsonValue *rule, int c
 {
     const char *key = Json_String(Json_Member(rule, "setting"), NULL);
     const char *text;
-    if (key && !Mods_Setting(Mods_Id(source->mod), key, 0)) return 0;
-    text = Json_String(Json_Member(rule, "class"), NULL);
-    if (text && strcmp(text, Cards_ClassName(cls))) return 0;
-    text = Json_String(Json_Member(rule, "tag"), NULL);
-    if (text && !Cards_HasTag(card, text)) return 0;
-    return 1;
+    const char *rule_class = Json_String(Json_Member(rule, "class"), NULL);
+    const char *rule_tag = Json_String(Json_Member(rule, "tag"), NULL);
+    const char *why = "applies";
+    int ok = 1;
+    if (key && !Mods_Setting(Mods_Id(source->mod), key, 0)) { ok = 0; why = "setting off"; }
+    text = rule_class;
+    if (ok && text && strcmp(text, Cards_ClassName(cls))) { ok = 0; why = "class differs"; }
+    text = rule_tag;
+    if (ok && text && !Cards_HasTag(card, text)) { ok = 0; why = "card lacks tag"; }
+    LOG(LOG_CARD_LAYOUT, "  rule card=%d class=%s tag=%s setting=%s style=%s -> %s (%s)", card, rule_class ? rule_class : "-",
+        rule_tag ? rule_tag : "-", key ? key : "-", Json_String(Json_Member(rule, "style"), "?"), ok ? "YES" : "no", why);
+    return ok;
 }
 
 /* The frame style of `card`, into `out` (with its picture's path when
@@ -238,6 +244,8 @@ static int resolve_style(const LayoutSource *source, int card, CardLayoutStyle *
         if (rule_applies(source, rule, card, cls)) name = Json_String(Json_Member(rule, "style"), NULL);
     }
     if (!name) name = Json_String(Json_Member(source->layout, "default_style"), "gold");
+    LOG(LOG_CARD_LAYOUT, "resolve_style: card=%d class=%s override=%d image_wanted=%d -> style \"%s\"", card,
+        Cards_ClassName(cls), override, want_image, name);
     style = Json_Member(styles, name);
     if (!style) {
         note_once(source, "no \"frame_styles\" entry named", name);
@@ -279,7 +287,8 @@ void CardLayout_SetCard(int card_id)
     current.width = 140;
     current.height = 196;
     if (full_bleed_of(&source) && resolve_style(&source, card_id, &style, 1)) current = style;
-    LOG(LOG_CARD_LAYOUT, "SetCard id=%d class=%d image=%s", card_id, cls, current.image);
+    LOG(LOG_CARD_LAYOUT, "SetCard id=%d class=%d style=%s color=%d spell=%d full_bleed=%d image=%s", card_id, cls,
+        current.name, current.color, current.spell_layout, full_bleed_of(&source), current.image);
 }
 
 int CardLayout_FullBleed(void)

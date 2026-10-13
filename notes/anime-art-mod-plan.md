@@ -124,3 +124,12 @@ channel's `shot` returns the scaled picture, not VRAM):
 Differences found: their `{"class":"purple"}` and `{"class":"ritual"}` rules never match (class must be monster, effect_monster, spell, equip,
 ritual_spell or trap); in ours they are tags (`purple`, `ritual`, `blue`, `fusion`, plus `known_ritual` / `known_fusion`). Their ritual_spell is
 always green (ours: blue unless `ritual_green`), their ritual monsters use anime_frame_ritual.png (ours: anime_frame_ritual_monster.png).
+
+## Attack animation 10x slower for slifer/ra-tagged cards (fixed 2026-10-13)
+Reported: the duel animation becomes super slow when a json-tagged card (Zombie Warrior as slifer, Akihiron as ra) attacks, at 1x too.
+Headless 1x (`attack_rig.py`, 20 shots): plain card 17.5 s, slifer 162 s. `MEMORIES_TRACE=card_layout` showed `slot_for: ... not resident` for both
+gold and slifer every frame and `bank_read` of the same PNGs every frame. Cause: `FRAME_CACHE` was 8 images, the layout has 10 (`Prewarm` fills 8),
+`image_for` evicted `images[0]` and cleared that image's bank slots, so two styles on screen evicted each other. Fix: FRAME_CACHE 16, evict the
+least recently used. After: plain 17.5 s, slifer 17.8 s, ra 17.1 s. All of card_layout / card_layout_art / texture_pack / cards.c now log
+under `MEMORIES_TRACE=card_layout` (rules tried, style chosen, slot choice, image reads with ms). Audit prompt: `notes/anime-frame-audit-prompt.md`.
+Engine change: testers on the official v0.3.0 exe do not have it (neither the 3-slot fix); a mod zip cannot carry it.

@@ -94,6 +94,7 @@ static int tag_bit(const char *name, int create)
     }
     if (!create || tag_count >= MAX_TAGS || strlen(name) >= MAX_TAG_LENGTH) return -1;
     snprintf(tag_names[tag_count], MAX_TAG_LENGTH, "%s", name);
+    LOG(LOG_CARD_LAYOUT, "cards: tag \"%s\" is bit %d", name, tag_count);
     return tag_count++;
 }
 int Cards_HasTag(int id, const char *tag)
@@ -1554,6 +1555,8 @@ static void add_entry(const char *mod, const char *directory, int index, const J
         gDuel_abCardLevelAttr[id] = level_attr;
         frames[id] = frame;
         tag_masks[id] = tags;
+        LOG(LOG_CARD_LAYOUT, "cards: id=%d (entry %d, base %d) frame=%d tags=0x%08x%s", id, index, base, frame, tags,
+            tags ? "" : " (none)");
         names[id] = name && *name ? encode_name(mod, name, n, id) : NULL;
         descriptions[id] = description && *description ? encode_description(mod, description, id) : NULL;
         add_notes(mod, index, id, Json_Member(entry, "notes"));

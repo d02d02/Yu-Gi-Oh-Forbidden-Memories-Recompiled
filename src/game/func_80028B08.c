@@ -185,6 +185,8 @@ static void CardLayout_DrawFrame(s32 x, s32 y, s32 w, s32 h, s32 ot, s32 mode, u
 {
     int col, row, tpage, clut, tile_w, tile_h;
 
+    LOG(LOG_CARD_LAYOUT, "DrawFrame: x=%d y=%d w=%d h=%d path=%s", (int)x, (int)y, (int)w, (int)h,
+        CardLayout_FramePath() ? CardLayout_FramePath() : "(none)");
     /* The frame's tiles, abutting: each edge is a whole-pixel share of w/h,
      * so neighbours meet exactly with no gap or overlap. */
     for (row = 0; row < CARD_LAYOUT_FRAME_ROWS; row++) {

@@ -14,6 +14,7 @@
 #include "pc/render/texture_pack.h"
 #include "pc/debug/log.h"
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,14 +65,15 @@ typedef char frame_palettes_fit_the_bank_width[FRAME_SLOTS * 256 <= 1024 ? 1 : -
  * palette), kept so that a card of another kind -- another frame image -- or
  * one drawn again later costs a copy into the bank, not a decode and a median
  * cut. The bank holds FRAME_SLOTS of them at a time (slots). */
-#define FRAME_CACHE 8
+#define FRAME_CACHE 16   /* the anime layout has 10 frame pictures: a cache smaller than the set thrashes (a decode a frame) */
 typedef struct {
     char path[1024];
     unsigned char *indices;   /* NULL: built and failed */
     unsigned short clut[256];
     int png_w, png_h;
-    int used;
+    unsigned long long used;   /* 0: free; else image_clock when last asked for */
 } FrameImage;
+static unsigned long long image_clock;
 static FrameImage images[FRAME_CACHE];
 typedef struct {
     char path[1024];          /* the path whose texels the slot holds now, "" when none */
@@ -80,21 +82,29 @@ typedef struct {
 static FrameSlot slots[FRAME_SLOTS];
 static unsigned long long slot_clock;
 
+static double art_ms(void) { return (double)clock() * 1000.0 / CLOCKS_PER_SEC; }
+
 static FrameImage *image_for(const char *path, int build)
 {
     FrameImage *slot = NULL;
     int i;
     char why[128];
+    double built_at = art_ms();
 
     for (i = 0; i < FRAME_CACHE; i++) {
-        if (images[i].used && !strcmp(images[i].path, path)) return &images[i];
+        if (images[i].used && !strcmp(images[i].path, path)) { images[i].used = ++image_clock; return &images[i]; }
     }
     if (!build) return NULL;
     for (i = 0; i < FRAME_CACHE && !slot; i++) {
         if (!images[i].used) slot = &images[i];
     }
-    if (!slot) {   /* full: the first goes (a layout has at most one image per kind) */
+    LOG(LOG_CARD_LAYOUT, "image_for: %s not built (build=%d)", path, build);
+    if (!slot) {   /* full: the one asked for longest ago goes */
         slot = &images[0];
+        for (i = 1; i < FRAME_CACHE; i++) {
+            if (images[i].used < slot->used) slot = &images[i];
+        }
+        LOG(LOG_CARD_LAYOUT, "image_for: cache full (%d), evicting %s", FRAME_CACHE, slot->path);
         free(slot->indices);
         for (i = 0; i < FRAME_SLOTS; i++) {
             if (!strcmp(slots[i].path, slot->path)) slots[i].path[0] = 0;
@@ -102,7 +112,7 @@ static FrameImage *image_for(const char *path, int build)
     }
     memset(slot, 0, sizeof(*slot));
     snprintf(slot->path, sizeof(slot->path), "%s", path);
-    slot->used = 1;
+    slot->used = ++image_clock;
     CardArt_ImageSize(path, &slot->png_w, &slot->png_h);
     slot->indices = malloc((size_t)FRAME_W * FRAME_H);
     if (slot->indices &&
@@ -114,6 +124,8 @@ static FrameImage *image_for(const char *path, int build)
     /* The PNG itself for above 1x (TexturePack_AddBankSprite), read with
      * the rest of the build rather than when a tile is first drawn. */
     if (slot->indices && slot->png_w > 0) TexturePack_BankImagePreload(path);
+    LOG(LOG_CARD_LAYOUT, "image_for: built %s png %dx%d indices=%s in %.1f ms", path, slot->png_w, slot->png_h,
+        slot->indices ? "ok" : "FAILED", art_ms() - built_at);
     return slot;
 }
 
@@ -152,13 +164,20 @@ static int slot_for(uint16_t *bank, const char *path, const FrameImage *image)
     for (i = 0; i < FRAME_SLOTS; i++) {
         if (!strcmp(slots[i].path, path)) {
             slots[i].used = ++slot_clock;
+            LOG(LOG_CARD_LAYOUT, "slot_for: %s already in slot %d", path, i);
             return i;
         }
     }
     for (i = 1; i < FRAME_SLOTS; i++) {
         if (slots[i].used < slots[slot].used) slot = i;
     }
-    store(bank, image, slot);
+    LOG(LOG_CARD_LAYOUT, "slot_for: %s not resident; slots now [%s | %s | %s]; storing into slot %d (evicts \"%s\")", path,
+        slots[0].path, slots[1].path, slots[2].path, slot, slots[slot].path);
+    {
+        double stored_at = art_ms();
+        store(bank, image, slot);
+        LOG(LOG_CARD_LAYOUT, "slot_for: stored in %.1f ms", art_ms() - stored_at);
+    }
     snprintf(slots[slot].path, sizeof(slots[slot].path), "%s", path);
     slots[slot].used = ++slot_clock;
     return slot;

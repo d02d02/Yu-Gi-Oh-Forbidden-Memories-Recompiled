@@ -6,6 +6,8 @@
 #include "pc/platform/paths.h"
 #include "pc/compat/signal.h"
 #include "pc/sdk/disc.h"
+#include "pc/debug/log.h"
+#include <time.h>
 #include <png.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -152,10 +154,14 @@ static int bank_halve(BankImage *image, int from)
     return 1;
 }
 
+static double bank_ms(void) { return (double)clock() * 1000.0 / CLOCKS_PER_SEC; }
+
 static void bank_read(BankImage *image)
 {
     png_image png = {0};
     FILE *file;
+    double started = bank_ms();
+    LOG(LOG_CARD_LAYOUT, "bank_read: start %s", image->file);
     png.version = PNG_IMAGE_VERSION;
     file = fopen(image->file, "rb");
     if (!file || !png_image_begin_read_from_stdio(&png, file)) {
@@ -182,11 +188,14 @@ static void bank_read(BankImage *image)
     while (image->levels < BANK_LEVELS &&
            (image->width[image->levels - 1] > 1 || image->height[image->levels - 1] > 1))
         if (!bank_halve(image, image->levels - 1)) break;
+    LOG(LOG_CARD_LAYOUT, "bank_read: done %s %dx%d levels=%d in %.1f ms", image->file, image->width[0], image->height[0],
+        image->levels, bank_ms() - started);
 }
 
 static void bank_free(BankImage *image)
 {
     int i;
+    LOG(LOG_CARD_LAYOUT, "bank_free: %s (users %d)", image->file, image->users);
     for (i = 0; i < image->levels; i++) free(image->level[i]);
     free(image->file);
     free(image);
@@ -204,6 +213,7 @@ static void bank_trim(void)
             if (!bank_images[i]->users && (oldest < 0 || bank_images[i]->released < bank_images[oldest]->released))
                 oldest = i;
         }
+        LOG(LOG_CARD_LAYOUT, "bank_trim: evicting %s (%d spare, keep %d)", bank_images[oldest]->file, spare, BANK_SPARE);
         bank_free(bank_images[oldest]);
         bank_images[oldest] = bank_images[--bank_image_count];
         spare--;
@@ -220,6 +230,7 @@ static BankImage *bank_image(const char *file)
     for (i = 0; i < bank_image_count; i++) {
         if (!strcmp(bank_images[i]->file, file)) return bank_images[i];
     }
+    LOG(LOG_CARD_LAYOUT, "bank_image: miss, reading %s (%d images held)", file, bank_image_count);
     more = realloc(bank_images, (size_t)(bank_image_count + 1) * sizeof(*more));
     if (!more) return NULL;
     bank_images = more;
@@ -278,6 +289,9 @@ int TexturePack_AddBankSpriteCrop(int bank, int page_x, int page_y, int depth, i
     if (at && at->clut_x == clut_x && at->clut_y == clut_y && !strcmp(at->image->file, file) &&
         at->source_x == source_x && at->source_y == source_y && at->source_w == source_w && at->source_h == source_h)
         return 1;
+    LOG(LOG_CARD_LAYOUT, "AddBankSpriteCrop: %s page(%d,%d) clut(%d,%d) src(%d,%d %dx%d) owner %u %s", file, page_x,
+        page_y, clut_x, clut_y, source_x, source_y, source_w, source_h, bank_sprite_owner,
+        at ? "REPLACES a sprite of that page" : "new sprite");
     if (!(image = bank_image(file))) return 0;
     image->users++;
     if (!at) {
