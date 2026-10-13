@@ -1,4 +1,4 @@
-Duel Links 2D Arts (v2.3)
+Duel Links 2D Arts (v2.4, in progress)
 
 High-resolution Duel Links style artwork for the monsters on the duel field, always facing
 the camera, with an optional glow. Needs release v0.3.0 or later of YFM Re-Decomp. Does not
@@ -21,7 +21,9 @@ SETTINGS (Mods window)
   Art size (40), Height above the card (16).
   Float height (Off) and Float length (180): turn Float height up (1 to 8) and the art floats gently
   up and down.
-  Gold outline (on) and Outline thickness (Hairline, the thinnest, then 1 to 4 pixels).
+  Gold outline (on), Outline style (Sharp, or Flowing halos: halos that leave the line and fade
+  outward), Outline thickness (Hairline, the thinnest, then 1 to 4 pixels; for halos, how far they
+  travel) and Halo speed.
   Glow (off), Glow colour (Yellow, Gold, White, Red, Orange, Green, Cyan, Blue, Purple, Pink),
   Glow size (50), Glow pulse length (90).
 

@@ -704,7 +704,61 @@ static void draw_one(int index, int world_height)
      * ring of gold shows around its silhouette. The thinnest ("outline_width"
      * 0, the hairline) is one game pixel too, but half transparent: a game
      * pixel is the smallest step the console's coordinates have. */
-    if (tunable("outline", 1)) {
+    if (tunable("outline", 1) && tunable("outline_style", 0) == 1) {
+        /* Flowing halos ("outline_style" 1): a gold line at the art's edge that
+         * stays put, and halos that leave it and travel outward, dimming as they
+         * go, a new one born as the last is half way out: a flow, not a glow
+         * that swells and shrinks. Each halo is a bump in brightness at its
+         * distance from the edge, `profile[d]` for d whole game pixels out
+         * (d = 1 is the line itself), and a bump between two whole distances
+         * is shared between both, so it moves smoothly. What the console can
+         * draw is the art again, d pixels out in the eight directions, which
+         * covers everything out to d: so the copy for distance d adds the step
+         * from `profile[d + 1]` to `profile[d]`, up when the profile falls, and
+         * subtracted (the console's second blending mode) where it rises. A
+         * pixel is covered by three copies of one distance on a straight edge,
+         * so a copy is a third of its step. */
+        static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+        double profile[10], period = (double)tunable("outline_period", 120), clock;
+        int choice = tunable("outline_width", 0), layers, reach, side, behind = depth + 1, wave;
+        if (choice < 0) choice = 0;
+        layers = 2 + choice;   /* Hairline: halos reach 2 pixels out, 1 pixel 3, ... 4 pixels 6 */
+        if (layers > 6) layers = 6;
+        if (period < 1.0) period = 1.0;
+        clock = (double)((frame + (unsigned)index * 13) % (unsigned)period) / period;
+        if (behind >= (1 << table->length)) behind = (1 << table->length) - 1;
+        for (reach = 1; reach <= layers + 2; reach++) profile[reach] = 0.0;
+        profile[1] = 1.0;
+        for (wave = 0; wave < 2; wave++) {
+            double age = clock + 0.5 * wave, where, strength;
+            if (age >= 1.0) age -= 1.0;
+            where = 1.0 + age * layers;                      /* its distance from the edge, in game pixels */
+            strength = 0.8 * (1.0 - age) * (1.0 - age) * (age * 6.0 < 1.0 ? age * 6.0 : 1.0);   /* fades with its age and is born faintly */
+            for (reach = 1; reach <= layers + 1; reach++) {
+                double share = 1.0 - fabs((double)reach - where);
+                if (share > 0.0) profile[reach] += strength * share;
+            }
+        }
+        for (reach = 1; reach <= layers + 1; reach++) if (profile[reach] > 1.0) profile[reach] = 1.0;
+        for (reach = layers + 1; reach >= 1; reach--) {
+            double step = profile[reach] - profile[reach + 1];
+            int level = (int)(fabs(step) * 128.0 / 3.0 + 0.5), subtract = step < 0.0;
+            if (level < 1) continue;
+            for (side = 0; side < 8; side++) {
+                POLY_FT4 ring = prim;
+                int dx = around[side][0] * reach, dy = around[side][1] * reach;
+                ring.x0 += dx; ring.y0 += dy;
+                ring.x1 += dx; ring.y1 += dy;
+                ring.x2 += dx; ring.y2 += dy;
+                ring.x3 += dx; ring.y3 += dy;
+                ring.clut = GetClut(CLUT_X, art->clut_y + 2);   /* gold, every solid texel flagged for blending */
+                ring.tpage = GetTPage(1, subtract ? 2 : 1, PIXELS_X, PIXELS_Y) | (u16)(art->bank << 11);   /* abr 1 adds, 2 subtracts */
+                setSemiTrans(&ring, 1);
+                ring.r0 = ring.g0 = ring.b0 = (u8)level;
+                GsSortPoly(&ring, table, (unsigned short)behind);
+            }
+        }
+    } else if (tunable("outline", 1)) {
         static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
         int choice = tunable("outline_width", 0), side, behind = depth + 1;
         int hairline = choice <= 0, width = hairline ? 1 : choice;
