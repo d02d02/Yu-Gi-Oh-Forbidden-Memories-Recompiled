@@ -65,7 +65,7 @@ typedef char frame_palettes_fit_the_bank_width[FRAME_SLOTS * 256 <= 1024 ? 1 : -
  * palette), kept so that a card of another kind -- another frame image -- or
  * one drawn again later costs a copy into the bank, not a decode and a median
  * cut. The bank holds FRAME_SLOTS of them at a time (slots). */
-#define FRAME_CACHE 16   /* the anime layout has 10 frame pictures: a cache smaller than the set thrashes (a decode a frame) */
+#define FRAME_CACHE 64   /* one entry a frame picture (not a card): the anime layout has 10. A cache smaller than the set thrashes, a decode a frame */
 typedef struct {
     char path[1024];
     unsigned char *indices;   /* NULL: built and failed */
@@ -74,6 +74,7 @@ typedef struct {
     unsigned long long used;   /* 0: free; else image_clock when last asked for */
 } FrameImage;
 static unsigned long long image_clock;
+static int cache_warned;
 static FrameImage images[FRAME_CACHE];
 typedef struct {
     char path[1024];          /* the path whose texels the slot holds now, "" when none */
@@ -105,6 +106,11 @@ static FrameImage *image_for(const char *path, int build)
             if (images[i].used < slot->used) slot = &images[i];
         }
         LOG(LOG_CARD_LAYOUT, "image_for: cache full (%d), evicting %s", FRAME_CACHE, slot->path);
+        if (!cache_warned) {
+            cache_warned = 1;
+            fprintf(stderr, "memories-pc: card frames: more than %d frame pictures in use, one is rebuilt each time it is drawn (slow)\n",
+                    FRAME_CACHE);
+        }
         free(slot->indices);
         for (i = 0; i < FRAME_SLOTS; i++) {
             if (!strcmp(slots[i].path, slot->path)) slots[i].path[0] = 0;
