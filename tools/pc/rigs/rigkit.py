@@ -20,7 +20,9 @@ build id, then load that state in a game running at --scale and shoot (about 1 s
 the same situation at 4x takes 100 s). States are tied to the exact exe: the build id is in the name.
 No paths are hardcoded: --repo / $YFM_REPO is the checkout whose tools/pc/yfm_control.py and exe are used
 (default: the dev worktree), --exe / $YFM_EXECUTABLE picks another exe (a release install, a PR build).
-Run with python -I from a folder of its own; never leave a game running (kill memories-pc.exe).
+Run with python -I from a folder of its own. The game runs from a PRIVATE COPY of the build folder (OUT/_exe), so a
+rig never locks the real build (a running exe makes the user's link fail "Permission denied"); --in-place disables it.
+Never kill games by image name (taskkill /IM memories-pc.exe also kills the user's own game): Game ends its own process.
 """
 import argparse, json, os, sys, time
 from pathlib import Path
@@ -110,7 +112,10 @@ def main():
     ap.add_argument("--hand", default="100,332,683,301,364", help="duel: the opening hand, 5 card ids")
     ap.add_argument("--plays", default="0:up", help="duel: one 'slot:up|down' per own turn")
     ap.add_argument("--camera", default="", help="attack: angle[,distance] pinned (4096-unit turn, 1024 usual; 200..1400, 600 usual)")
+    ap.add_argument("--every", type=int, default=0, help="attack: also a shot every N vblanks from the battle start to --tail after it")
+    ap.add_argument("--tail", type=int, default=60, help="attack: vblanks to keep filming after the battle phase ends")
     ap.add_argument("--at", default="1,2,3,4,7,8,10,6,11", help="attack: battle sub-steps to shoot (see BATTLE_STEPS)")
+    ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
     ap.add_argument("--settings", nargs="*", help="key=value player settings, e.g. mod.anime-art=1")
     ap.add_argument("--env", nargs="*", help="KEY=VALUE extra MEMORIES_* variables")
@@ -130,7 +135,14 @@ def main():
             env[f"MEMORIES_MOD_TEST_SCENES_P{i+1}"] = str(sc["player"][i])
             env[f"MEMORIES_MOD_TEST_SCENES_O{i+1}"] = str(sc["opponent"][i])
         settings.setdefault("mod.test-scenes", "1")
-    base = dict(executable=a.exe)
+    exe = Path(a.exe or Path(a.repo) / "tmp/pc/game32/memories-pc.exe")
+    if not a.in_place and exe.is_file():
+        import shutil
+        private = out / "_exe"
+        if not private.exists():
+            shutil.copytree(exe.parent, private, ignore=shutil.ignore_patterns("*.pdb", "*.c", "*.s", "obj"))
+        exe = private / exe.name
+    base = dict(executable=str(exe))
     if a.kind == "attack":
         return run_attack(a, yc, out, settings, env, base)
     # 1) the situation, once, at 1x
@@ -182,13 +194,17 @@ def run_attack(a, yc, out, settings, env, base):
         if a.camera:
             ang, _, dist = a.camera.partition(",")
             camera_pin(g, int(ang), int(dist) if dist else None)
-        start, seen, log = g.vblank, set(), []
-        while g.vblank - start < 900:
-            step = battle_step(g)
+        start, seen, log, ended = g.vblank, set(), [], None
+        while g.vblank - start < 1200:
+            step, vb = battle_step(g), g.vblank - start
             if step in want and step not in seen:
                 seen.add(step)
-                g.shot(out / f"attack-s{step}-vb{g.vblank - start}.png"); log.append((g.vblank - start, step, camera_read(g)))
-            if log and step is None and g.phase() != BATTLE and seen:
+                g.shot(out / f"attack-s{step}-vb{vb}.png"); log.append((vb, step, camera_read(g)))
+            elif a.every and vb % a.every == 0:
+                g.shot(out / f"attack-f{vb:04d}-s{step}.png")
+            if step is None and seen and ended is None:
+                ended = vb
+            if ended is not None and vb - ended >= (a.tail if a.every else 0):
                 break
             g.step(1)
         print("battle log (vblank, step, (angle, distance)):", log)
