@@ -106,8 +106,21 @@ to the trap frame. Reproduced headless (Widespread Ruin 686 as the whole deck, `
 - **Limit:** a fourth style in the same frame would evict one in use; no duel screen shows that. More banks are not possible (bits 11-14 of the
   texture word, bit 15 is HD_TEXT_MARK).
 
-## Open: card viewer rotation looks off (Anime Style)
-Reported 2026-10-13. Measured on the headless viewer rig (`rigs/view_rig.py`, vanilla vs Anime Style, same frames): the turn's geometry
-(silhouette edges, heights, per frame) is IDENTICAL to vanilla. What differs is the picture: the Anime Style card back has a seam halfway
-down (swirl does not line up between top and bottom halves) and is darker than vanilla's; the face's first frames differ. Next: find which
-the user sees, then look at how the back is drawn through `CardLayout_DrawArt` / art_layout in func_80028B08.c.
+## Card rotation (viewer after Triangle, attack animation): checked 2026-10-13, no bug found, parked
+Reported as "the stretched card starts small / starts the turn from another position". Measured at Internal 4x, every 2-3 vblanks, Anime Style
+against vanilla (same deterministic run, `rigs/view_rig.py` and `rigs/attack_rig.py` with `ENV_MEMORIES_DUMP_PICTURE=1` so the control
+channel's `shot` returns the scaled picture, not VRAM):
+- Viewer: the card outline (top edge, bottom edge, left/right extent, per frame, `rigs/edge_track.py`) matches vanilla at every frame of the
+  turn; the Anime Style card is a constant ~12 px (1.5%) taller at the bottom, before and after the turn starts. No jump when the turn starts.
+- Attack animation: both builds start with the cards large and tilted and settle; the first frames line up (f008-f010).
+- Pivot: `duel_effect_resource_setup.c` sets field_18/field_1A = (0x46, 0x62) = the centre of a 140x196 card, which is the frame's size.
+- Seen and NOT a bug: at 1x/native VRAM (the control channel's default `shot`) the card back shows a seam two-thirds down (the stretched art quad
+  and the original lower piece do not line up); at 2x/4x the HD back replaces both and there is no seam. Only matters for a 1x run.
+- Resume when the glitch is better defined (which part, which moment, a recording): capture that moment at 1-vblank steps; suspects left are
+  the HD texture swap on the first frames and the 1x back seam.
+
+## HD mod JSON -> Anime Style syntax (migration done 2026-10-13)
+`rigs/migrate_hd_json.py` (shared notes) turns the HD mod's `mod.json` (its "Anime card frame" option, by d02d02 and Hraezlyr) into our syntax.
+Differences found: their `{"class":"purple"}` and `{"class":"ritual"}` rules never match (class must be monster, effect_monster, spell, equip,
+ritual_spell or trap); in ours they are tags (`purple`, `ritual`, `blue`, `fusion`, plus `known_ritual` / `known_fusion`). Their ritual_spell is
+always green (ours: blue unless `ritual_green`), their ritual monsters use anime_frame_ritual.png (ours: anime_frame_ritual_monster.png).
