@@ -180,7 +180,7 @@ unpushed there).
 | 7d | Duel field tile: bright diagonal sliver | Not started, confirmed not PGXP | — | See 7d below |
 | 8 | 2D Monsters mod → folded into 3D Monsters as its "Card art" style, per Unchiga's review | **PR #201 open**, updated with the fold-in, the battle-presentation gating fix, and a Mods-window `choice`-wrap bugfix found along the way; awaiting re-review | `feat/2d-monsters` (PR) | Wait on Unchiga |
 | 9 | Remaining MIPS-interpreted subsystems (not decompiled) | Not started; each currently runs correctly through the MIPS interpreter, not native C | — | Pick one to start with (see below) |
-| 10 | Custom card art/layout ("B-style") → shipped as the "Anime card frame" | **PR #294 open upstream** (`Fold the anime card frame into Forbidden Memories HD, per card kind`): went further than the Option A plan below actually called for — ended up as a generic `"card_layout"` manifest key any mod can use (closer to the rejected Option B), with its own frame art per card kind, folded into Forbidden Memories HD as an off-by-default setting. 2026-10-07: CI (sanitizers/core-windows/core-linux) failed on `tests/pc/card_layout_test.c`'s `frame_outside_mod_refused` — its fake manifest put `"frame"`'s `"image"` flat instead of nested per kind, so `frame_for_kind` never found it and the escaped-path check never ran. Fixed (nest under `"monster"`) and pushed (`8c1109d94`); CI re-run pending | `feat/assets-hd-anime-frame-pr` (PR #294); history: `feat/custom-card-art` (original research/WIP) → `feat/assets-hd-anime-frame` (polish/fixes) → squashed onto this branch for the PR | Watch CI re-run on `8c1109d94`; address upstream review on #294 |
+| 10 | Anime style mod (standalone mod) | Planned, nothing built; scope of the upstream issue undecided | `anime-style-mod` (worktree `.claude/worktrees/anime-mod`) | Decide issue scope, then data work — see section 10 |
 | 11 | `field_art` (3D Monsters' Card art style) cropped/distorted mod art | Two of three original bugs fixed and verified at native (1x) resolution, on a real asset (Duel Links-style art, `artes_duel_links_fm/5_Ryukishin.png`, tall wingtips): (1) fixed 102x96 crop — `CardArt_FieldArtFit` sizes each cutout to its own PNG's ratio, capped at 256 either side; (2) colour fringe from an unweighted average — premultiplied before resample's box filter, undone after. Bug (3), the alpha cutoff, went through two iterations: first an ordered (Bayer) dither (kept a texel in proportion to its own alpha) — **wrong call**, confirmed live: the cutout is small enough on screen that dithering reads as visible static/a sieve of holes, especially on a deliberately translucent surface (a wing membrane drawn at a steady ~75% alpha throughout, not just a fade). Replaced with a much lower flat cutoff (32, down from 128) instead — verified clean (solid wings, full tips, no noise) at 1x, with and without the 3D Monsters mod's own glow effect. **Two new problems found after that, neither investigated yet:** (a) the wings' left/right edges and bottom are hard-clipped (straight cutoff lines, not a gradient issue — see `clippedwings2.png`, user-provided, not yet pulled into the repo) at *native* 1x resolution, cause unknown — possibly `CardArt_FieldArtFit`'s width computation, possibly something in `field_art.c`'s on-field quad sizing; not yet determined whether this predates this session's fixes or is new; (b) the HD texture-pack path (`forbidden-memories-hd` mod + `MEMORIES_INTERNAL_SCALE=4`) renders the cutout **broken**, not just imperfect — a real window screenshot (`MEMORIES_WINDOW_SHOT`, see `notes/pc-headless-testing.md`) showed a blank white background instead of the duel field, the wing as a sparse dotted outline with no fill, and a garbled/corrupted card rectangle — looks like a real rendering bug in that path, not a follow-on of the alpha-fringe issue flagged earlier. All fixes rebased onto current upstream/master and pushed. **2026-10-06: consolidated onto a single branch** — `feat/field-art-shape` is now the only branch for this item (transparent + transparent-gradient + not-clipped, one PR). `fix/field-art-alpha-fringe` deleted (local + origin): its two commits were a strict subset, same content already present in `feat/field-art-shape`'s history (`5894fbd76`/`02e3d0752`), so nothing lost. `feat/field-art-fit` (shape only, no alpha fixes) was likewise already deleted as redundant once `feat/field-art-shape` existed. Mid-investigation debug `say()` logging (clipping repro) carried from this session's `dev` work onto `feat/field-art-shape` as a WIP commit, to be squashed/dropped before the branch is PR-ready. **`feat/field-art-shape`'s base is ~153 commits behind current `upstream/master`** — predates this repo's `CLAUDE.md`/root `progress.md` convention entirely (still has the old `notes/progress.md` layout) — needs a rebase onto current upstream before opening the PR; do that after the clipping fix lands, not before, to avoid rebasing twice | `feat/field-art-shape` (shape-fit + both alpha fixes combined, 3 commits, plus an uncommitted-turned-WIP debug-logging commit for the active clipping investigation) | **Next session, in order, all on `feat/field-art-shape`:** (1) pull `clippedwings2.png` findings — investigate the left/right/bottom clipping at 1x first, it's the more isolated problem; check `CardArt_FieldArtFit`'s width math and `field_art.c`'s `width_px` quad sizing; (2) separately investigate the HD/4x path's broken render — start from the real window screenshot repro command in `notes/pc-headless-testing.md`'s "Known pitfalls" section (`MEMORIES_WINDOW_SHOT`, not the internal `MEMORIES_DUMP_PATH` dump, which doesn't capture the GL path reliably); (3) rebase onto current `upstream/master`, drop the debug-logging WIP commit; (4) open the single PR |
 | — | Game > Restart | Parked | — | — |
 | — | Test scenes: boot straight into the duel | Parked (later) | `feat/test-scenes` | See "Parked" below |
@@ -674,128 +674,27 @@ MIPS fallback" (its "Full gameplay" milestone).
 
 ---
 
-## 10. Custom card art/layout ("B-style")
+## 10. Anime style mod (standalone `mods/anime-style-mod/`)
 
-User request 2026-09-30/10-01: replace a card's whole displayed layout, not
-just its picture — full-bleed art, no gold frame, no title plate, no
-description box, level/attribute/ATK-DEF redrawn in a bottom band instead of
-the retail positions (reference images the user provided: `A` the retail
-Blue-eyes White Dragon card, `B` a Duel-Links-style rendition of the same
-card). Branch `feat/custom-card-art`, off current `master`.
+Not HD, not core: restyle what the player sees and hears; story and rules untouched.
+Design and ranked engine candidates: `notes/anime-style-mod-plan.md` (read its
+"Candidate issues" section first). The anime card frame itself shipped upstream
+(PR #294, merged, folded into Forbidden Memories HD); the frame branches are obsolete.
+Worktree `.claude/worktrees/anime-mod` (branch `anime-style-mod`, at upstream/master
+`ee0f8d836`, nothing committed) is the old home of this item.
 
-**Not the same as `field_art`/item 8's Card art style**: `field_art` swaps
-the *picture* a card shows on the duel field's 2D cutout alone, still inside
-that cutout's own quad. This is about restructuring what's drawn for a card
-*everywhere it already shows as a full card* — Library, shop, ritual effects,
-battle, card placement, the card viewer — not adding a new display.
-
-**Not the same as `feat/field-card-stats`** either: that branch (see above)
-overlays level/attribute/ATK-DEF onto the *tiny* vanilla field card via a
-`func_80015EF4` hook. This item is about the *big* single-card view.
-
-**Precedent chosen: Unchiga's own `title-screen-api`**
-(`upstream/feat/title-screen-api`, two commits, not yet merged to
-`upstream/master`): a mod's `"title"` manifest key is data (hide/move/tint/
-replace per element: background, logo, copyright, prompt, entries, text),
-read fresh every time the title screen opens, no code, no restart. Confirmed
-the right model for "restructure how something is drawn," but two sizes of
-it are possible:
-
-- **Option A (chosen, after discussion):** one built-in alternate layout
-  (the B-style look), turned on/off by a setting — the same shape as item
-  8's `style` choice, not a generic config language. Matches what the user
-  actually wants today (one specific look, not "let any modder design
-  anything"); the harder groundwork (making frame/title/stats independently
-  controllable) is identical either way, so nothing here blocks generalizing
-  to a full per-element config API later if a second/third layout ever comes
-  up.
-- Option B (not chosen): a full `title_config.c`-style per-element API.
-  Bigger, more general, not needed for the stated goal.
-
-**Research so far (two passes, both forks, reports kept only here — not the
-raw transcripts):**
-
-1. `func_800289BC.c` looked like the layout code at first glance but is only
-   a texture-upload step (picture/CLUT/title-plate/thumbnail into VRAM
-   rects) — already has the existing mod hook (`Cards_PatchArtRecord`) item
-   8 and `field_art` both use, nothing new needed there.
-2. The actual draw code is `func_80028B08` (`src/game/func_80028B08.c`):
-   picture, title plate, and (monster cards only, `obj->field_68 < 0x14`)
-   the ATK/DEF digit rows and level star row, plus the attribute icon
-   (every card). All positioned as offsets from the **frame** object's own
-   position — the frame is a separate "kind 2" `DisplayObject`, configured
-   in `func_800291E0` (`duel_effect_resource_setup.c:154-176`,
-   `DisplayObject_ConfigureSpriteAtPosition`), which already has a mod hook
-   for its own graphic (`Cards_FrameColor`, line 158) but not for hiding or
-   repositioning it.
-3. **Critical finding: this is one shared draw path, not one per screen.**
-   `func_800291E0`/`func_80028B08` together are called from **eight**
-   different contexts: `library_runtime.c`, `shop.c` (password/shop),
-   `duel_ritual_effect.c`, `duel_scene_battle.c` (both duelists' battle
-   cards, three call sites), `duel_scene_card_placement.c`,
-   `func_800283F4.c` (the card viewer), `func_80019608.c`, and
-   `debug_effect_screen.c`. Nothing inside the shared function tells these
-   apart today. So "start with one screen" isn't actually available for
-   picture/frame/title/stats the way it was for `field-card-stats`'
-   `func_80015EF4` — changing the shared function is inherently universal.
-   Given the user's stated goal was "everywhere" all along, this cuts the
-   other way from a blocker: one change, gated by one setting (off by
-   default, so it changes nothing for anyone who doesn't turn it on), reaches
-   every context in one pass, at the cost of needing to live-check all eight
-   for anything that looks wrong (e.g. battle's cards may assume different
-   proportions than the Library's) rather than de-risking on one first.
-4. **The description text box is the one genuine exception**: not part of
-   `func_80028B08` at all. Each caller sets its own up independently (e.g.
-   the card viewer's own `DuelEffect_UpdateCardViewerState`,
-   `func_800283F4.c:121`, `TextBox_Create(i, kind, 0x148, 0xE, 0xA8, 0xC0)` —
-   168x192 at (0x148, 0xE)). Genuinely hideable per-screen already, no shared-
-   path complication.
-5. Concrete hide/reposition mechanics per element (from the second research
-   pass, not yet implemented):
-   - Frame: skip/change the `DisplayObject_ConfigureSpriteAtPosition` call
-     (`duel_effect_resource_setup.c:162`) — but its position is the anchor
-     every other element in `func_80028B08` adds its own offset to, so
-     removing it needs a replacement anchor, not just a skip.
-   - Picture: skip the submit at `func_80028B08.c:116`; reposition via
-     `xy.h.x/y` just above it.
-   - Title plate: skip the submit at `:130`.
-   - ATK/DEF + stars: skip/change the `:132-262` block; hardcoded offsets
-     (`+0x9D`/`+0xAB`/`+0x77`/`+0x20` from the frame's own anchor) would need
-     to become the bottom-band position instead.
-   - Attribute icon: skip/reposition the submit at `:267-276`.
-   - Description: skip the calling screen's own `TextBox_Create`.
-
-**The `forbidden-memories-hd` mod** the user referenced ("the components
-already exist... for HD mod too") is not part of this repository — it is
-installed separately, under `tmp/pc/game32dbg-user/mods/` locally (a
-"portable mode" user mods directory beside the debug build, distinct from
-the repo's own `mods/`). Its own assets are worth a look for anything
-reusable (a ready-made bottom-band stats look, HD digit/star/attribute
-sprites at a size that would actually read well full-bleed) before drawing
-anything from scratch, but it is the user's own separately-installed content,
-not something to copy into this repo without knowing its license.
-
-**Left to do:** look at what `forbidden-memories-hd` actually has under
-`tmp/pc/game32dbg-user/mods/`; then write the actual element-by-element
-implementation (the five bullets above) gated behind one new setting in
-whichever mod ends up owning this (a new small one, or folded into an
-existing one — not decided); build and live-test across the eight call sites.
-
-**2026-10-07 status: implemented and opened upstream as PR #294**, as a
-generic `"card_layout"` manifest key (notes/modding.md) rather than the
-Option A single built-in layout decided above — any mod can now place
-frame/title/description/ATK-DEF/stars/attribute/art per element, with its
-own frame art per card kind (monster/magic/trap/ritual/orange), folded into
-Forbidden Memories HD as an off-by-default `full_bleed` setting. Branch
-history: `feat/custom-card-art` (original research/WIP) → `feat/assets-hd-
-anime-frame` (polish/fixes) → squashed onto `feat/assets-hd-anime-frame-pr`
-for the PR. CI (sanitizers/core-windows/core-linux) initially failed:
-`tests/pc/card_layout_test.c`'s `frame_outside_mod_refused` gave its fake
-manifest a flat `"frame": {"image": ...}` instead of nesting the image under
-a kind (`"monster"`/etc., the shape every other manifest in that file and
-`notes/modding.md` use) — `frame_for_kind` found no frame, so the escaped-
-path check it meant to exercise never ran and `notes == 1` failed. Fixed and
-pushed (`8c1109d94`); CI re-run pending.
+- Locked: mod id and branch `anime-style-mod`; one mod folder; FMV out of scope for the
+  first release; do not touch the merged HD frame option.
+- Open (user): where the anime audio/video/art comes from, and whether the mod ships it
+  or a tool builds it from files the player supplies.
+- Open (user): what the upstream issue covers. Code-verified top candidates:
+  (1) `setting` gating for `audio`/`title`/`menu`/`card_layout`,
+  (2) event audio (`host->play_sound`, then `audio.events`),
+  (3) image blit in overlays. `gh` is not installed, so the user posts the issue.
+- Next: decide the issue scope and draft it from the plan's pitches; meanwhile data work
+  needing no engine change (frame + `assets` UI skin, then title/menu).
+- Doc fixes owed upstream: stale "Known limitation" paragraph in `notes/modding.md`
+  (~line 993); `modapi.h` header lists API up to 9, the code is 10.
 
 ---
 
