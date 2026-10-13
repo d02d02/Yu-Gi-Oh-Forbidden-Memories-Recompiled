@@ -132,47 +132,84 @@ static int level_for(int rendered)
     return 0;
 }
 
+/* A player's PNG for this card in the mod's art/ folder (card id, or its
+ * base card's), as the path the engine's loader wants; 0 when there is none. */
+static char png_path[1200];
+static int custom_png(int card)
+{
+    int ids[2], i;
+    ids[0] = card;
+    ids[1] = Cards_BaseId(card);
+    for (i = 0; i < 2; i++) {
+        FILE *file;
+        char relative[64];
+        snprintf(relative, sizeof(relative), "art/%d.png", ids[i]);
+        snprintf(png_path, sizeof(png_path), "%s/%s", host->directory, relative);
+        file = host->open_asset(host, relative);
+        if (file) {
+            fclose(file);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* One texture file's `level`, parsed out of the file's bytes (the layout
+ * above). Returns 1 and the pieces, 0 when the file is missing or not one. */
+static int read_texture(const char *path, int card, int level, int *w, int *h, const u16 **clut, const u16 **pixels)
+{
+    FILE *file = host->open_asset(host, path);
+    size_t got, at;
+    int count, i;
+    if (!file) return 0;
+    got = fread(texture, 1, sizeof(texture), file);
+    fclose(file);
+    count = got >= 2 ? texture[0] | (texture[1] << 8) : 0;
+    if (count < 1 || count > TEX_LEVELS) {
+        say("card %d: %s is not a texture of this mod\n", card, path);
+        return 0;
+    }
+    if (level >= count) level = count - 1;
+    at = 2;
+    for (i = 0; i < count; i++) {
+        int lw, lh;
+        if (at + 4 + 512 > got) break;
+        lw = texture[at] | (texture[at + 1] << 8);
+        lh = texture[at + 2] | (texture[at + 3] << 8);
+        if (lw < 2 || lw > 256 || (lw & 1) || lh < 1 || lh > 256 || at + 4 + 512 + (size_t)lw * lh > got) break;
+        if (i == level) {
+            *w = lw;
+            *h = lh;
+            *clut = (const u16 *)(texture + at + 4);
+            *pixels = (const u16 *)(texture + at + 4 + 512);
+            return 1;
+        }
+        at += 4 + 512 + (size_t)lw * lh;
+    }
+    say("card %d: %s is cut short\n", card, path);
+    return 0;
+}
+
+/* Where a player's own art goes: art/<card id>.tex (from prepare_art.py, the
+ * best quality) or art/<card id>.png (any PNG with a clear background, no
+ * tool needed). The id is the card's own, so an added card (past the disc's
+ * 722) has its own art; failing that its base card's. Both are found before
+ * the table of the mod's shipped textures, so they override it; no rebuild. */
 static int own_texture(int card, int level, int *w, int *h, const u16 **clut, const u16 **pixels)
 {
     char path[1200];
-    FILE *file;
-    size_t got, at;
-    int base = Cards_BaseId(card), low = 0, high = (int)(sizeof(art_files) / sizeof(art_files[0])) - 1, count, i;
+    int base = Cards_BaseId(card), low = 0, high = (int)(sizeof(art_files) / sizeof(art_files[0])) - 1;
+    snprintf(path, sizeof(path), "art/%d.tex", card);
+    if (read_texture(path, card, level, w, h, clut, pixels)) return 1;
+    if (base != card) {
+        snprintf(path, sizeof(path), "art/%d.tex", base);
+        if (read_texture(path, card, level, w, h, clut, pixels)) return 1;
+    }
+    if (custom_png(card)) return 0;   /* the player's PNG outranks the shipped texture */
     while (low <= high) {
         int middle = (low + high) / 2;
         if (art_files[middle].card == base) {
-            snprintf(path, sizeof(path), "%s", art_files[middle].file);
-            file = host->open_asset(host, path);
-            if (!file) {
-                say("card %d: %s cannot be opened\n", card, path);
-                return 0;
-            }
-            got = fread(texture, 1, sizeof(texture), file);
-            fclose(file);
-            count = got >= 2 ? texture[0] | (texture[1] << 8) : 0;
-            if (count < 1 || count > TEX_LEVELS) {
-                say("card %d: %s is not a texture of this mod\n", card, path);
-                return 0;
-            }
-            if (level >= count) level = count - 1;
-            at = 2;
-            for (i = 0; i < count; i++) {
-                int lw, lh;
-                if (at + 4 + 512 > got) break;
-                lw = texture[at] | (texture[at + 1] << 8);
-                lh = texture[at + 2] | (texture[at + 3] << 8);
-                if (lw < 2 || lw > 256 || (lw & 1) || lh < 1 || lh > 256 || at + 4 + 512 + (size_t)lw * lh > got) break;
-                if (i == level) {
-                    *w = lw;
-                    *h = lh;
-                    *clut = (const u16 *)(texture + at + 4);
-                    *pixels = (const u16 *)(texture + at + 4 + 512);
-                    return 1;
-                }
-                at += 4 + 512 + (size_t)lw * lh;
-            }
-            say("card %d: %s is cut short\n", card, path);
-            return 0;
+            return read_texture(art_files[middle].file, card, level, w, h, clut, pixels);
         }
         if (art_files[middle].card < base) low = middle + 1;
         else high = middle - 1;
@@ -196,7 +233,15 @@ static int load_art(Art *art, int card, int level)
         art->level = -1;
         w = CARD_ART_WIDTH;
         h = CARD_ART_HEIGHT;
-        field_art = Cards_FieldArtRecord(card);
+        if (custom_png(card) && (record || (record = malloc(ART_SECTORS * SECTOR)))) {
+            char why[200];
+            if (CardArt_FieldArtFromImage(png_path, record, why, sizeof(why))) {
+                field_art = record;
+            } else {
+                say("card %d: %s: %s\n", card, png_path, why);
+            }
+        }
+        if (!field_art) field_art = Cards_FieldArtRecord(card);
         if (!field_art) {
             if (mrg_start == -2) {
                 mrg_start = host->disc_file_start(host, "\\DATA\\WA_MRG.MRG;1");
@@ -400,7 +445,7 @@ static int duel_field_up(void)
  * (BGR555's bit 15, the semi-transparency flag the renderer reads alongside
  * the primitive's own setSemiTrans -- both must be on, or it draws opaque,
  * gl_picture.c). The glow's own colour is entirely the primitive's
- * r0/g0/b0 modulation (settings glow_r/g/b), scaled each frame by a sine
+ * r0/g0/b0 modulation (setting glow_color), scaled each frame by a sine
  * wave (glow_period, frames per full pulse) between a floor and full
  * brightness -- never down to fully off, which is what read as "on/off"
  * rather than a breathing pulse -- for the "shining" look; abr 1 (GetTPage's
@@ -419,9 +464,13 @@ static int duel_field_up(void)
 #define GLOW_REACH_DEFAULT 50
 #define GLOW_PERIOD_DEFAULT 90
 #define GLOW_FLOOR 0.35 /* the pulse's dimmest point: never fully off */
-#define GLOW_R_DEFAULT 255
-#define GLOW_G_DEFAULT 255
-#define GLOW_B_DEFAULT 90
+/* The "glow_color" choices, in mod.json's order; the first is the colour the
+ * glow always had (255, 255, 90). */
+static const unsigned char glow_colors[][3] = {
+    {255, 255, 90}, {255, 200, 40}, {255, 255, 255}, {255, 60, 60}, {255, 140, 30},
+    {80, 255, 80}, {60, 230, 255}, {70, 110, 255}, {190, 80, 255}, {255, 110, 200},
+};
+#define GLOW_COLORS ((int)(sizeof(glow_colors) / sizeof(glow_colors[0])))
 
 static int glow_ready;
 
@@ -463,7 +512,7 @@ static void glow_init(void)
 static void draw_glow(GsOT *table, unsigned short depth, int cx, int cy, int width_px, int height_px)
 {
     POLY_FT4 prim;
-    int reach, period, phase, half_w, half_h, r, g, b;
+    int reach, period, phase, half_w, half_h, r, g, b, choice;
     double level;
 
     if (!tunable("glow", 0)) return;
@@ -482,9 +531,11 @@ static void draw_glow(GsOT *table, unsigned short depth, int cx, int cy, int wid
 
     phase = (int)(frame % (unsigned)period);
     level = GLOW_FLOOR + (1.0 - GLOW_FLOOR) * (sin(2.0 * 3.14159265358979323846 * phase / period) * 0.5 + 0.5);
-    r = (int)(tunable("glow_r", GLOW_R_DEFAULT) * level);
-    g = (int)(tunable("glow_g", GLOW_G_DEFAULT) * level);
-    b = (int)(tunable("glow_b", GLOW_B_DEFAULT) * level);
+    choice = tunable("glow_color", 0);
+    if (choice < 0 || choice >= GLOW_COLORS) choice = 0;
+    r = (int)(glow_colors[choice][0] * level);
+    g = (int)(glow_colors[choice][1] * level);
+    b = (int)(glow_colors[choice][2] * level);
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
     memset(&prim, 0, sizeof(prim));
@@ -543,6 +594,18 @@ static void draw_one(int index, int world_height)
     }
     width_px = height_px * CARD_ART_WIDTH / CARD_ART_HEIGHT; /* the shape every picture is fitted to (prepare_art.py) */
     cx = (base_sx + top_sx) / 2;
+
+    /* A gentle rise and fall ("bob" setting: amplitude in game pixels, 0 is
+     * off; "bob_period": frames per cycle), each zone a little out of step
+     * with the others so the monsters do not move as one. */
+    {
+        int amplitude = tunable("bob", 0), period = tunable("bob_period", 120);
+        if (amplitude > 0 && period > 0) {
+            int shift = (int)floor(amplitude * sin(2.0 * 3.14159265358979323846 * (double)((frame + (unsigned)index * 17) % (unsigned)period) / period) + 0.5);
+            top_sy += shift;
+            base_sy += shift;
+        }
+    }
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
     memset(&prim, 0, sizeof(prim));

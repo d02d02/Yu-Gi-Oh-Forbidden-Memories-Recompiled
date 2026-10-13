@@ -2,8 +2,8 @@
     "id": "duel-links-2d-arts",
     "name": "Duel Links 2D Arts",
     "author": "WillliTo & d02d02",
-    "version": "2.1",
-    "description": "Stands a high-resolution, Duel Links style 2D artwork on each face-up monster of the duel field, always facing the camera, with an optional glow. A mod of its own: it does not need 3D Monsters, and it never changes a card's name or text. Turn 3D Monsters off to use it: both draw a monster on the field, and together they would double up.",
+    "version": "2.2",
+    "description": "Stands a high-resolution, Duel Links style 2D artwork on each face-up monster of the duel field, always facing the camera, with an optional glow. Change any card's art by dropping art/<card id>.png in this folder; turn monsters into spells or traps (or the reverse) and add cards with the \"cards\" list in this mod.json (see README.txt). A mod of its own: it does not need 3D Monsters, and it never changes a card's name or text. Turn 3D Monsters off to use it: both draw a monster on the field, and together they would double up.",
     "library": "duel-links-2d-arts",
     "conflicts": [
         "3d-monsters"
@@ -31,6 +31,26 @@
             "description": "Raises (or lowers) the art above its card. 0 stands it on the card."
         },
         {
+            "key": "bob",
+            "label": "Bob height",
+            "type": "int",
+            "default": 0,
+            "min": 0,
+            "max": 8,
+            "step": 1,
+            "description": "How far each monster's art rises and falls, in game pixels. 0 holds it still."
+        },
+        {
+            "key": "bob_period",
+            "label": "Bob length",
+            "type": "int",
+            "default": 120,
+            "min": 20,
+            "max": 400,
+            "step": 10,
+            "description": "Frames for one full rise and fall. Lower bobs faster."
+        },
+        {
             "key": "glow",
             "label": "Glow",
             "type": "bool",
@@ -38,31 +58,23 @@
             "description": "A soft pulsing glow around each monster's art."
         },
         {
-            "key": "glow_r",
-            "label": "Glow colour: red",
-            "type": "int",
-            "default": 255,
-            "min": 0,
-            "max": 255,
-            "step": 1
-        },
-        {
-            "key": "glow_g",
-            "label": "Glow colour: green",
-            "type": "int",
-            "default": 255,
-            "min": 0,
-            "max": 255,
-            "step": 1
-        },
-        {
-            "key": "glow_b",
-            "label": "Glow colour: blue",
-            "type": "int",
-            "default": 90,
-            "min": 0,
-            "max": 255,
-            "step": 1
+            "key": "glow_color",
+            "label": "Glow colour",
+            "type": "choice",
+            "default": 0,
+            "choices": [
+                "Yellow",
+                "Gold",
+                "White",
+                "Red",
+                "Orange",
+                "Green",
+                "Cyan",
+                "Blue",
+                "Purple",
+                "Pink"
+            ],
+            "description": "The colour of the glow."
         },
         {
             "key": "glow_reach",
@@ -84,5 +96,6 @@
             "step": 2,
             "description": "Frames for one full pulse, dim to bright and back. Lower pulses faster."
         }
-    ]
+    ],
+    "cards": []
 }
