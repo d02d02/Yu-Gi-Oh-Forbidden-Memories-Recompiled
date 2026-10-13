@@ -1,7 +1,7 @@
 {
     "id": "anime-art",
     "name": "Anime Style",
-    "version": "1.2.3",
+    "version": "1.2.2",
     "author": "Unchiga, X@nder (HD pictures); d02d02, Hr\u00e6zlyr (anime/frame art)",
     "description": "Anime Style: full-bleed anime card frames (one per card kind; ritual, fusion and god frames), the art enlarged to fill them, ATK/DEF in the plaques, and the Forbidden Memories HD pictures built in (switchable). Standalone: nothing else needed. See HOWTO.txt.",
     "min_api": 11,
@@ -75,13 +75,6 @@
             "type": "bool",
             "default": 0,
             "description": "On: the well-known fusion monsters (Thousand Dragon, Metalzoa, Gaia the Dragon Champion, ...) wear the purple frame. Off: gold."
-        },
-        {
-            "key": "hd_frame_rules",
-            "label": "HD mod frame rules",
-            "type": "bool",
-            "default": 0,
-            "description": "On: the frame rules of the Forbidden Memories HD mod's anime option. Ritual spells wear the green magic frame, and cards tagged ritual wear the blue ritual frame. Off: this mod's own rules."
         },
         {
             "key": "ritual_green",
@@ -173,16 +166,6 @@
             }
         },
         "frame_for": [
-            {
-                "tag": "ritual",
-                "setting": "hd_frame_rules",
-                "style": "blue"
-            },
-            {
-                "class": "ritual_spell",
-                "setting": "hd_frame_rules",
-                "style": "green"
-            },
             {
                 "tag": "obelisk",
                 "style": "obelisk"
