@@ -5,7 +5,7 @@
  * Scene "field": hold L1 and confirm Option on the title menu. A duel with
  * Simon Muran on the standard field opens the usual way, and when it stops
  * for the player's first move the ten monster zones already hold the cards
- * field.json names, five a side, face up in attack position. They are real
+ * the settings p1-p5 and o1-o5 name (MEMORIES_MOD_TEST_SCENES_P1 ... _O5; 0 leaves a zone empty), five a side, face up in attack position. They are real
  * duel cards, so the 3D Monsters mod stands their models on them as it would
  * for cards played by hand. Plain Cross on Option still opens Options.
  *
@@ -79,54 +79,38 @@ static int stage;
 static int l1_on_option;
 static s16 cards[2][ZONES]; /* [0] the player's, [1] Simon's */
 
-/* The numbers in "key": [a, b, c, d, e]; 0 unless all five are there. */
-static int read_list(const char *text, const char *key, s16 *out)
-{
-    const char *at = strstr(text, key);
-    char *end;
-    int i;
-    if (!at || !(at = strchr(at, '['))) return 0;
-    at++;
-    for (i = 0; i < ZONES; i++) {
-        long id = strtol(at, &end, 10);
-        if (end == at) return 0;
-        out[i] = (s16)id;
-        at = end;
-        while (*at == ' ' || *at == ',' || *at == '\n' || *at == '\r' || *at == '\t') at++;
-    }
-    return 1;
-}
-
 static int monster(int id)
 {
     return Cards_Valid(id) &&
         ((gDuel_adwCardStats[id - 1] >> CARD_STAT_TYPE_SHIFT) & CARD_STAT_TYPE_MASK) < CARD_TYPE_MAGIC;
 }
 
-/* field.json, read each time so an edit shows on the next duel. */
+/* The scene from the mod's settings, each a zone's card (0 for an empty zone):
+ * p1-p5 are the player's five zones left to right and o1-o5 the opponent's;
+ * the environment variable MEMORIES_MOD_TEST_SCENES_P1 ... _O5 sets one for a
+ * run, with no file to edit. */
 static int load_field(void)
 {
-    char text[1024];
-    size_t size;
+    /* The defaults of mod.json, repeated: a setting the game has not saved yet
+     * answers with what is asked here, not with the manifest's. */
+    static const s16 defaults[2][ZONES] = {{380, 0, 374, 0, 713}, {67, 0, 217, 0, 1}};
     int side, i;
-    FILE *file = host->open_asset(host, "field.json");
-    if (!file) {
-        host->log(host, "field.json is missing");
-        return 0;
-    }
-    size = fread(text, 1, sizeof text - 1, file);
-    fclose(file);
-    text[size] = '\0';
-    if (!read_list(text, "\"player\"", cards[0]) || !read_list(text, "\"opponent\"", cards[1])) {
-        host->log(host, "field.json needs \"player\" and \"opponent\", five card ids each");
-        return 0;
-    }
     for (side = 0; side < 2; side++) {
+        int any = 0;
         for (i = 0; i < ZONES; i++) {
+            char key[4];
+            snprintf(key, sizeof key, "%c%d", side ? 'o' : 'p', i + 1);
+            cards[side][i] = (s16)host->setting(host, key, defaults[side][i]);
+            if (!cards[side][i]) continue;
             if (!monster(cards[side][i])) {
                 host->log(host, "card %d is not a monster", cards[side][i]);
                 return 0;
             }
+            any = 1;
+        }
+        if (!any) {
+            host->log(host, "a side has no monster at all");
+            return 0;
         }
     }
     return 1;
@@ -168,6 +152,18 @@ static void run_duel(void)
     if (first) D_8009B26E = DUEL_FIRST_STEP;
 }
 
+/* The card a deck position holds for a zone: its own, or for an empty zone the
+ * side's first card, which is never put on the field. */
+static int stand_in(int side, int zone)
+{
+    int i;
+    if (cards[side][zone]) return cards[side][zone];
+    for (i = 0; i < ZONES; i++) {
+        if (cards[side][i]) return cards[side][i];
+    }
+    return 1;
+}
+
 static void shuffle(void *player, void *opponent)
 {
     u16 *deck = (u16 *)gDuel_awPlayerShuffledDeck;
@@ -176,8 +172,8 @@ static void shuffle(void *player, void *opponent)
     original_shuffle(player, opponent);
     if (stage != ARMED) return;
     for (i = 0; i < DECK_SIZE; i++) {
-        deck[i] = (u16)cards[0][i % ZONES];
-        deck[DECK_SIZE + i] = (u16)cards[1][i % ZONES];
+        deck[i] = (u16)stand_in(0, i % ZONES);
+        deck[DECK_SIZE + i] = (u16)stand_in(1, i % ZONES);
     }
     stage = DEALT;
 }
@@ -190,6 +186,7 @@ static void hand_actions(void)
         for (side = 0; side < 2; side++) {
             for (zone = 0; zone < ZONES; zone++) {
                 int record = side * DUEL_CARD_SIDE_RECORD_COUNT + FIRST_ZONE + zone;
+                if (!cards[side][zone]) continue;
                 func_80024D34(record, side * DECK_SIZE + FIELD_POSITION + zone);
                 Duel_ApplyCardObjectFlags((DuelCardDisplayObject *)D_801A7AD8[record].object);
             }
