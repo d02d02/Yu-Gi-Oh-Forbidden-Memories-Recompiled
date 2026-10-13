@@ -704,7 +704,7 @@ static void draw_one(int index, int world_height)
      * ring of gold shows around its silhouette. The thinnest ("outline_width"
      * 0, the hairline) is one game pixel too, but half transparent: a game
      * pixel is the smallest step the console's coordinates have. */
-    if (tunable("outline", 0)) {
+    if (tunable("outline", 1)) {
         static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
         int choice = tunable("outline_width", 0), side, behind = depth + 1;
         int hairline = choice <= 0, width = hairline ? 1 : choice;

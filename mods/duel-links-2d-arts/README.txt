@@ -21,7 +21,7 @@ SETTINGS (Mods window)
   Art size (40), Height above the card (16).
   Float height (Off) and Float length (180): turn Float height up (1 to 8) and the art floats gently
   up and down.
-  Gold outline (off) and Outline thickness (Hairline, then 1 to 4 pixels).
+  Gold outline (on) and Outline thickness (Hairline, the thinnest, then 1 to 4 pixels).
   Glow (off), Glow colour (Yellow, Gold, White, Red, Orange, Green, Cyan, Blue, Purple, Pink),
   Glow size (50), Glow pulse length (90).
 
