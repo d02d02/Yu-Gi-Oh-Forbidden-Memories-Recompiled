@@ -24,3 +24,6 @@
 # Tool-generated language caches
 **/__pycache__/
 *.py[cod]
+
+# rigkit situation goldens: screenshots of the disc (never committed)
+tools/pc/rigs/situations/golden/

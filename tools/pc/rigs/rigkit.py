@@ -6,6 +6,8 @@
   python -I rigkit.py scene --set trap --scale 4 --out DIR [--settings k=v ...] [--env K=V ...]
   python -I rigkit.py duel  --hand 100,332,683,301,364 --plays 0:up,0:down --scale 2 --out DIR
   python -I rigkit.py sets  --scale 2 --out DIR          (every scene set -> sheet.png)
+  python -I rigkit.py situation situations/odd-slot-attack.json [--record | --check] --out DIR
+      a declarative situation (hand, plays with COLUMNS, attack, camera, shots, pixel checks), see situations/*.json
   python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
       attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
       --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
@@ -78,6 +80,118 @@ def camera_pin(g, angle=None, distance=None):
     g.pad(0, 2)
 
 
+def play_at(g, slot, column=None, face_up=True, star=0):
+    """play_card, but into zone `column` (0-4, left to right) instead of the first free one. Sequence found by
+    tracing (2026-10-13): Cross selects the card, Right = face up, a second Cross opens the ZONE CHOICE (phase is still
+    'hand'; the field cursor FIELD_CURSOR col/row bytes now move with Left/Right; the game picks the row: monsters
+    2, spells/traps 3), a third Cross confirms (placement phase). Verified from field() afterwards."""
+    import yfm_control as yc
+    D = yc.DUEL_PHASES
+    if column is None:
+        return g.play_card(slot, face_up=face_up, star=star)
+    g.wait_turn(("hand",))
+    g._hand_to(slot)
+    card = g.duel()[0]["hand"][slot]["id"]
+    g.press("cross", hold=4, after=30)
+    if face_up:
+        g.press("right", hold=4, after=12)
+    g.press("cross", hold=4, after=30)            # the zone choice
+    g._cursor_to(yc.FIELD_CURSOR, column, "zone")
+    g.press("cross", hold=4, after=30)            # confirm the zone
+    g.press_until(lambda g: g.phase() != D["placement"] or g.duel_over(), "cross", every=40, timeout=1200, what="the placement")
+    if g.phase() == D["position"] and star:
+        for _ in range(star):
+            g.press("down", hold=4, after=12)
+    if g.phase() == D["position"]:
+        g.press_until(lambda g: g.phase() != D["position"] or g.duel_over(), "cross", every=40, timeout=1200, what="the guardian star")
+    g._settle()
+    if not any(g.field()[r][column] == card for r in (2, 3)):
+        raise RuntimeError(f"play_at: card {card} is not in column {column}: {g.field()}")
+
+
+def run_situation(a, yc, out, base):
+    """Spec keys: opponent, hand [5 ids], opp_hand [5 ids, optional], turns [{"play": [[slot,"up|down",column?,star?]...],
+    "attack": [column, target|null]}], camera [angle, distance?], at [battle steps], delay N (vblanks after reaching a step before its shot, default 3), every N, tail N, steps N (shot after
+    the last turn when there is no attack), scale, settings {k: v}, env {K: V}, checks {"max_pct": f, "region": [x,y,w,h]}."""
+    import hashlib, time
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import pxkit
+    spec = json.loads(Path(a.spec).read_text(encoding="utf-8"))
+    settings = {"mod.3d-monsters": 0, "mod.camera-pin": 1, **spec.get("settings", {})}
+    env = dict(spec.get("env", {}))
+    scale = int(spec.get("scale", a.scale))
+    key = hashlib.sha1(json.dumps({k: spec.get(k) for k in ("opponent", "hand", "opp_hand", "turns", "settings", "env")}, sort_keys=True).encode()).hexdigest()[:10]
+    t0 = time.time()
+    with yc.Game(out=out / "make", settings={**settings, "internal_scale": 1}, env=env, **base) as g0:
+        build = f"{g0.info()['build']:08x}"
+        state = out / "states" / f"{key}-{build}.state"
+        if not state.exists():
+            state.parent.mkdir(exist_ok=True)
+            hand = spec.get("hand", [100, 100, 100, 100, 100])
+            g0.goto("duel", opponent=spec.get("opponent", 1), deck=",".join(map(str, hand)))
+
+            def arrange(g):
+                g.arrange_deck(0, hand)
+                if spec.get("opp_hand"):
+                    g.arrange_deck(1, spec["opp_hand"])
+            g0.duel_ready(before_deal=arrange)
+            for n, turn in enumerate(spec.get("turns", [])):
+                if n:
+                    g0.end_turn(); g0.wait_turn(("hand",))
+                for pl in turn.get("play", []):
+                    play_at(g0, pl[0], pl[2] if len(pl) > 2 else None, face_up=(pl[1] == "up"), star=pl[3] if len(pl) > 3 else 0)
+                if turn.get("attack"):
+                    col, tgt = turn["attack"]
+                    g0._settle = lambda *x, **k: g0.save(state)
+                    g0.attack(col, tgt)
+            if not state.exists():
+                g0.save(state)
+    res = {"spec": str(a.spec), "state": state.name, "scale": scale, "shots": [], "ok": True}
+    gold = Path(a.spec).resolve().parent / "golden" / f"{Path(a.spec).stem}-{scale}x"
+    chk = spec.get("checks", {})
+    shots = []
+    with yc.Game(out=out / "look", settings={**settings, "internal_scale": scale}, env=dict(env, MEMORIES_DUMP_PICTURE="1"), **base) as g:
+        g.load(state)
+        cam = spec.get("camera")
+        if cam:
+            camera_pin(g, int(cam[0]), int(cam[1]) if len(cam) > 1 else None)
+        if any(t.get("attack") for t in spec.get("turns", [])):
+            want, every, start, seen, ended, in_battle = set(spec.get("at", [])), spec.get("every", 0), g.vblank, set(), None, False
+            while g.vblank - start < 1200:
+                step, vb = battle_step(g), g.vblank - start
+                name = None
+                if step in want and step not in seen:
+                    seen.add(step)
+                    g.step(spec.get("delay", 3))          # the picture shows a change a frame or two after it is made
+                    vb = g.vblank - start; name = f"s{step}-vb{vb}"
+                elif every and vb % every == 0:
+                    name = f"f{vb:04d}-s{step}"
+                if name:
+                    shots.append(g.shot(out / f"{name}.png"))
+                if step is not None:
+                    in_battle = True
+                if step is None and in_battle and ended is None:
+                    ended = vb
+                if ended is not None and vb - ended >= spec.get("tail", 0):
+                    break
+                g.step(1)
+        else:
+            g.step(spec.get("steps", 30)); shots.append(g.shot(out / "situation.png"))
+    for p in shots:
+        entry = {"shot": Path(p).name}
+        if a.record:
+            pxkit.golden(p, gold, "record"); entry["ok"] = True
+        elif a.check:
+            g_img = gold / Path(p).name
+            d = pxkit.diff(p, g_img, tuple(chk["region"]) if chk.get("region") else None) if g_img.is_file() else {"pct": 100.0, "count": None}
+            entry.update(ok=d["pct"] <= chk.get("max_pct", 0.0), detail=d); res["ok"] &= entry["ok"]
+        res["shots"].append(entry)
+    res["wall_s"] = round(time.time() - t0, 1)
+    (out / "result.json").write_text(json.dumps(res, indent=1, default=str))
+    print(json.dumps(res, default=str)[:700])
+    return 0 if res["ok"] else 1
+
+
 def find_set(repo, name):
     """sets/<name>.json from the repo's test-scenes, else the dev worktree's (only dev tracks the sets)."""
     for root in (Path(repo), Path(DEFAULT_REPO)):
@@ -102,7 +216,7 @@ def title_to_option_scene(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -115,6 +229,9 @@ def main():
     ap.add_argument("--every", type=int, default=0, help="attack: also a shot every N vblanks from the battle start to --tail after it")
     ap.add_argument("--tail", type=int, default=60, help="attack: vblanks to keep filming after the battle phase ends")
     ap.add_argument("--at", default="1,2,3,4,7,8,10,6,11", help="attack: battle sub-steps to shoot (see BATTLE_STEPS)")
+    ap.add_argument("spec", nargs="?", help="situation: path of the JSON spec")
+    ap.add_argument("--record", action="store_true", help="situation: store the shots as goldens next to the spec")
+    ap.add_argument("--check", action="store_true", help="situation: compare the shots with the goldens (exit 1 on a difference)")
     ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
     ap.add_argument("--settings", nargs="*", help="key=value player settings, e.g. mod.anime-art=1")
@@ -143,6 +260,8 @@ def main():
             shutil.copytree(exe.parent, private, ignore=shutil.ignore_patterns("*.pdb", "*.c", "*.s", "obj"))
         exe = private / exe.name
     base = dict(executable=str(exe))
+    if a.kind == "situation":
+        return run_situation(a, yc, out, base)
     if a.kind == "attack":
         return run_attack(a, yc, out, settings, env, base)
     # 1) the situation, once, at 1x
@@ -229,4 +348,4 @@ def run_sets(a):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

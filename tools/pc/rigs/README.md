@@ -4,3 +4,8 @@
 saved as a state named with the build id, then looked at at any scale (about 1 s even at 4x).
 Subcommands: `hand`, `scene` (test-scenes mod), `duel` (controlled hand + plays), `sets` (contact sheet), `attack` (state before the battle, camera pinned via mods/camera-pin, shots at chosen battle sub-steps). Helpers: `battle_step`, `wait_battle_step`, `camera_read`, `camera_pin`.
 Usage and caveats are in the module docstring; strategy docs live in `C:\Users\mdahh\.claude\shared\yfm-notes\dev-tools\`.
+
+`pxkit.py`: exact pixel checks (`diff`, `count`, `golden`); runs are bit-identical so a count is a verdict.
+`rigkit.py situation <spec.json> [--record|--check]`: a declarative situation (hand, plays into chosen columns,
+attack, camera pin, shots at battle steps, pixel checks). `--record` stores goldens next to the spec (git-ignored),
+`--check` exits 1 when a shot differs. Spec keys are in `run_situation`'s docstring; example `situations/odd-slot-attack.json`.
