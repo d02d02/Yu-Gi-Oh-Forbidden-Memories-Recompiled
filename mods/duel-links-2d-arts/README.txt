@@ -1,4 +1,4 @@
-Duel Links 2D Arts (v2.4, in progress)
+Duel Links 2D Arts (v2.4)
 
 High-resolution Duel Links style artwork for the monsters on the duel field, always facing
 the camera, with an optional glow. Needs release v0.3.0 or later of YFM Re-Decomp. Does not
@@ -17,15 +17,16 @@ UPDATING FROM v2.2 OR OLDER (v2.3 reorganised the folder)
   2. Delete the old duel-links-2d-arts folder and extract this zip in its place.
   3. Put your art folder's files back in art/, and paste your "cards" list back into mod.json.
 
-SETTINGS (Mods window)
-  Art size (40), Height above the card (16).
-  Float height (Off) and Float length (180): turn Float height up (1 to 8) and the art floats gently
-  up and down.
-  Gold outline (on), Outline style (Sharp, or Flowing halos: halos that leave the line and fade
-  outward), Outline thickness (Hairline, the thinnest, then 1 to 4 pixels; for halos, how far they
-  travel) and Halo speed.
-  Glow (off), Glow colour (Yellow, Gold, White, Red, Orange, Green, Cyan, Blue, Purple, Pink),
-  Glow size (50), Glow pulse length (90).
+SETTINGS (Mods window; each name starts with its group)
+  ART: Size (40), Height above the card (16).
+  FLOAT: Height (Off, then 1 to 8: the art floats gently up and down), Length (180).
+  COLOUR: one colour (Gold, Yellow, White, Red, Orange, Green, Cyan, Blue, Purple, Pink) shared
+    by the outline, the flowing halos and the glow.
+  OUTLINE: Style (Off, Sharp, or Flowing halos: halos that leave the line and fade outward),
+    Thickness (Hairline, the thinnest, then 1 to 4 pixels; for halos, how far they travel),
+    Halo speed.
+  GLOW: On (off), Size (50), Pulse length (90).
+  (v2.4 merged "Gold outline" into Outline style and replaced Glow colour by COLOUR: set them again.)
 
 CHANGING A CARD'S FIELD ART (no JSON, no tools)
 1. Find the card's id in card-ids.txt (e.g. 22 is Summoned Skull).

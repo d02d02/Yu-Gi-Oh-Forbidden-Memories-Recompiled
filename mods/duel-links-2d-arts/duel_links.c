@@ -223,8 +223,23 @@ static int own_texture(int card, int level, int *w, int *h, const u16 **clut, co
     return 0;
 }
 
-/* BGR555 gold (255, 200, 40) for the outline's palette. */
-#define OUTLINE_GOLD ((5 << 10) | (25 << 5) | 31)
+/* BGR555 white for the outline's palette: the colour comes from each ring's own
+ * modulation (the "color" setting), so one palette serves every colour. */
+#define OUTLINE_WHITE 0x7fff
+
+/* The "color" setting's choices, in mod.json's order: one colour for the outline,
+ * the halos and the glow. The first is the gold the outline always had. */
+static const unsigned char colors[][3] = {
+    {255, 200, 40}, {255, 255, 90}, {255, 255, 255}, {255, 60, 60}, {255, 140, 30},
+    {80, 255, 80}, {60, 230, 255}, {70, 110, 255}, {190, 80, 255}, {255, 110, 200},
+};
+#define COLORS ((int)(sizeof(colors) / sizeof(colors[0])))
+
+static const unsigned char *shared_color(void)
+{
+    int choice = tunable("color", 0);
+    return colors[choice < 0 || choice >= COLORS ? 0 : choice];
+}
 
 static int load_art(Art *art, int card, int level)
 {
@@ -293,22 +308,22 @@ static int load_art(Art *art, int card, int level)
     }
     bank_put(bank, PIXELS_X, PIXELS_Y + TEX_TOP, w / 2, h, pixels);
     bank_put(bank, CLUT_X, CLUT_Y, 256, 1, clut);
-    /* The same palette in gold, one row below: the outline's quads sample the
-     * art through it, so every solid texel is gold and every clear one stays
+    /* The same palette in white, one row below: the outline's quads sample the
+     * art through it, so every solid texel is white and every clear one stays
      * clear (and half transparent where the art's own is). */
     {
-        u16 gold[256];
+        u16 white[256];
         int i;
         for (i = 0; i < 256; i++) {
-            gold[i] = clut[i] ? (u16)(OUTLINE_GOLD | (field_art == NULL ? (clut[i] & 0x8000) : 0)) : 0;
+            white[i] = clut[i] ? (u16)(OUTLINE_WHITE | (field_art == NULL ? (clut[i] & 0x8000) : 0)) : 0;
         }
-        bank_put(bank, CLUT_X, CLUT_Y + 1, 256, 1, gold);
+        bank_put(bank, CLUT_X, CLUT_Y + 1, 256, 1, white);
         /* And once more with every solid texel flagged half transparent: the
          * hairline outline, a ring only half as strong as the art. */
         for (i = 0; i < 256; i++) {
-            gold[i] = clut[i] ? (u16)(OUTLINE_GOLD | 0x8000) : 0;
+            white[i] = clut[i] ? (u16)(OUTLINE_WHITE | 0x8000) : 0;
         }
-        bank_put(bank, CLUT_X, CLUT_Y + 2, 256, 1, gold);
+        bank_put(bank, CLUT_X, CLUT_Y + 2, 256, 1, white);
     }
     art->w = w;
     art->h = h;
@@ -477,7 +492,7 @@ static int duel_field_up(void)
  * (BGR555's bit 15, the semi-transparency flag the renderer reads alongside
  * the primitive's own setSemiTrans -- both must be on, or it draws opaque,
  * gl_picture.c). The glow's own colour is entirely the primitive's
- * r0/g0/b0 modulation (setting glow_color), scaled each frame by a sine
+ * r0/g0/b0 modulation (setting color), scaled each frame by a sine
  * wave (glow_period, frames per full pulse) between a floor and full
  * brightness -- never down to fully off, which is what read as "on/off"
  * rather than a breathing pulse -- for the "shining" look; abr 1 (GetTPage's
@@ -496,14 +511,6 @@ static int duel_field_up(void)
 #define GLOW_REACH_DEFAULT 50
 #define GLOW_PERIOD_DEFAULT 90
 #define GLOW_FLOOR 0.35 /* the pulse's dimmest point: never fully off */
-/* The "glow_color" choices, in mod.json's order; the first is the colour the
- * glow always had (255, 255, 90). */
-static const unsigned char glow_colors[][3] = {
-    {255, 255, 90}, {255, 200, 40}, {255, 255, 255}, {255, 60, 60}, {255, 140, 30},
-    {80, 255, 80}, {60, 230, 255}, {70, 110, 255}, {190, 80, 255}, {255, 110, 200},
-};
-#define GLOW_COLORS ((int)(sizeof(glow_colors) / sizeof(glow_colors[0])))
-
 static int glow_ready;
 
 static void glow_init(void)
@@ -544,7 +551,8 @@ static void glow_init(void)
 static void draw_glow(GsOT *table, unsigned short depth, int cx, int cy, int width_px, int height_px)
 {
     POLY_FT4 prim;
-    int reach, period, phase, half_w, half_h, r, g, b, choice;
+    int reach, period, phase, half_w, half_h, r, g, b;
+    const unsigned char *rgb;
     double level;
 
     if (!tunable("glow", 0)) return;
@@ -563,11 +571,10 @@ static void draw_glow(GsOT *table, unsigned short depth, int cx, int cy, int wid
 
     phase = (int)(frame % (unsigned)period);
     level = GLOW_FLOOR + (1.0 - GLOW_FLOOR) * (sin(2.0 * 3.14159265358979323846 * phase / period) * 0.5 + 0.5);
-    choice = tunable("glow_color", 0);
-    if (choice < 0 || choice >= GLOW_COLORS) choice = 0;
-    r = (int)(glow_colors[choice][0] * level);
-    g = (int)(glow_colors[choice][1] * level);
-    b = (int)(glow_colors[choice][2] * level);
+    rgb = shared_color();
+    r = (int)(rgb[0] * level);
+    g = (int)(rgb[1] * level);
+    b = (int)(rgb[2] * level);
 
     /* Zeroed first: the port reads pad2 as the bank fade (SOFT_GPU_FADE). */
     memset(&prim, 0, sizeof(prim));
@@ -699,13 +706,13 @@ static void draw_one(int index, int world_height)
      * before using it here. */
     depth = depth / 4 - tunable("depth", DEPTH_STEPS);
     depth = depth < 0 ? 0 : depth >= (1 << table->length) ? (1 << table->length) - 1 : depth;
-    /* A gold outline ("outline" setting): the art drawn eight more times in
-     * gold, each a little to one side and a step behind the real one, so a
-     * ring of gold shows around its silhouette. The thinnest ("outline_width"
+    /* An outline ("outline_style" setting, in the shared colour): the art drawn eight more times in
+     * the colour, each a little to one side and a step behind the real one, so a
+     * ring of colour shows around its silhouette. The thinnest ("outline_width"
      * 0, the hairline) is one game pixel too, but half transparent: a game
      * pixel is the smallest step the console's coordinates have. */
-    if (tunable("outline", 1) && tunable("outline_style", 0) == 1) {
-        /* Flowing halos ("outline_style" 1): a gold line at the art's edge that
+    if (tunable("outline_style", 1) == 2) {
+        /* Flowing halos ("outline_style" 2): a line at the art's edge that
          * stays put, and halos that leave it and travel outward, dimming as they
          * go, a new one born as the last is half way out: a flow, not a glow
          * that swells and shrinks. Each halo is a bump in brightness at its
@@ -721,6 +728,7 @@ static void draw_one(int index, int world_height)
         static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
         double profile[10], period = (double)tunable("outline_period", 120), clock;
         int choice = tunable("outline_width", 0), layers, reach, side, behind = depth + 1, wave;
+        const unsigned char *rgb = shared_color();
         if (choice < 0) choice = 0;
         layers = 2 + choice;   /* Hairline: halos reach 2 pixels out, 1 pixel 3, ... 4 pixels 6 */
         if (layers > 6) layers = 6;
@@ -751,17 +759,20 @@ static void draw_one(int index, int world_height)
                 ring.x1 += dx; ring.y1 += dy;
                 ring.x2 += dx; ring.y2 += dy;
                 ring.x3 += dx; ring.y3 += dy;
-                ring.clut = GetClut(CLUT_X, art->clut_y + 2);   /* gold, every solid texel flagged for blending */
+                ring.clut = GetClut(CLUT_X, art->clut_y + 2);   /* white (tinted by the ring), every solid texel flagged for blending */
                 ring.tpage = GetTPage(1, subtract ? 2 : 1, PIXELS_X, PIXELS_Y) | (u16)(art->bank << 11);   /* abr 1 adds, 2 subtracts */
                 setSemiTrans(&ring, 1);
-                ring.r0 = ring.g0 = ring.b0 = (u8)level;
+                ring.r0 = (u8)(level * rgb[0] / 255);
+                ring.g0 = (u8)(level * rgb[1] / 255);
+                ring.b0 = (u8)(level * rgb[2] / 255);
                 GsSortPoly(&ring, table, (unsigned short)behind);
             }
         }
-    } else if (tunable("outline", 1)) {
+    } else if (tunable("outline_style", 1) == 1) {
         static const signed char around[8][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
         int choice = tunable("outline_width", 0), side, behind = depth + 1;
         int hairline = choice <= 0, width = hairline ? 1 : choice;
+        const unsigned char *rgb = shared_color();
         if (behind >= (1 << table->length)) behind = (1 << table->length) - 1;
         for (side = 0; side < 8; side++) {
             POLY_FT4 ring = prim;
@@ -771,6 +782,9 @@ static void draw_one(int index, int world_height)
             ring.x2 += dx; ring.y2 += dy;
             ring.x3 += dx; ring.y3 += dy;
             ring.clut = GetClut(CLUT_X, art->clut_y + (hairline ? 2 : 1));
+            ring.r0 = (u8)(rgb[0] * 128 / 255);
+            ring.g0 = (u8)(rgb[1] * 128 / 255);
+            ring.b0 = (u8)(rgb[2] * 128 / 255);
             if (hairline) setSemiTrans(&ring, 1);
             GsSortPoly(&ring, table, (unsigned short)behind);
         }
