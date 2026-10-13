@@ -37,12 +37,20 @@
         {
             "key": "float",
             "label": "Float height",
-            "type": "int",
+            "type": "choice",
             "default": 3,
-            "min": 0,
-            "max": 8,
-            "step": 1,
-            "description": "How far each monster's art floats up and down, in game pixels (0 to 8). 0 holds it still."
+            "description": "How far each monster's art floats up and down, in game pixels.",
+            "choices": [
+                "Off",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8"
+            ]
         },
         {
             "key": "float_period",
