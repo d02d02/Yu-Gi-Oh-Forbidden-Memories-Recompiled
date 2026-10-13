@@ -144,6 +144,17 @@ Good to know
 - The frame pictures have power-of-two sizes on purpose. A frame picture of another size can
   be invisible at Internal 2x/4x on some graphics cards in game version v0.3.0.
 
+What changed in 1.2.3
+---------------------
+- Cards of different frame kinds on screen together (the attacker and its target, a trap shown
+  beside its attacker) each keep their own frame colour during the duel. Before, a card could
+  fall back to another card's frame (the "colours return to normal" bug).
+- The attack animation no longer slows down when a card with a god / fusion / ritual frame
+  attacks.
+- These two fixes are in the game program, not in the mod files: use the memories-pc.exe that
+  comes with the "fix pack" zip (replace the one in your game folder). With the plain v0.3.0
+  memories-pc.exe the mod works as before.
+
 Credits
 -------
 HD pictures - Forbidden Memories HD by Unchiga and X@nder.
