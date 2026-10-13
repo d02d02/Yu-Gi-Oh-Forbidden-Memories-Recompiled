@@ -36,6 +36,12 @@ Fusion monster frames  off (default) / on. On = the well-known fusion monsters (
 Ritual spells: green frame
                        off (default) = ritual spells wear the blue ritual frame.
                        on            = ritual spells wear the green magic frame.
+HD mod frame rules
+                       off (default) = this mod's own rules.
+                       on            = the frame rules of the Forbidden Memories HD mod's anime option:
+                                       ritual spells wear the green magic frame, and cards tagged
+                                       "ritual" wear the blue ritual frame (not the ritual-monster one).
+                                       For mods that tagged their cards for the HD mod.
 
 Which frame a card gets
 -----------------------
