@@ -1284,7 +1284,13 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
             }
         }
     }
-    if (area == 0) return;
+    /* A triangle without area draws nothing. At level 2 a precise triangle stands where it really is, and one whose
+     * rounded corners fall in a line (a sliver of a model, a wing's tip) can still cover pixels there. */
+    if (Settings_Get(SET_PGXP) >= 2 && a->precise && b->precise && c->precise) {
+        if ((b->fx - a->fx) * (c->fy - a->fy) - (b->fy - a->fy) * (c->fx - a->fx) == 0.0f) return;
+    } else if (area == 0) {
+        return;
+    }
     min_x = a->x < b->x ? (a->x < c->x ? a->x : c->x) : (b->x < c->x ? b->x : c->x);
     max_x = a->x > b->x ? (a->x > c->x ? a->x : c->x) : (b->x > c->x ? b->x : c->x);
     min_y = a->y < b->y ? (a->y < c->y ? a->y : c->y) : (b->y < c->y ? b->y : c->y);

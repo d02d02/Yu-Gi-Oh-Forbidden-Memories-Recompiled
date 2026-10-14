@@ -61,7 +61,13 @@ Checked against the kept triangle log and magenta capture (`tools/gltri_check.py
 - The `gltri:` log line is written before that return, and the log's frame counter is one ahead of the capture (capture "frame 40" = log frame 39).
   On the matching frame no unpainted pixel lies more than 0.1 px inside a drawn triangle: the 116 = dropped triangles + on-edge cracks.
 - The remaining classes (thin slivers, pieces without shared vertices, edge-on dark slivers, transparent texels, the 0.75 px bias) come from the model data
-  at precise positions; an indexed-mesh renderer would inherit them and need the same weld and coverage. Next: fix the area test, re-measure, lower the growth.
+  at precise positions; an indexed-mesh renderer would inherit them and need the same weld and coverage.
+
+Fix applied and measured (small scene, 4x, frame 40, before/after builds, identical settings): level 2 + all three precise now tests the precise area.
+Level 0/1 frames byte-identical. The 160 px only those triangles cover: 159 unpainted -> 2. Holes (magenta at L2 where L1 solid, gap_score.py AREA, L2 shifted
+back 3 px): growth 0: 504 -> 424, 0.1: 273 -> 228, 0.15: 191 -> 161, 0.2: 121 -> 101; fringe +19..26 px. A real but modest share: at growth 0 the 424 left are
+348 cracks between triangles (within 0.5 px of one, covered by none), 71 transparent texels, 5 on an edge. Still unverified: whether those crack edges are
+shared by vertex index in the HMD data (if yes, option B would close them; if no, nothing but coverage will).
 
 ## How to reproduce (Windows)
 Disc image `game\ygofm-orig-usa.bin` (USA, SLUS-01411; not in git). Build `python tools\pc\build.py --target windows`. Test scenes mod (`mods/test-scenes`, from the fork's `dev` branch) must be linked and built for `scene_measure.py`.

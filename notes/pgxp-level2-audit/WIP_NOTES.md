@@ -125,3 +125,13 @@ extrapolating variant. Not explained: 116 pixels covered by a submitted triangle
 REMOVED as failed: selective precise culling (NCLIP give-back) + Memories_GteAdoptPrecise + counters; silhouette taint. Tree now: draw ids, view/scale in PgxpVertex, weld_corners, grow_triangle,
 settings.c clamp 2 (measurement), probe/gltri logs and env switches (MEMORIES_PGXP_WELD/PROBE/NOPERSP/CLEAR_MAGENTA/CYAN_TRANSPARENT/GROW/GROW_EXTRAP; remove before commit).
 C tests pass (pc_pgxp, pc_gte, pc_libgpu). NOT done: full duel at 2x with HD mod, other OS/GPU, imported models, a blind A/B of wobble (M6), packet-budget check on a ten-monster board with level 2 (no extra packets now).
+
+## Rounded-area test fixed (2026-10-14, after the review)
+gl_picture.c `triangle()` returned on `area == 0` with the ROUNDED area, also at level 2: 438 of 3,665 fully precise triangles per frame (12%) were never drawn.
+Now level 2 + all three precise tests the precise area. Before/after: private build copies `tmp\pc\game32-before` / `game32-after`, captures in
+`tmp\pc\measure-area0\{before,after}` (small scene, 4x, frame 40; driver: same scene_measure.py calls for l0, l1, l1_mag, l2, l2_g{0,0.1,0.15,0.2}[_mag]).
+- Level 0 / 1 frames byte-identical. The 160 px only those triangles cover: 159 unpainted -> 2 (`hacking\shared\tools\gltri_check.py`).
+- Holes (magenta at L2 where L1 solid, gap_score AREA, shift 3 px): growth 0: 504 -> 424; 0.1: 273 -> 228; 0.15: 191 -> 161; 0.2: 121 -> 101. Fringe +19..26 px.
+- Left at growth 0: 348 cracks between triangles, 71 transparent texels, 5 on an edge. Evidence sheets 12_area0_* (zoom3: a purple crack on a back closed).
+- Traps: the gltri log line is written before the area test; the log's frame counter is one ahead of the capture (capture frame 40 = log frame 39).
+- Next: tag packet vertices with (vertex array, index) and check whether crack edges are shared by index (decides whether an indexed-mesh renderer could help).

@@ -6,8 +6,8 @@ the magenta-clear capture of the same frame (MEMORIES_PGXP_CLEAR_MAGENTA). Writt
 Without `frame` it picks the log frame whose triangles best match the capture (the log's frame counter
 ran one ahead: capture "frame 40" = log frame 39). Prints per frame:
   - triangles, how many have all / some / no precise vertices (some = lost vertex identity);
-  - "dropped": fully precise triangles that gl_picture.c triangle() skips because the ROUNDED area is 0
-    (the gltri line is written before that return), and the pixels only they would paint;
+  - "rounded area 0": fully precise triangles whose ROUNDED area is 0, which gl_picture.c triangle() skipped
+    before the 2026-10-14 fix (the gltri line is written before that test), and the pixels only they paint;
   - unpainted pixels inside a drawn triangle, split by depth (on-edge = within 0.1 px: cracks / fill rule).
 """
 import re, sys
@@ -55,7 +55,7 @@ def raster(mask, p, scale, margin=0.0):
 
 def frame_masks(lines, shape, scale):
     drawn, deep, dropped = (np.zeros(shape, bool) for _ in range(3))
-    counts = {"triangles": 0, "all precise": 0, "some precise (MIXED)": 0, "none precise": 0, "dropped": 0}
+    counts = {"triangles": 0, "all precise": 0, "some precise (MIXED)": 0, "none precise": 0, "rounded area 0": 0}
     for g in lines:
         ox, oy = int(g[18]), int(g[19])
         marks = [g[5 + 5 * k] for k in range(3)]
@@ -69,7 +69,7 @@ def frame_masks(lines, shape, scale):
         counts["all precise" if n == 3 else "none precise" if n == 0 else "some precise (MIXED)"] += 1
         if int(g[2]) == 0:
             if n == 3:
-                counts["dropped"] += 1
+                counts["rounded area 0"] += 1
                 raster(dropped, pts, scale)
         else:
             raster(drawn, pts, scale)
@@ -102,7 +102,7 @@ def main():
     for k, v in counts.items():
         print(f"  {k}: {v}")
     only = dropped & ~drawn
-    print(f"  pixels only the dropped triangles cover: {only.sum()}, unpainted in the capture: {(only & magenta).sum()}")
+    print(f"  pixels only the rounded-area-0 triangles cover: {only.sum()}, unpainted in the capture: {(only & magenta).sum()}")
     print(f"  unpainted inside a drawn triangle: {(drawn & magenta).sum()}, deeper than 0.1 px inside: {(deep & magenta).sum()}")
 
 
