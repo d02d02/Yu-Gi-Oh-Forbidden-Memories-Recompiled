@@ -307,6 +307,8 @@ static const char *vertex_source =
     "in float persp;\n"
     "noperspective out float q;\n"
     "in ivec4 texture_bounds;\n"
+    "in vec3 corner;\n"
+    "noperspective out vec3 bary;\n"
     "noperspective out vec2 uv;\n"
     "noperspective out vec3 rgb;\n"
     "flat out int flags;\n"
@@ -324,6 +326,7 @@ static const char *vertex_source =
     "    page = texture_page;\n"
     "    mode = texture_mode;\n"
     "    bounds = texture_bounds;\n"
+    "    bary = corner;\n"
     "}\n";
 
 /* Texture xBR (Video > Effects > xBR at 2x and up): present_pass.c's xBR,
@@ -458,6 +461,7 @@ static const char *fragment_source =
     "noperspective in vec2 uv;\n"
     "noperspective in float q;\n"
     "noperspective in vec3 rgb;\n"
+    "noperspective in vec3 bary;\n"
     "flat in int flags;\n"
     "flat in ivec4 page;\n"
     "flat in ivec4 mode;\n"
@@ -603,7 +607,13 @@ static const char *fragment_source =
     "        else {\n"
     "            word = texel_word(u, v);\n"
     "#ifdef PAD_TRANSPARENT\n"
-    "            if (word == 0u && (flags & 32) != 0) {\n"
+    "            float edge = 1e9;\n"
+    "            if (word == 0u && (flags & 128) != 0) {\n"
+    "                edge = min(bary.x / max(length(vec2(dFdx(bary.x), dFdy(bary.x))), 1e-9),\n"
+    "                       min(bary.y / max(length(vec2(dFdx(bary.y), dFdy(bary.y))), 1e-9),\n"
+    "                           bary.z / max(length(vec2(dFdx(bary.z), dFdy(bary.z))), 1e-9)));\n"
+    "            }\n"
+    "            if (word == 0u && (flags & 128) != 0 && edge < PAD_EDGE * float(scale)) {\n"
     "                word = texel_word(clamp(u + 1, bounds.x, bounds.z) & 255, v);\n"
     "                if (word == 0u) word = texel_word(clamp(u - 1, bounds.x, bounds.z) & 255, v);\n"
     "                if (word == 0u) word = texel_word(u, clamp(v + 1, bounds.y, bounds.w) & 255);\n"
@@ -740,10 +750,13 @@ static int make_program(int xbr)
     GLint ok = 0;
     if (!vs) return 0;
     { /* EXPERIMENT: MEMORIES_PGXP_CYAN_TRANSPARENT paints a transparent texel cyan instead of leaving what lies beneath */
-        static char defines[128];
+        static char defines[256];
+        char pad_defines[96];
+        snprintf(pad_defines, sizeof(pad_defines), "#define PAD_TRANSPARENT 1\n#define PAD_EDGE %s\n",
+                 getenv("MEMORIES_PGXP_PAD_EDGE") ? getenv("MEMORIES_PGXP_PAD_EDGE") : "1.5");
         snprintf(defines, sizeof(defines), "%s%s%s", xbr ? "#define TEXTURE_XBR 1\n" : "",
                  getenv("MEMORIES_PGXP_CYAN_TRANSPARENT") ? "#define DEBUG_TRANSPARENT 1\n" : "",
-                 getenv("MEMORIES_PGXP_PAD_TRANSPARENT") ? "#define PAD_TRANSPARENT 1\n" : "");
+                 getenv("MEMORIES_PGXP_NOPAD") ? "" : pad_defines);
         fs = compile(GL_FRAGMENT_SHADER, fragment_source, defines[0] ? defines : NULL);
     }
     if (!fs) {
@@ -760,6 +773,7 @@ static int make_program(int xbr)
     gl_BindAttribLocation(made, 4, "texture_mode");
     gl_BindAttribLocation(made, 5, "persp");
     gl_BindAttribLocation(made, 6, "texture_bounds");
+    gl_BindAttribLocation(made, 7, "corner");
     gl_LinkProgram(made);
     gl_DeleteShader(vs);
     gl_DeleteShader(fs);
@@ -1014,6 +1028,7 @@ typedef struct GlVertex {
     uint16_t depth, blend, bank, unused;
     float q; /* PGXP: 1 / depth, with flag 32; else 1 */
     uint16_t bounds[4]; /* the primitive's texels: first u, v, last u, v */
+    uint8_t corner[4];  /* PGXP: which corner of its triangle this is, one-hot, for the distance to an edge */
 } GlVertex;
 
 /* A run of vertices drawn under one scissor and texture window, all of one
@@ -1311,6 +1326,7 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
     if (max_x - min_x > 1023 || max_y - min_y > 511) return;
     out = push_vertices(3, (flags & 2) && state.blend == 2);
     if (!out) return;
+    for (i = 0; i < 3; i++) out[i].corner[i] = 255;
     /* PGXP: a textured polygon with all its depths is drawn in perspective
      * (flag 32, set by polygon()); a precise vertex stands where it really is. */
     if (!(a->precise && b->precise && c->precise)) flags &= ~32;
@@ -1340,7 +1356,7 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
         }
         if (grow > 0 && a->precise && b->precise && c->precise) {
             static int seam_mode = -1;
-            if (seam_mode < 0) seam_mode = getenv("MEMORIES_PGXP_SEAM") != NULL;
+            if (seam_mode < 0) seam_mode = getenv("MEMORIES_PGXP_NOSEAM") == NULL; /* default: seam growth */
             if (seam_mode) { /* pushed where it is; flush_runs() grows the edges that close a seam */
                 for (i = 0; i < 3; i++) set_vertex(&out[i], px[i], py[i], (float)v[i]->u, (float)v[i]->v, v[i], flags);
                 seam_remember((size_t)(out - vertices), px, py);
@@ -1540,6 +1556,7 @@ static size_t polygon(const uint32_t *words, size_t count)
     }
     /* Both halves of a quad or neither, or its diagonal would show. */
     if (textured && v[0].precise && v[1].precise && v[2].precise && (!quad || v[3].precise)) flags |= 32;
+    if (flags & 32 && v[0].id && v[1].id && v[2].id && (!quad || v[3].id)) flags |= 128; /* a model's polygon (PgxpVertex.id) */
     triangle(&v[0], &v[1], &v[2], flags);
     if (quad) triangle(&v[1], &v[2], &v[3], flags);
     state.fade = 0;
@@ -1973,6 +1990,7 @@ static void bind_attributes(void)
     gl_EnableVertexAttribArray(4);
     gl_EnableVertexAttribArray(5);
     gl_EnableVertexAttribArray(6);
+    gl_EnableVertexAttribArray(7);
     gl_VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GlVertex), &base->x);
     gl_VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(GlVertex), &base->u);
     gl_VertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_FALSE, sizeof(GlVertex), &base->r);
@@ -1980,6 +1998,7 @@ static void bind_attributes(void)
     gl_VertexAttribIPointer(4, 4, GL_UNSIGNED_SHORT, sizeof(GlVertex), &base->depth);
     gl_VertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(GlVertex), &base->q);
     gl_VertexAttribIPointer(6, 4, GL_UNSIGNED_SHORT, sizeof(GlVertex), &base->bounds[0]);
+    gl_VertexAttribPointer(7, 3, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(GlVertex), &base->corner[0]);
 }
 
 /* The banks this flush samples, uploaded where they changed. */
@@ -2022,6 +2041,7 @@ static void unbind_attributes(void)
     int i;
     for (i = 0; i < 5; i++) gl_DisableVertexAttribArray(i);
     gl_DisableVertexAttribArray(6);
+    gl_DisableVertexAttribArray(7);
     gl_BindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
