@@ -8,6 +8,7 @@
 #include "psyq/libgte.h"
 #include "psyq/libgpu.h"
 #include "pc/compat/gte.h"
+#include "pc/compat/pgxp.h"
 #include <stdint.h>
 
 extern int D_800FE0C8;                                  /* frame counter: coordinate cache stamp */
@@ -159,6 +160,7 @@ int GsScanUnit(u32 *p, u32 *type, u32 *ot, u32 *scratch)
 void GsSortUnit(u32 *object, u32 *ot, u32 *scratch)
 {
     u32 *block = WORDS(object[1]), *next;
+    Pgxp_BeginDraw(); /* one model: its vertices' seams close among themselves (pgxp.h) */
     begin_scratch(scratch, ot);
     do {
         u32 count, i;

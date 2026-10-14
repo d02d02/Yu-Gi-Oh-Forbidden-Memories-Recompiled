@@ -74,7 +74,7 @@ static void load_vector(unsigned slot, const u8 *vectors, unsigned index)
 /* PGXP (pgxp.h): each vertex's precise position and depth travel with its
  * screen word, from the GTE (or the pre-pass's result) to the packet word. */
 typedef struct Exact {
-    float xyw[3];
+    PgxpVertex point;
     int known;
 } Exact;
 
@@ -85,7 +85,7 @@ static uint32_t packet_address(const u32 *word)
 
 static void exact_from_gte(Exact *exact, unsigned slot)
 {
-    exact->known = Memories_GtePrecise(slot, &exact->xyw[0], &exact->xyw[1], &exact->xyw[2]);
+    exact->known = Memories_GtePreciseVertex(slot, &exact->point);
 }
 
 static u32 *draw(u32 *scratch, const Driver *kind)
@@ -159,8 +159,7 @@ static u32 *draw(u32 *scratch, const Driver *kind)
                 const u32 *result = (const u32 *)(normals + vertex[i] * 8); /* scratch[7]: projected vertices */
                 failed |= result[1] == 0xffffffffu;
                 screen[i] = result[0];
-                exact[i].known = Pgxp_Active && Pgxp_FindAt((uint32_t)(uintptr_t)result, result[0], &exact[i].xyw[0],
-                                                            &exact[i].xyw[1], &exact[i].xyw[2]) > 0;
+                exact[i].known = Pgxp_Active && Pgxp_FindAt((uint32_t)(uintptr_t)result, result[0], &exact[i].point) > 0;
                 Memories_GteWriteData((kind->quad ? 16 : 17) + i, result[1]);
             }
             if (failed) {
@@ -265,7 +264,7 @@ static u32 *draw(u32 *scratch, const Driver *kind)
                     *out++ = shade[i];
                 }
                 if (Pgxp_Active) {
-                    Pgxp_StoreAt(packet_address(out), screen[i], exact[i].known ? exact[i].xyw : NULL);
+                    Pgxp_StoreAt(packet_address(out), screen[i], exact[i].known ? &exact[i].point : NULL);
                 }
                 *out++ = screen[i];
                 *out++ = uv[i];
@@ -380,7 +379,7 @@ u32 *func_80067220(u32 *scratch)
                 Exact exact;
                 exact_from_gte(&exact, 2);
                 Pgxp_StoreAt((uint32_t)(uintptr_t)result, result[0],
-                             exact.known && result[1] != 0xffffffffu ? exact.xyw : NULL);
+                             exact.known && result[1] != 0xffffffffu ? &exact.point : NULL);
             }
         }
     }

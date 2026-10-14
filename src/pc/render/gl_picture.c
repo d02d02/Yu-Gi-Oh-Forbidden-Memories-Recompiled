@@ -36,6 +36,7 @@
 #include <SDL3/SDL_opengl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <time.h>
 
@@ -134,10 +135,10 @@ static uint32_t *reserve(size_t words)
 }
 
 /* PGXP: the precise vertices of the batch that follows, as they are
- * (index, x, y, w: four words each). */
+ * (PGXP_VERTEX_WORDS words each: index, x, y, w, draw). */
 static void record_precise(const PgxpVertex *vertices, size_t count)
 {
-    uint32_t *at = reserve(2 + count * 4);
+    uint32_t *at = reserve(2 + count * PGXP_VERTEX_WORDS);
     if (!at) return;
     at[0] = OP_PRECISE;
     at[1] = (uint32_t)count;
@@ -604,6 +605,9 @@ static const char *fragment_source =
     "        }\n"
     "        semi = semi && (word & 0x8000u) != 0u;\n"
     "        if (!replaced) {\n"
+    "#ifdef DEBUG_TRANSPARENT\n"
+    "            if (word == 0u) { fragment = vec4(0.0, 1.0, 1.0, 1.0); return; }\n"
+    "#endif\n"
     "            if (word == 0u) discard;\n"
     "            t = expand(word);\n"
     "        }\n"
@@ -727,7 +731,12 @@ static int make_program(int xbr)
     GLuint vs = compile(GL_VERTEX_SHADER, vertex_source, NULL), fs, made;
     GLint ok = 0;
     if (!vs) return 0;
-    fs = compile(GL_FRAGMENT_SHADER, fragment_source, xbr ? "#define TEXTURE_XBR 1\n" : NULL);
+    { /* EXPERIMENT: MEMORIES_PGXP_CYAN_TRANSPARENT paints a transparent texel cyan instead of leaving what lies beneath */
+        static char defines[128];
+        snprintf(defines, sizeof(defines), "%s%s", xbr ? "#define TEXTURE_XBR 1\n" : "",
+                 getenv("MEMORIES_PGXP_CYAN_TRANSPARENT") ? "#define DEBUG_TRANSPARENT 1\n" : "");
+        fs = compile(GL_FRAGMENT_SHADER, fragment_source, defines[0] ? defines : NULL);
+    }
     if (!fs) {
         gl_DeleteShader(vs);
         return 0;
@@ -1144,6 +1153,90 @@ static void set_vertex(GlVertex *out, float x, float y, float u, float v, const 
 
 static int drawn_multisampled(void); /* the target of the primitive being read (below) */
 
+/* Conservative coverage for a precise triangle: level 1's rounded vertices fattened thin parts of a
+ * model (a spike, a sliver between two parts) into pixels; at precise positions they can fall between
+ * pixel centres and open a hole. Each edge moves outward by `grow` pixels and the corners follow (their
+ * attributes extrapolated, perspective-correct with flag 32); a corner of a sharp sliver moves at most
+ * 3 * grow. */
+#define PGXP_GROW 0.2f /* console pixels: closes most cracks at level 2 for ~+0.8 px of silhouette at 4x */
+static void grow_triangle(const float *px, const float *py, const Vertex *const v[3], int flags, float grow, GlVertex *out)
+{
+    float nx[3], ny[3]; /* the outward unit normal of the edge from corner i to corner (i + 1) % 3 */
+    float det = (py[1] - py[2]) * (px[0] - px[2]) + (px[2] - px[1]) * (py[0] - py[2]);
+    int i;
+    for (i = 0; i < 3; i++) {
+        int j = (i + 1) % 3, k = (i + 2) % 3;
+        float dx = px[j] - px[i], dy = py[j] - py[i], length = sqrtf(dx * dx + dy * dy), tx, ty;
+        if (length < 1e-6f) {
+            nx[i] = ny[i] = 0.0f;
+            continue;
+        }
+        nx[i] = -dy / length;
+        ny[i] = dx / length;
+        tx = px[k] - px[i];
+        ty = py[k] - py[i];
+        if (nx[i] * tx + ny[i] * ty > 0) { /* pointing at the third corner: turn it round */
+            nx[i] = -nx[i];
+            ny[i] = -ny[i];
+        }
+    }
+    for (i = 0; i < 3; i++) {
+        int p = (i + 2) % 3; /* the edge arriving at corner i is p, the one leaving it is i */
+        float bx = nx[p] + nx[i], by = ny[p] + ny[i], denominator = 1.0f + nx[p] * nx[i] + ny[p] * ny[i];
+        float dx = 0.0f, dy = 0.0f, x, y, l0, l1, l2, q, u, w, r, g, bl, length;
+        Vertex at = *v[i];
+        if (denominator > 1e-3f) {
+            dx = grow * bx / denominator;
+            dy = grow * by / denominator;
+            length = sqrtf(dx * dx + dy * dy);
+            if (length > 3.0f * grow) {
+                dx *= 3.0f * grow / length;
+                dy *= 3.0f * grow / length;
+            }
+        } else {
+            dx = grow * nx[i];
+            dy = grow * ny[i];
+        }
+        x = px[i] + dx;
+        y = py[i] + dy;
+        {
+            /* EXPERIMENT: MEMORIES_PGXP_GROW_EXTRAP=1 extrapolates the attributes to the moved corner; by
+             * default each corner keeps its own (the texture shifts by at most `grow`, and nothing is
+             * sampled from beyond the triangle's own texels). */
+            static int extrapolate = -1;
+            if (extrapolate < 0) extrapolate = getenv("MEMORIES_PGXP_GROW_EXTRAP") != NULL;
+            if (!extrapolate) {
+                set_vertex(&out[i], x, y, (float)v[i]->u, (float)v[i]->v, v[i], flags);
+                continue;
+            }
+        }
+        if (det > 1e-6f || det < -1e-6f) {
+            l0 = ((py[1] - py[2]) * (x - px[2]) + (px[2] - px[1]) * (y - py[2])) / det;
+            l1 = ((py[2] - py[0]) * (x - px[2]) + (px[0] - px[2]) * (y - py[2])) / det;
+            l2 = 1.0f - l0 - l1;
+            r = l0 * (float)v[0]->r + l1 * (float)v[1]->r + l2 * (float)v[2]->r;
+            g = l0 * (float)v[0]->g + l1 * (float)v[1]->g + l2 * (float)v[2]->g;
+            bl = l0 * (float)v[0]->b + l1 * (float)v[1]->b + l2 * (float)v[2]->b;
+            at.r = r < 0 ? 0 : (r > 255 ? 255 : (int)(r + 0.5f));
+            at.g = g < 0 ? 0 : (g > 255 ? 255 : (int)(g + 0.5f));
+            at.b = bl < 0 ? 0 : (bl > 255 ? 255 : (int)(bl + 0.5f));
+            if (flags & 32) {
+                q = l0 * v[0]->q + l1 * v[1]->q + l2 * v[2]->q;
+                w = (q > 1e-9f || q < -1e-9f) ? 1.0f / q : 1.0f;
+                u = (l0 * (float)v[0]->u * v[0]->q + l1 * (float)v[1]->u * v[1]->q + l2 * (float)v[2]->u * v[2]->q) * w;
+                bl = (l0 * (float)v[0]->v * v[0]->q + l1 * (float)v[1]->v * v[1]->q + l2 * (float)v[2]->v * v[2]->q) * w;
+                at.q = q;
+            } else {
+                u = l0 * (float)v[0]->u + l1 * (float)v[1]->u + l2 * (float)v[2]->u;
+                bl = l0 * (float)v[0]->v + l1 * (float)v[1]->v + l2 * (float)v[2]->v;
+            }
+            set_vertex(&out[i], x, y, u, bl, &at, flags);
+        } else {
+            set_vertex(&out[i], x, y, (float)v[i]->u, (float)v[i]->v, v[i], flags);
+        }
+    }
+}
+
 /* A triangle as the software pass rasterizes it: its edges are tested at
  * the picture pixels' integer corners, GL tests at their centres, so the
  * vertices move by half a pixel. Attributes move with them.
@@ -1160,6 +1253,37 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
     int min_x, max_x, min_y, max_y, i;
     GlVertex *out;
     int64_t area = (int64_t)(b->x - a->x) * (c->y - a->y) - (int64_t)(b->y - a->y) * (c->x - a->x);
+    /* DEBUG (temporary): MEMORIES_PGXP_PROBE="x,y,r" logs the triangles near that console pixel as the GL pass sees them. */
+    {
+        static int probing = -1;
+        static float probe_x, probe_y, probe_r;
+        if (probing < 0) {
+            const char *named = getenv("MEMORIES_PGXP_PROBE");
+            probing = named && sscanf(named, "%f,%f,%f", &probe_x, &probe_y, &probe_r) == 3;
+        }
+        if (probing) {
+            const Vertex *q[3] = {a, b, c};
+            float lo_x = 1e9f, hi_x = -1e9f, lo_y = 1e9f, hi_y = -1e9f;
+            int k;
+            for (k = 0; k < 3; k++) {
+                float x = q[k]->precise ? q[k]->fx - (float)state.offset_x : (float)q[k]->x - (float)state.offset_x;
+                float y = q[k]->precise ? q[k]->fy - (float)state.offset_y : (float)q[k]->y - (float)state.offset_y;
+                if (x < lo_x) lo_x = x;
+                if (x > hi_x) hi_x = x;
+                if (y < lo_y) lo_y = y;
+                if (y > hi_y) hi_y = y;
+            }
+            if (probe_x >= lo_x - probe_r && probe_x <= hi_x + probe_r && probe_y >= lo_y - probe_r &&
+                probe_y <= hi_y + probe_r) {
+                LOG(LOG_FRAMES,
+                    "gltri: flags %d int area %lld | a %d,%d %s %.2f,%.2f uv %d,%d | b %d,%d %s %.2f,%.2f uv %d,%d | "
+                    "c %d,%d %s %.2f,%.2f uv %d,%d | offset %d,%d scale %d",
+                    flags, (long long)area, a->x, a->y, a->precise ? "P" : "-", a->fx, a->fy, a->u, a->v, b->x, b->y,
+                    b->precise ? "P" : "-", b->fx, b->fy, b->u, b->v, c->x, c->y, c->precise ? "P" : "-", c->fx, c->fy,
+                    c->u, c->v, state.offset_x, state.offset_y, scale);
+            }
+        }
+    }
     if (area == 0) return;
     min_x = a->x < b->x ? (a->x < c->x ? a->x : c->x) : (b->x < c->x ? b->x : c->x);
     max_x = a->x > b->x ? (a->x > c->x ? a->x : c->x) : (b->x > c->x ? b->x : c->x);
@@ -1171,15 +1295,35 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
     /* PGXP: a textured polygon with all its depths is drawn in perspective
      * (flag 32, set by polygon()); a precise vertex stands where it really is. */
     if (!(a->precise && b->precise && c->precise)) flags &= ~32;
+    { /* EXPERIMENT: MEMORIES_PGXP_NOPERSP=1 draws every polygon affine */
+        static int off = -1;
+        if (off < 0) off = getenv("MEMORIES_PGXP_NOPERSP") != NULL;
+        if (off) flags &= ~32;
+    }
     shift = 0.5f;
     if (drawn_multisampled()) {
         shift = 0.0f;
         flags |= 64;
     }
-    for (i = 0; i < 3; i++) {
-        float x = v[i]->precise ? v[i]->fx * (float)scale + shift : (float)(v[i]->x * scale) + shift;
-        float y = v[i]->precise ? v[i]->fy * (float)scale + shift : (float)(v[i]->y * scale) + shift;
-        set_vertex(&out[i], x, y, (float)v[i]->u, (float)v[i]->v, v[i], flags);
+    {
+        float px[3], py[3], grow;
+        static float grow_console = -1.0f;
+        if (grow_console < 0) { /* MEMORIES_PGXP_GROW overrides PGXP_GROW (console px; experiment) */
+            const char *named = getenv("MEMORIES_PGXP_GROW");
+            grow_console = named ? (float)atof(named) : PGXP_GROW;
+        }
+        /* Only where the polygons are drawn at their precise positions: at level 1 the vertices
+         * are the console's own (rounded) and need none. */
+        grow = Settings_Get(SET_PGXP) >= 2 ? grow_console * (float)scale : 0.0f;
+        for (i = 0; i < 3; i++) {
+            px[i] = v[i]->precise ? v[i]->fx * (float)scale + shift : (float)(v[i]->x * scale) + shift;
+            py[i] = v[i]->precise ? v[i]->fy * (float)scale + shift : (float)(v[i]->y * scale) + shift;
+        }
+        if (grow > 0 && a->precise && b->precise && c->precise) {
+            grow_triangle(px, py, v, flags, grow, out);
+            return;
+        }
+        for (i = 0; i < 3; i++) set_vertex(&out[i], px[i], py[i], (float)v[i]->u, (float)v[i]->v, v[i], flags);
     }
 }
 
@@ -2295,8 +2439,12 @@ static void apply_fill(int x, int y, int w, int h, uint32_t rgb24)
     }
     gl_BindFramebuffer(GL_FRAMEBUFFER, picture_draw());
     glScissor(x * scale, y * scale, w * scale, h * scale);
-    glClearColor((float)((r << 3) | (r >> 2)) / 255.0f, (float)((g << 3) | (g >> 2)) / 255.0f,
-                 (float)((b << 3) | (b >> 2)) / 255.0f, 0.0f);
+    if (getenv("MEMORIES_PGXP_CLEAR_MAGENTA")) { /* EXPERIMENT: what is never drawn on shows as magenta */
+        glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
+    } else {
+        glClearColor((float)((r << 3) | (r >> 2)) / 255.0f, (float)((g << 3) | (g >> 2)) / 255.0f,
+                     (float)((b << 3) | (b >> 2)) / 255.0f, 0.0f);
+    }
     glClear(GL_COLOR_BUFFER_BIT);
     glDisable(GL_SCISSOR_TEST);
     wide_mirror(x, y, w, h, 1, (float)((r << 3) | (r >> 2)) / 255.0f, (float)((g << 3) | (g >> 2)) / 255.0f,
@@ -2556,7 +2704,7 @@ int GlPicture_Replay(void)
         size_t used = 1;
         switch (op[0]) {
         case OP_PRECISE:
-            used = 2 + (size_t)op[1] * 4;
+            used = 2 + (size_t)op[1] * PGXP_VERTEX_WORDS;
             if (at + used > count) { at = count; break; }
             batch_precise = (const PgxpVertex *)(op + 2);
             batch_precise_count = op[1];

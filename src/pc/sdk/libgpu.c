@@ -10,6 +10,7 @@
 #include "pc/platform/credits.h"
 #include "pc/render/soft_gpu.h"
 #include "pc/sdk/display.h"
+#include <math.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -422,46 +423,219 @@ static void flush_drawing(void)
     }
 }
 
-/* A model's parts are each projected with their own matrix, and where they
- * meet the vertices differ by up to a pixel or so: the console closes the
- * seam by rounding them into the same whole pixel. So a frame word that
- * carries two different precise positions keeps its whole-pixel one on
- * each of its vertices (the depth stays precise). */
-#define SEAM_TABLE (2 * MAX_FRAME_PRECISE)
-static void snap_seams(void)
+/* A model's parts are each projected with their own matrix, and a corner
+ * two parts share is drawn once by each. The console rounds both copies into
+ * one whole pixel and so closes the seam; at precise positions the copies
+ * differ by a fraction of a pixel and the seam would open. So the copies are
+ * welded: the vertices of one draw (one model) that lie within WELD_TOLERANCE
+ * model units of each other in camera space are one corner, and all take the
+ * position and depth of the first of them.
+ *
+ * Measured on the duel field at 2x with ten monsters: a corner's copies lie
+ * within 2 model units of each other (about 50 pairs a frame in the densest
+ * scene) and land at most 0.42 console pixels apart; the neighbouring
+ * corners of a mesh start beyond that, thousands of pairs a frame. Camera
+ * distance is divided by the part's matrix scale, because the 3D Monsters mod
+ * draws a model at a fraction of its size. Screen words play no part: two
+ * copies that round to different words are still one corner, and two corners
+ * that round to one word still two. Vertices of shared-vertex polygons (the
+ * game's pre-pass projects each once) have no copies and only weld with the
+ * repeats of themselves. */
+#define WELD_TOLERANCE 1.5f
+#define WELD_CELLS (2 * MAX_FRAME_PRECISE)
+
+typedef struct WeldCell {
+    uint32_t stamp, draw;
+    int32_t cell[3];
+    int32_t head; /* the newest leader in this cell */
+} WeldCell;
+
+/* The slot of the cell (`draw`, `c`): its own, or the empty one it would take. */
+static unsigned weld_slot(WeldCell *cells, uint32_t stamp, uint32_t draw, const int32_t c[3])
 {
-    static struct {
-        uint32_t word, stamp;
-        float x, y;
-        int seam;
-    } table[SEAM_TABLE];
-    static uint32_t stamp;
-    size_t i, pass;
+    uint32_t h = (uint32_t)c[0] * 73856093u ^ (uint32_t)c[1] * 19349663u ^ (uint32_t)c[2] * 83492791u ^ draw * 2654435761u;
+    unsigned at = (h >> 3) & (WELD_CELLS - 1);
+    while (cells[at].stamp == stamp && !(cells[at].draw == draw && cells[at].cell[0] == c[0] &&
+                                         cells[at].cell[1] == c[1] && cells[at].cell[2] == c[2]))
+        at = (at + 1) & (WELD_CELLS - 1);
+    return at;
+}
+
+static void weld_corners(void)
+{
+    static WeldCell cells[WELD_CELLS];
+    static int32_t next_leader[MAX_FRAME_PRECISE];
+    static uint32_t stamp, grouped[MAX_FRAME_PRECISE]; /* grouped[i] == stamp: leader i has followers */
+    unsigned groups = 0, welded = 0;
+    float moved_sum = 0, moved_max = 0;
+    size_t i;
+    /* EXPERIMENT: MEMORIES_PGXP_WELD overrides the tolerance (model units). */
+    static float weld_tolerance = -1.0f;
+    if (weld_tolerance < 0) {
+        const char *named = getenv("MEMORIES_PGXP_WELD");
+        weld_tolerance = named ? (float)atof(named) : WELD_TOLERANCE;
+    }
     if (++stamp == 0) {
-        memset(table, 0, sizeof(table));
+        memset(cells, 0, sizeof(cells));
+        memset(grouped, 0, sizeof(grouped));
         stamp = 1;
     }
-    for (pass = 0; pass < 2; pass++) {
-        for (i = 0; i < pending_precise; i++) {
-            PgxpVertex *vertex = &frame_precise[i];
-            uint32_t word = frame_words[vertex->index];
-            unsigned at = (word * 2654435761u) >> 15; /* 17 bits: SEAM_TABLE */
-            while (table[at].stamp == stamp && table[at].word != word) at = (at + 1) & (SEAM_TABLE - 1);
-            if (!pass) {
-                if (table[at].stamp != stamp) {
-                    table[at].word = word;
-                    table[at].stamp = stamp;
-                    table[at].x = vertex->x;
-                    table[at].y = vertex->y;
-                    table[at].seam = 0;
-                } else if (table[at].x != vertex->x || table[at].y != vertex->y) {
-                    table[at].seam = 1;
+    if (weld_tolerance <= 0) return;
+    for (i = 0; i < pending_precise; i++) {
+        PgxpVertex *vertex = &frame_precise[i];
+        float scale = vertex->scale > 0.01f ? vertex->scale : 0.01f, tolerance = weld_tolerance * scale;
+        int32_t c[3], d[3], best = -1;
+        float best_distance = tolerance;
+        unsigned k, at;
+        for (k = 0; k < 3; k++) c[k] = (int32_t)floorf(vertex->view[k] / tolerance);
+        for (d[0] = -1; d[0] <= 1; d[0]++)
+            for (d[1] = -1; d[1] <= 1; d[1]++)
+                for (d[2] = -1; d[2] <= 1; d[2]++) {
+                    int32_t near[3] = {c[0] + d[0], c[1] + d[1], c[2] + d[2]}, leader;
+                    at = weld_slot(cells, stamp, vertex->draw, near);
+                    if (cells[at].stamp != stamp) continue;
+                    for (leader = cells[at].head; leader >= 0; leader = next_leader[leader]) {
+                        const PgxpVertex *other = &frame_precise[leader];
+                        float ex = vertex->view[0] - other->view[0], ey = vertex->view[1] - other->view[1],
+                              ez = vertex->view[2] - other->view[2];
+                        float distance = sqrtf(ex * ex + ey * ey + ez * ez);
+                        if (distance <= best_distance) {
+                            best_distance = distance;
+                            best = leader;
+                        }
+                    }
                 }
-            } else if (table[at].seam) {
-                vertex->x = (float)(int16_t)(word & 0xffffu);
-                vertex->y = (float)(int16_t)(word >> 16);
+        if (best >= 0) {
+            const PgxpVertex *leader = &frame_precise[best];
+            if (vertex->x != leader->x || vertex->y != leader->y) {
+                float moved = hypotf(vertex->x - leader->x, vertex->y - leader->y);
+                welded++;
+                moved_sum += moved;
+                if (moved > moved_max) moved_max = moved;
+                if (grouped[best] != stamp) {
+                    grouped[best] = stamp;
+                    groups++;
+                }
             }
+            vertex->x = leader->x;
+            vertex->y = leader->y;
+            vertex->w = leader->w;
+        } else {
+            at = weld_slot(cells, stamp, vertex->draw, c);
+            if (cells[at].stamp != stamp) {
+                cells[at].stamp = stamp;
+                cells[at].draw = vertex->draw;
+                memcpy(cells[at].cell, c, sizeof(c));
+                cells[at].head = -1;
+            }
+            next_leader[i] = cells[at].head;
+            cells[at].head = (int32_t)i;
         }
+    }
+    /* MEMORIES_TRACE=frames: what the welding did this frame (the field names are the older seam log's). */
+    LOG(LOG_FRAMES, "seams: %u precise words, %u seam groups, %u snapped, moved mean %.3f max %.3f console px",
+        (unsigned)pending_precise, groups, welded, welded ? moved_sum / welded : 0.0f, moved_max);
+}
+
+/* DEBUG (temporary): MEMORIES_PGXP_PROBE="x,y,radius" lists, each frame the
+ * level 2 positions are used, the polygons whose precise outline comes within
+ * `radius` console pixels of (x, y): command, the vertices' whole-pixel and
+ * precise positions, depth and draw, and whether the precise triangle holds
+ * the point. For tracing one hairline back to what draws it. */
+static int inside_triangle(float px, float py, const float *a, const float *b, const float *c)
+{
+    float d1 = (px - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (py - b[1]);
+    float d2 = (px - c[0]) * (b[1] - c[1]) - (b[0] - c[0]) * (py - c[1]);
+    float d3 = (px - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (py - a[1]);
+    int negative = d1 < 0 || d2 < 0 || d3 < 0, positive = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(negative && positive);
+}
+
+static void probe_polygons(size_t count)
+{
+    static int enabled = -1;
+    static float probe_x, probe_y, probe_radius;
+    static int32_t slot[MAX_FRAME_WORDS];
+    size_t at, i;
+    if (enabled < 0) {
+        const char *named = getenv("MEMORIES_PGXP_PROBE");
+        enabled = named && sscanf(named, "%f,%f,%f", &probe_x, &probe_y, &probe_radius) == 3;
+    }
+    if (!enabled) return;
+    for (i = 0; i < count; i++) slot[i] = -1;
+    for (i = 0; i < pending_precise; i++) slot[frame_precise[i].index] = (int32_t)i;
+    for (at = 0; at < count;) {
+        uint32_t word = frame_words[at];
+        unsigned cmd = word >> 24, length = 1;
+        if (cmd >= 0x20 && cmd < 0x40) {
+            unsigned corners = (cmd & 8) ? 4 : 3, textured = (cmd & 4) != 0, gouraud = (cmd & 0x10) != 0, k;
+            float px[4], py[4], pw[4];
+            int known[4];
+            size_t cursor = at + 1;
+            float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+            uint32_t draw = 0, first_uv = 0, second_uv = 0;
+            length = 1 + corners * (1 + (textured ? 1u : 0u)) + (gouraud ? corners - 1 : 0);
+            if (at + length > count) break;
+            for (k = 0; k < corners; k++) {
+                uint32_t vertex;
+                if (k && gouraud) cursor++;
+                vertex = frame_words[cursor];
+                if (slot[cursor] >= 0) {
+                    const PgxpVertex *p = &frame_precise[slot[cursor]];
+                    px[k] = p->x; py[k] = p->y; pw[k] = p->w; known[k] = 1; draw = p->draw;
+                } else {
+                    px[k] = (float)(int16_t)(vertex & 0xffffu); py[k] = (float)(int16_t)(vertex >> 16); pw[k] = 0; known[k] = 0;
+                }
+                if (px[k] < minx) minx = px[k];
+                if (px[k] > maxx) maxx = px[k];
+                if (py[k] < miny) miny = py[k];
+                if (py[k] > maxy) maxy = py[k];
+                cursor++;
+                if (textured) {
+                    if (k == 0) first_uv = frame_words[cursor];
+                    if (k == 1) second_uv = frame_words[cursor];
+                    cursor++;
+                }
+            }
+            if (probe_x >= minx - probe_radius && probe_x <= maxx + probe_radius && probe_y >= miny - probe_radius &&
+                probe_y <= maxy + probe_radius) {
+                float a[2], b[2], c[2], d[2];
+                int holds;
+                a[0] = px[0]; a[1] = py[0]; b[0] = px[1]; b[1] = py[1]; c[0] = px[2]; c[1] = py[2];
+                holds = inside_triangle(probe_x, probe_y, a, b, c);
+                if (corners == 4) {
+                    d[0] = px[3]; d[1] = py[3];
+                    holds |= inside_triangle(probe_x, probe_y, b, c, d);
+                }
+                LOG(LOG_FRAMES,
+                    "probe: word %zu cmd %02x%s%s%s draw %u holds %d color %06x clut %04x tpage %04x | "
+                    "v0 %.2f,%.2f w%.0f%s v1 %.2f,%.2f w%.0f%s v2 %.2f,%.2f w%.0f%s v3 %.2f,%.2f w%.0f%s",
+                    at, cmd, textured ? " tex" : "", gouraud ? " gouraud" : "", corners == 4 ? " quad" : "", draw, holds,
+                    (unsigned)(word & 0xffffffu), (unsigned)(first_uv >> 16), (unsigned)(second_uv >> 16), px[0], py[0],
+                    pw[0], known[0] ? "" : "(rounded)", px[1], py[1], pw[1], known[1] ? "" : "(rounded)", px[2], py[2],
+                    pw[2], known[2] ? "" : "(rounded)", corners == 4 ? px[3] : 0.0f, corners == 4 ? py[3] : 0.0f,
+                    corners == 4 ? pw[3] : 0.0f, corners == 4 ? (known[3] ? "" : "(rounded)") : "-");
+            }
+        } else if (cmd >= 0x40 && cmd < 0x60) {
+            length = (cmd & 0x10) ? 4 : 3;
+            if (cmd & 8) {
+                length = 1;
+                while (at + length < count && (frame_words[at + length] & 0xf000f000u) != 0x50005000u) length++;
+                length++;
+            }
+        } else if (cmd >= 0x60 && cmd < 0x80) {
+            length = 2 + ((cmd & 4) ? 1 : 0) + (((cmd >> 3) & 3) == 0 ? 1 : 0);
+        } else if (cmd == 0x02) {
+            length = 3;
+        } else if (cmd >= 0x80 && cmd < 0xa0) {
+            length = 4;
+        } else if (cmd >= 0xa0 && cmd < 0xc0) {
+            uint32_t size = at + 2 < count ? frame_words[at + 2] : 0;
+            length = 3 + (((size & 0xffffu) * (size >> 16) + 1) >> 1);
+        } else if (cmd >= 0xc0 && cmd < 0xe0) {
+            length = 3;
+        }
+        at += length ? length : 1;
     }
 }
 
@@ -484,7 +658,7 @@ void DrawOTag(u32 *list)
      * wrote by address, the rest by value; then the next frame's. Below
      * level 2 a vertex keeps the console's whole-pixel position and only its
      * depth is used (textures in perspective); at level 2 the seams between
-     * a model's parts stay closed (snap_seams). */
+     * a model's parts stay closed (weld_corners). */
     pending_precise = 0;
     if (Pgxp_Active) {
         static unsigned frames, placed, matched;
@@ -494,12 +668,12 @@ void DrawOTag(u32 *list)
             PgxpVertex *vertex = &frame_precise[pending_precise];
             int at;
             if (!Pgxp_MaybeVertexWord(frame_words[i])) continue;
-            at = Pgxp_FindAt(frame_addresses[i], frame_words[i], &vertex->x, &vertex->y, &vertex->w);
+            at = Pgxp_FindAt(frame_addresses[i], frame_words[i], vertex);
             if (at > 0) {
                 placed++;
             } else if (at < 0) {
                 continue;
-            } else if (Pgxp_Find(frame_words[i], &vertex->x, &vertex->y, &vertex->w)) {
+            } else if (Pgxp_Find(frame_words[i], vertex)) {
                 matched++;
             } else {
                 continue;
@@ -511,7 +685,8 @@ void DrawOTag(u32 *list)
             vertex->index = (uint32_t)i;
             pending_precise++;
         }
-        if (positions) snap_seams();
+        if (positions) weld_corners();
+        if (positions) probe_polygons(count);
         if (++frames == 120) {
             LOG(LOG_FRAMES, "pgxp: %u precise vertex words per DrawOTag (%u by address, %u by value)",
                 (placed + matched) / 120, placed / 120, matched / 120);

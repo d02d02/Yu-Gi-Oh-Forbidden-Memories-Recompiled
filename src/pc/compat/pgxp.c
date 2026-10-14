@@ -21,12 +21,18 @@ typedef struct {
     uint32_t word;
     unsigned frame;
     int ambiguous;
-    float x, y, w;
+    PgxpVertex point; /* index unused */
 } Entry;
 
 static Entry table[2][TABLE_SIZE];
 static unsigned frame = 2;
 int Pgxp_Active;
+uint32_t Pgxp_Draw;
+
+void Pgxp_BeginDraw(void)
+{
+    Pgxp_Draw++;
+}
 
 static unsigned first(uint32_t word)
 {
@@ -53,20 +59,20 @@ static Entry *lookup(uint32_t word, unsigned age, int make)
     return 0; /* crowded: this one stays at whole pixels */
 }
 
-void Pgxp_Project(uint32_t word, double x, double y, double w)
+void Pgxp_Project(uint32_t word, const PgxpVertex *point)
 {
     Entry *entry = lookup(word, 0, 1);
     if (!entry) return;
     if (entry->ambiguous < 0) {
         entry->ambiguous = 0;
-    } else if (fabs(entry->x - x) > 1.0 / 64 || fabs(entry->y - y) > 1.0 / 64 || fabs(entry->w - w) > 1.0 / 64) {
+    } else if (fabs(entry->point.x - point->x) > 1.0 / 64 || fabs(entry->point.y - point->y) > 1.0 / 64 ||
+               fabs(entry->point.w - point->w) > 1.0 / 64) {
         entry->ambiguous = 1; /* two vertices round to this word */
         return;
     }
     if (entry->ambiguous) return;
-    entry->x = (float)x;
-    entry->y = (float)y;
-    entry->w = (float)w;
+    entry->point = *point;
+    entry->point.draw = Pgxp_Draw;
 }
 
 /* This frame's projection of `word`, else the last frame's. */
@@ -76,13 +82,19 @@ static const Entry *projected(uint32_t word)
     return entry ? entry : lookup(word, 1, 0);
 }
 
-int Pgxp_Find(uint32_t word, float *x, float *y, float *w)
+/* The point into `out`, whose own frame index stays as it was. */
+static void give(PgxpVertex *out, const PgxpVertex *point)
+{
+    uint32_t index = out->index;
+    *out = *point;
+    out->index = index;
+}
+
+int Pgxp_Find(uint32_t word, PgxpVertex *out)
 {
     const Entry *entry = projected(word);
     if (!entry || entry->ambiguous) return 0;
-    *x = entry->x;
-    *y = entry->y;
-    *w = entry->w;
+    give(out, &entry->point);
     return 1;
 }
 
@@ -92,7 +104,7 @@ typedef struct {
     uint32_t address, word;
     unsigned frame;
     int known; /* 1 with precise values, 0 without, -1 forgotten */
-    float x, y, w;
+    PgxpVertex point; /* index unused */
 } Placed;
 
 static Placed placed[2][TABLE_SIZE];
@@ -129,28 +141,25 @@ static void forget_at(uint32_t address)
     if (entry) entry->known = -1;
 }
 
-void Pgxp_StoreAt(uint32_t address, uint32_t word, const float *xyw)
+void Pgxp_StoreAt(uint32_t address, uint32_t word, const PgxpVertex *point)
 {
     Placed *entry = place(address, 0, 1);
     if (!entry) return; /* crowded: left to Pgxp_Find */
     entry->word = word;
-    entry->known = xyw != 0;
-    if (xyw) {
-        entry->x = xyw[0];
-        entry->y = xyw[1];
-        entry->w = xyw[2];
+    entry->known = point != 0;
+    if (point) {
+        entry->point = *point;
+        entry->point.draw = Pgxp_Draw;
     }
 }
 
-int Pgxp_FindAt(uint32_t address, uint32_t word, float *x, float *y, float *w)
+int Pgxp_FindAt(uint32_t address, uint32_t word, PgxpVertex *out)
 {
     const Placed *entry = placed_at(address);
     if (!entry || entry->known < 0) return 0;
     if (entry->word != word) return 0; /* rewritten since */
     if (!entry->known) return -1;
-    *x = entry->x;
-    *y = entry->y;
-    *w = entry->w;
+    give(out, &entry->point);
     return 1;
 }
 
@@ -161,13 +170,13 @@ int Pgxp_FindAt(uint32_t address, uint32_t word, float *x, float *y, float *w)
 typedef struct {
     uint32_t word;
     int known;
-    float xyw[3];
+    PgxpVertex point;
 } Stored;
 
 static Stored stored[STORED];
 static unsigned stored_count;
 
-void Pgxp_Stored(uint32_t word, const float *xyw)
+void Pgxp_Stored(uint32_t word, const PgxpVertex *point)
 {
     Stored *entry;
     if (stored_count == STORED) {
@@ -176,8 +185,8 @@ void Pgxp_Stored(uint32_t word, const float *xyw)
     }
     entry = &stored[stored_count++];
     entry->word = word;
-    entry->known = xyw != 0;
-    if (xyw) memcpy(entry->xyw, xyw, sizeof(entry->xyw));
+    entry->known = point != 0;
+    if (point) entry->point = *point;
 }
 
 /* A stored word moved by (dx, dy), as GsSortPoly moves it. */
@@ -198,7 +207,7 @@ void Pgxp_AddPrimMoved(const void *packet, int dx, int dy)
     length = words[0] >> 24;
     for (i = 1; i <= length; i++) {
         int found = -1, clash = 0;
-        float xyw[3];
+        PgxpVertex shifted;
         /* Packet buffers are reused for projected and unprojected drawing.
          * Even an unchanged word is no longer the old address's vertex. */
         forget_at(base + i * 4);
@@ -207,15 +216,15 @@ void Pgxp_AddPrimMoved(const void *packet, int dx, int dy)
             if (found < 0) {
                 found = (int)k;
             } else if (stored[k].known != stored[found].known ||
-                       memcmp(stored[k].xyw, stored[found].xyw, sizeof(stored[k].xyw)) != 0) {
+                       memcmp(&stored[k].point, &stored[found].point, sizeof(stored[k].point)) != 0) {
                 clash = 1; /* two of this primitive's vertices round to one word */
             }
         }
         if (found < 0) continue;
-        xyw[0] = stored[found].xyw[0] + (float)dx;
-        xyw[1] = stored[found].xyw[1] + (float)dy;
-        xyw[2] = stored[found].xyw[2];
-        Pgxp_StoreAt(base + i * 4, words[i], stored[found].known && !clash ? xyw : 0);
+        shifted = stored[found].point;
+        shifted.x += (float)dx;
+        shifted.y += (float)dy;
+        Pgxp_StoreAt(base + i * 4, words[i], stored[found].known && !clash ? &shifted : 0);
     }
     stored_count = 0;
 }

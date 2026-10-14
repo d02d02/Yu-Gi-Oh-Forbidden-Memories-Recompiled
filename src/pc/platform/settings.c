@@ -125,7 +125,7 @@ static const SettingInfo info[SET_COUNT] = {
      * (gl_picture.c). */
     [SET_MSAA] = {"msaa", NULL, "MEMORIES_MSAA", NULL, 0, 0, 8},
     /* 0 Off, 1 Textures (fixes affine texture warping; libgpu.c, pgxp.h). */
-    [SET_PGXP] = {"pgxp", NULL, "MEMORIES_PGXP", NULL, 0, 0, 1},
+    [SET_PGXP] = {"pgxp", NULL, "MEMORIES_PGXP", NULL, 0, 0, 2},
 };
 
 /* A key the fixed list does not know: a mod's, or one this build dropped.

@@ -1,4 +1,6 @@
 #include "pgxp.h"
+#include <math.h>
+#include <stdlib.h>
 #include "gte.h"
 #include <string.h>
 #ifdef MEMORIES_NATIVE_GTE
@@ -36,9 +38,25 @@ static int unr_ready;
  * nothing has written the entry since. Not register state (save states). */
 typedef struct Precise {
     float x, y, w;
+    float view[3]; /* camera space, before the perspective divide */
+    float scale;   /* the rotation matrix's size: camera units per model unit */
     int known;
 } Precise;
 static Precise precise[3];
+
+int Memories_GtePreciseVertex(unsigned slot, PgxpVertex *out)
+{
+    if (slot > 2 || !precise[slot].known) return 0;
+#ifdef MEMORIES_NATIVE_GTE
+    out = GTE_ADDRESS(out, sizeof(*out));
+#endif
+    out->x = precise[slot].x;
+    out->y = precise[slot].y;
+    out->w = precise[slot].w;
+    memcpy(out->view, precise[slot].view, sizeof(out->view));
+    out->scale = precise[slot].scale;
+    return 1;
+}
 
 void Memories_GteReset(void)
 {
@@ -369,11 +387,18 @@ static void rtp(unsigned index, unsigned shift, int lm, int last)
         double slack = ((double)gte.h + far) / (double)gte.sz[3];
         int32_t wx = gte.sxy[2][0], wy = gte.sxy[2][1];
         if (sx > wx - 1 - slack && sx < wx + 2 + slack && sy > wy - 1 - slack && sy < wy + 2 + slack) {
-            precise[2].x = (float)sx;
-            precise[2].y = (float)sy;
-            precise[2].w = (float)depth;
+            PgxpVertex point;
+            precise[2].x = point.x = (float)sx;
+            precise[2].y = point.y = (float)sy;
+            precise[2].w = point.w = (float)depth;
+            precise[2].view[0] = point.view[0] = (float)((double)row_sums[0] / unit);
+            precise[2].view[1] = point.view[1] = (float)((double)row_sums[1] / unit);
+            precise[2].view[2] = point.view[2] = (float)depth;
+            precise[2].scale = point.scale = sqrtf((float)gte.matrix[0][0][0] * gte.matrix[0][0][0] +
+                                                   (float)gte.matrix[0][0][1] * gte.matrix[0][0][1] +
+                                                   (float)gte.matrix[0][0][2] * gte.matrix[0][0][2]) / 4096.0f;
             precise[2].known = 1;
-            Pgxp_Project((uint32_t)(uint16_t)wx | (uint32_t)(uint16_t)wy << 16, sx, sy, depth);
+            Pgxp_Project((uint32_t)(uint16_t)wx | (uint32_t)(uint16_t)wy << 16, &point);
         }
     }
     if (last) {
@@ -581,9 +606,9 @@ void Memories_GteStore(unsigned index, void *address)
     if (Pgxp_Active && (index & 31) >= 12 && (index & 31) <= 15) {
         /* The game storing a projected vertex (pgxp.h). */
         unsigned slot = (index & 31) == 15 ? 2 : (index & 31) - 12;
-        float xyw[3];
-        int known = Memories_GtePrecise(slot, &xyw[0], &xyw[1], &xyw[2]);
-        Pgxp_Stored(value, known ? xyw : 0);
+        PgxpVertex point;
+        int known = Memories_GtePreciseVertex(slot, &point);
+        Pgxp_Stored(value, known ? &point : 0);
     }
 }
 

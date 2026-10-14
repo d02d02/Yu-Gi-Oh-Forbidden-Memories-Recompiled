@@ -1,42 +1,86 @@
 #include "pc/compat/pgxp.h"
 #include "pc/compat/gte.h"
 #include <assert.h>
+#include <string.h>
+
+/* A vertex at screen (x, y), depth w. The camera-space position is made up
+ * from them, so a lookup that mixes two vertices up shows in `view`. */
+static PgxpVertex point(float x, float y, float w)
+{
+    PgxpVertex vertex;
+    memset(&vertex, 0, sizeof(vertex));
+    vertex.x = x;
+    vertex.y = y;
+    vertex.w = w;
+    vertex.view[0] = x * 2.0f;
+    vertex.view[1] = y * 3.0f;
+    vertex.view[2] = w;
+    return vertex;
+}
 
 int main(void)
 {
     uint32_t packet[] = {0x04ffffff, 0x20000000, 0x0014000a, 0x00140014, 0x001e000a};
     uint32_t address = ((uint32_t)(uintptr_t)packet & 0x00ffffffu) + 8;
-    float a[] = {10.25f, 20.5f, 100.0f}, b[] = {10.75f, 20.5f, 120.0f};
+    PgxpVertex a = point(10.25f, 20.5f, 100.0f), b = point(10.75f, 20.5f, 120.0f);
+    PgxpVertex out;
     float x, y, w;
+    memset(&out, 0, sizeof(out));
     Pgxp_Active = 1;
-    Pgxp_Project(packet[2], a[0], a[1], a[2]);
-    Pgxp_Project(packet[2], b[0], b[1], b[2]);
-    assert(!Pgxp_Find(packet[2], &x, &y, &w)); /* ambiguous by value */
-    Pgxp_Stored(packet[2], a);
+    Pgxp_Project(packet[2], &a);
+    Pgxp_Project(packet[2], &b);
+    assert(!Pgxp_Find(packet[2], &out)); /* ambiguous by value */
+    Pgxp_Stored(packet[2], &a);
     Pgxp_AddPrim(packet);
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == 1 && x == a[0]);
+    assert(Pgxp_FindAt(address, packet[2], &out) == 1 && out.x == a.x && out.view[0] == a.view[0]);
 
     /* The same packet buffer is reused for a primitive without GTE stores.
      * An unchanged rounded word must not inherit the previous projection. */
     Pgxp_AddPrim(packet);
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == 0);
-    Pgxp_Stored(packet[2], a);
-    Pgxp_Stored(packet[2], b);
+    assert(Pgxp_FindAt(address, packet[2], &out) == 0);
+    Pgxp_Stored(packet[2], &a);
+    Pgxp_Stored(packet[2], &b);
     Pgxp_AddPrim(packet);
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == -1);
-    Pgxp_Stored(packet[2], a);
+    assert(Pgxp_FindAt(address, packet[2], &out) == -1);
+    Pgxp_Stored(packet[2], &a);
     Pgxp_AddPrim(packet);
     Pgxp_NextFrame();
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == 1);
+    assert(Pgxp_FindAt(address, packet[2], &out) == 1);
     Pgxp_NextFrame();
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == 0);
+    assert(Pgxp_FindAt(address, packet[2], &out) == 0);
 
     /* GsSortPoly copies the stored word moved by its offset: the packet's
-     * word is (15, 17), and the precise position moves with it. */
-    Pgxp_Stored(0x0014000a, a);
+     * word is (15, 17), and the precise position moves with it (the camera-
+     * space position and the depth do not). */
+    Pgxp_Stored(0x0014000a, &a);
     packet[2] = 0x0011000f;
     Pgxp_AddPrimMoved(packet, 5, -3);
-    assert(Pgxp_FindAt(address, packet[2], &x, &y, &w) == 1 && x == a[0] + 5 && y == a[1] - 3 && w == a[2]);
+    assert(Pgxp_FindAt(address, packet[2], &out) == 1 && out.x == a.x + 5 && out.y == a.y - 3 && out.w == a.w &&
+           out.view[0] == a.view[0] && out.view[2] == a.view[2]);
+
+    /* A vertex remembers the model draw (Pgxp_BeginDraw) that made it, by
+     * address and by value, and two draws that round to one word stay two
+     * draws: libgpu.c's snap_seams pairs only vertices of one draw. The
+     * frame index of what a lookup fills in is left as it was. */
+    {
+        uint32_t first_draw, second_draw;
+        PgxpVertex projected = point(1.5f, 2.5f, 30.0f);
+        Pgxp_NextFrame();
+        Pgxp_BeginDraw();
+        first_draw = Pgxp_Draw;
+        Pgxp_StoreAt(address, packet[2], &a);
+        Pgxp_Project(0x00300020u, &projected);
+        Pgxp_BeginDraw();
+        second_draw = Pgxp_Draw;
+        assert(second_draw != first_draw);
+        Pgxp_StoreAt(address + 4, packet[3], &b);
+        out.index = 77;
+        assert(Pgxp_FindAt(address, packet[2], &out) == 1 && out.draw == first_draw && out.index == 77);
+        assert(Pgxp_FindAt(address + 4, packet[3], &out) == 1 && out.draw == first_draw + 1 && out.x == b.x);
+        out.draw = 0;
+        assert(Pgxp_Find(0x00300020u, &out) && out.draw == first_draw && out.view[1] == projected.view[1]);
+        assert(sizeof(PgxpVertex) == PGXP_VERTEX_WORDS * sizeof(uint32_t));
+    }
 
     /* Close to the camera: R11 = R33 = 0.5 put the vertex at view x -150.5,
      * z 160.5, which the GTE truncates to IR1 = -151 and SZ3 = 160 before
@@ -53,12 +97,17 @@ int main(void)
     Memories_GteCommand(0x0180001); /* RTPS, sf */
     assert((int16_t)Memories_GteReadData(14) == -284);
     assert(Memories_GtePrecise(2, &x, &y, &w) && x > -281.32f && x < -281.30f && w == 160.5f);
+    /* The camera-space position it was projected from: the view x the text
+     * above gives, and the depth. */
+    assert(Memories_GtePreciseVertex(2, &out) && out.x == x && out.w == w && out.view[0] > -150.6f &&
+           out.view[0] < -150.4f && out.view[2] == 160.5f);
 
     /* A view x IR1 saturates is not the word's vertex: rejected. */
     Memories_GteWriteControl(0, 0x7fff);
     Memories_GteWriteData(0, 0x7fff);
     Memories_GteCommand(0x0180001);
     assert(!Memories_GtePrecise(2, &x, &y, &w));
+    assert(!Memories_GtePreciseVertex(2, &out));
 
     /* PGXP: keep a full duel field at full speed rewrote the tables as two
      * per kind (this frame's and the last's, swapped each frame, TABLE_SIZE
@@ -81,42 +130,46 @@ int main(void)
             0xa2cbd440,
         };
         int i;
+        PgxpVertex crowded;
 
         /* Fill the bucket's own 64 probe slots this frame; each must round-
          * trip its own, distinct value. */
         for (i = 0; i < 64; i++) {
-            Pgxp_Project(bucket0[i], (double)i, (double)i + 100.0, (double)i + 1000.0);
+            crowded = point((float)i, (float)i + 100.0f, (float)i + 1000.0f);
+            Pgxp_Project(bucket0[i], &crowded);
         }
         for (i = 0; i < 64; i++) {
-            assert(Pgxp_Find(bucket0[i], &x, &y, &w) && x == (float)i && y == (float)i + 100.0f &&
-                   w == (float)i + 1000.0f);
+            assert(Pgxp_Find(bucket0[i], &out) && out.x == (float)i && out.y == (float)i + 100.0f &&
+                   out.w == (float)i + 1000.0f && out.view[0] == (float)i * 2.0f);
         }
 
         /* The 65th word in the same chain finds every probe taken: stored
          * nowhere (the comment's "stays at whole pixels"), and the 64
          * already there are untouched. */
-        Pgxp_Project(bucket0[64], 500.0, 600.0, 700.0);
-        assert(!Pgxp_Find(bucket0[64], &x, &y, &w));
-        assert(Pgxp_Find(bucket0[0], &x, &y, &w) && x == 0.0f);
-        assert(Pgxp_Find(bucket0[63], &x, &y, &w) && x == 63.0f);
+        crowded = point(500.0f, 600.0f, 700.0f);
+        Pgxp_Project(bucket0[64], &crowded);
+        assert(!Pgxp_Find(bucket0[64], &out));
+        assert(Pgxp_Find(bucket0[0], &out) && out.x == 0.0f);
+        assert(Pgxp_Find(bucket0[63], &out) && out.x == 63.0f);
 
         /* One frame on: the 64 are still readable (the last frame's table),
          * and this frame's half of the same bucket is free again -- a fresh
          * value for bucket0[0] does not collide with its own aged entry. */
         Pgxp_NextFrame();
         for (i = 0; i < 64; i++) {
-            assert(Pgxp_Find(bucket0[i], &x, &y, &w) && x == (float)i);
+            assert(Pgxp_Find(bucket0[i], &out) && out.x == (float)i);
         }
-        Pgxp_Project(bucket0[0], 9000.0, 9100.0, 9200.0);
-        assert(Pgxp_Find(bucket0[0], &x, &y, &w) && x == 9000.0f);
+        crowded = point(9000.0f, 9100.0f, 9200.0f);
+        Pgxp_Project(bucket0[0], &crowded);
+        assert(Pgxp_Find(bucket0[0], &out) && out.x == 9000.0f);
         /* bucket0[1], never re-stored this frame, still reads the aged one. */
-        assert(Pgxp_Find(bucket0[1], &x, &y, &w) && x == 1.0f);
+        assert(Pgxp_Find(bucket0[1], &out) && out.x == 1.0f);
 
         /* A second frame on: the original 64 are gone (older than the last
          * frame), but bucket0[0]'s fresher value, one frame old now, holds. */
         Pgxp_NextFrame();
-        assert(!Pgxp_Find(bucket0[1], &x, &y, &w));
-        assert(Pgxp_Find(bucket0[0], &x, &y, &w) && x == 9000.0f);
+        assert(!Pgxp_Find(bucket0[1], &out));
+        assert(Pgxp_Find(bucket0[0], &out) && out.x == 9000.0f);
     }
 
     /* The same crowding and swap behaviour for Pgxp_StoreAt/Pgxp_FindAt
@@ -135,25 +188,21 @@ int main(void)
             0xa2cbd440,
         };
         int i;
-        float known[3];
+        PgxpVertex known;
 
         for (i = 0; i < 64; i++) {
-            known[0] = (float)i;
-            known[1] = (float)i + 100.0f;
-            known[2] = (float)i + 1000.0f;
-            Pgxp_StoreAt(bucket0[i], 0xaaaa0000u + (uint32_t)i, known);
+            known = point((float)i, (float)i + 100.0f, (float)i + 1000.0f);
+            Pgxp_StoreAt(bucket0[i], 0xaaaa0000u + (uint32_t)i, &known);
         }
         for (i = 0; i < 64; i++) {
-            assert(Pgxp_FindAt(bucket0[i], 0xaaaa0000u + (uint32_t)i, &x, &y, &w) == 1 && x == (float)i);
+            assert(Pgxp_FindAt(bucket0[i], 0xaaaa0000u + (uint32_t)i, &out) == 1 && out.x == (float)i);
         }
         /* Crowded: the 65th neither stores nor corrupts the chain. */
-        known[0] = 1.0f;
-        known[1] = 2.0f;
-        known[2] = 3.0f;
-        Pgxp_StoreAt(bucket0[64], 0xaaaa0040u, known);
-        assert(Pgxp_FindAt(bucket0[64], 0xaaaa0040u, &x, &y, &w) == 0);
-        assert(Pgxp_FindAt(bucket0[0], 0xaaaa0000u, &x, &y, &w) == 1 && x == 0.0f);
-        assert(Pgxp_FindAt(bucket0[63], 0xaaaa003fu, &x, &y, &w) == 1 && x == 63.0f);
+        known = point(1.0f, 2.0f, 3.0f);
+        Pgxp_StoreAt(bucket0[64], 0xaaaa0040u, &known);
+        assert(Pgxp_FindAt(bucket0[64], 0xaaaa0040u, &out) == 0);
+        assert(Pgxp_FindAt(bucket0[0], 0xaaaa0000u, &out) == 1 && out.x == 0.0f);
+        assert(Pgxp_FindAt(bucket0[63], 0xaaaa003fu, &out) == 1 && out.x == 63.0f);
     }
     return 0;
 }
