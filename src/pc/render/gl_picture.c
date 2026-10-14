@@ -1155,6 +1155,7 @@ static void set_vertex(GlVertex *out, float x, float y, float u, float v, const 
 }
 
 static int drawn_multisampled(void); /* the target of the primitive being read (below) */
+static void seam_remember(size_t index, const float *px, const float *py); /* seam-aware growth (below) */
 
 /* Conservative coverage for a precise triangle: level 1's rounded vertices fattened thin parts of a
  * model (a spike, a sliver between two parts) into pixels; at precise positions they can fall between
@@ -1329,6 +1330,13 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
             py[i] = v[i]->precise ? v[i]->fy * (float)scale + shift : (float)(v[i]->y * scale) + shift;
         }
         if (grow > 0 && a->precise && b->precise && c->precise) {
+            static int seam_mode = -1;
+            if (seam_mode < 0) seam_mode = getenv("MEMORIES_PGXP_SEAM") != NULL;
+            if (seam_mode) { /* pushed where it is; flush_runs() grows the edges that close a seam */
+                for (i = 0; i < 3; i++) set_vertex(&out[i], px[i], py[i], (float)v[i]->u, (float)v[i]->v, v[i], flags);
+                seam_remember((size_t)(out - vertices), px, py);
+                return;
+            }
             grow_triangle(px, py, v, flags, grow, out);
             return;
         }
@@ -2288,6 +2296,327 @@ static void group_runs(void)
     run_count = count;
 }
 
+/* Seam-aware growth (PGXP level 2, MEMORIES_PGXP_SEAM=1): a fully precise triangle is pushed at its exact corners and
+ * remembered here; flush_runs() then moves out only the edges that have a seam partner. An edge is OPEN when no
+ * other triangle has the same two corners reversed (a shared edge is watertight). An open edge has a seam partner when
+ * another triangle's open edge runs the opposite way within SEAM_REACH console pixels, on its outer side: the crack
+ * between two pieces of a model. Outer outlines have no partner, so they stay where they are (no fringe). */
+#define SEAM_REACH_DEFAULT 0.5f
+static float SEAM_REACH = SEAM_REACH_DEFAULT, seam_dot = -0.5f; /* EXPERIMENT: MEMORIES_PGXP_SEAM_REACH / _DOT */
+typedef struct SeamTriangle {
+    size_t index; /* of its first vertex in `vertices` */
+    float x[3], y[3]; /* picture pixels, as pushed */
+} SeamTriangle;
+static SeamTriangle *seam_triangles;
+static size_t seam_count, seam_room;
+
+static void seam_remember(size_t index, const float *px, const float *py)
+{
+    SeamTriangle *at;
+    int i;
+    if (seam_count == seam_room) {
+        size_t room = seam_room ? seam_room * 2 : 4096;
+        SeamTriangle *more = realloc(seam_triangles, room * sizeof(*more));
+        if (!more) return;
+        seam_triangles = more;
+        seam_room = room;
+    }
+    at = &seam_triangles[seam_count++];
+    at->index = index;
+    for (i = 0; i < 3; i++) {
+        at->x[i] = px[i];
+        at->y[i] = py[i];
+    }
+}
+
+typedef struct SeamEdge {
+    float ax, ay, bx, by, nx, ny; /* console pixels; n: the outward unit normal */
+    uint32_t triangle;
+    uint8_t open, seam;
+} SeamEdge;
+typedef struct SeamEntry {
+    uint32_t edge, next; /* next: another entry of the bucket, plus one */
+} SeamEntry;
+
+static uint64_t seam_corner_key(float x, float y)
+{
+    return ((uint64_t)(uint32_t)(int32_t)lroundf(x * 1024.0f) << 32) | (uint32_t)(int32_t)lroundf(y * 1024.0f);
+}
+
+static uint32_t seam_hash(uint64_t a, uint64_t b)
+{
+    uint64_t h = (a * 0x9E3779B97F4A7C15ull) ^ ((b + 0x7F4A7C15ull) * 0xC2B2AE3D27D4EB4Full);
+    return (uint32_t)(h >> 32) ^ (uint32_t)h;
+}
+
+static uint32_t seam_cell(int cx, int cy)
+{
+    return seam_hash((uint64_t)(uint32_t)cx, (uint64_t)(uint32_t)cy);
+}
+
+static float seam_distance(float px, float py, const SeamEdge *e)
+{
+    float dx = e->bx - e->ax, dy = e->by - e->ay, l2 = dx * dx + dy * dy, t = 0.0f, x, y;
+    if (l2 > 1e-12f) t = ((px - e->ax) * dx + (py - e->ay) * dy) / l2;
+    t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+    x = e->ax + t * dx - px;
+    y = e->ay + t * dy - py;
+    return sqrtf(x * x + y * y);
+}
+
+/* Two open edges of different triangles that close a crack between them. */
+static int seam_partners(const SeamEdge *e, const SeamEdge *f)
+{
+    float ex = e->bx - e->ax, ey = e->by - e->ay, fx = f->bx - f->ax, fy = f->by - f->ay;
+    float el = sqrtf(ex * ex + ey * ey), fl = sqrtf(fx * fx + fy * fy);
+    float emx = (e->ax + e->bx) * 0.5f, emy = (e->ay + e->by) * 0.5f;
+    float fmx = (f->ax + f->bx) * 0.5f, fmy = (f->ay + f->by) * 0.5f;
+    if (e->triangle == f->triangle || el < 1e-4f || fl < 1e-4f) return 0;
+    if ((ex * fx + ey * fy) / (el * fl) > seam_dot) return 0; /* not running the opposite way */
+    if (seam_distance(emx, emy, f) > SEAM_REACH && seam_distance(fmx, fmy, e) > SEAM_REACH) return 0;
+    /* f lies on e's outer side and e on f's: otherwise the two pieces overlap and need no help */
+    if ((fmx - emx) * e->nx + (fmy - emy) * e->ny < -0.05f) return 0;
+    if ((emx - fmx) * f->nx + (emy - fmy) * f->ny < -0.05f) return 0;
+    return 1;
+}
+
+static void seam_apply(void)
+{
+    static SeamEdge *edges;
+    static SeamEntry *entries;
+    static uint32_t *corner_table, *cell_table;
+    static size_t edge_room, entry_room, corner_room, cell_room;
+    size_t n = seam_count, m = n * 3, i, k, table, cells, entry_count = 0;
+    unsigned open = 0, seamed = 0;
+    float grow = 0.2f;
+    const char *named = getenv("MEMORIES_PGXP_GROW");
+    if (named) grow = (float)atof(named);
+    seam_count = 0;
+    if (!n) return;
+    {
+        static int read;
+        if (!read) {
+            const char *r = getenv("MEMORIES_PGXP_SEAM_REACH"), *d = getenv("MEMORIES_PGXP_SEAM_DOT");
+            if (r) SEAM_REACH = (float)atof(r);
+            if (d) seam_dot = (float)atof(d);
+            read = 1;
+        }
+    }
+    if (edge_room < m) {
+        SeamEdge *more = realloc(edges, m * sizeof(*more));
+        if (!more) return;
+        edges = more;
+        edge_room = m;
+    }
+    for (table = 1024; table < m * 2; table *= 2) {}
+    for (cells = 1024; cells < m * 2; cells *= 2) {}
+    if (corner_room < table) {
+        uint32_t *more = realloc(corner_table, table * sizeof(*more));
+        if (!more) return;
+        corner_table = more;
+        corner_room = table;
+    }
+    if (cell_room < cells) {
+        uint32_t *more = realloc(cell_table, cells * sizeof(*more));
+        if (!more) return;
+        cell_table = more;
+        cell_room = cells;
+    }
+    memset(corner_table, 0, table * sizeof(*corner_table));
+    memset(cell_table, 0, cells * sizeof(*cell_table));
+    for (i = 0; i < n; i++) {
+        const SeamTriangle *t = &seam_triangles[i];
+        for (k = 0; k < 3; k++) {
+            SeamEdge *e = &edges[i * 3 + k];
+            size_t j = (k + 1) % 3, o = (k + 2) % 3;
+            float dx, dy, l, tx, ty;
+            e->ax = t->x[k] / (float)scale;
+            e->ay = t->y[k] / (float)scale;
+            e->bx = t->x[j] / (float)scale;
+            e->by = t->y[j] / (float)scale;
+            e->triangle = (uint32_t)i;
+            e->open = 1;
+            e->seam = 0;
+            dx = e->bx - e->ax;
+            dy = e->by - e->ay;
+            l = sqrtf(dx * dx + dy * dy);
+            e->nx = l > 1e-6f ? -dy / l : 0.0f;
+            e->ny = l > 1e-6f ? dx / l : 0.0f;
+            tx = t->x[o] / (float)scale - e->ax;
+            ty = t->y[o] / (float)scale - e->ay;
+            if (e->nx * tx + e->ny * ty > 0.0f) {
+                e->nx = -e->nx;
+                e->ny = -e->ny;
+            }
+        }
+    }
+    /* Open edges: nothing has this edge's corners reversed. Corner pairs hashed, linear probing, slot = edge + 1. */
+    for (i = 0; i < m; i++) {
+        const SeamEdge *e = &edges[i];
+        size_t slot = seam_hash(seam_corner_key(e->ax, e->ay), seam_corner_key(e->bx, e->by)) & (table - 1);
+        while (corner_table[slot]) slot = (slot + 1) & (table - 1);
+        corner_table[slot] = (uint32_t)i + 1;
+    }
+    for (i = 0; i < m; i++) {
+        SeamEdge *e = &edges[i];
+        size_t slot = seam_hash(seam_corner_key(e->bx, e->by), seam_corner_key(e->ax, e->ay)) & (table - 1);
+        while (corner_table[slot]) {
+            const SeamEdge *f = &edges[corner_table[slot] - 1];
+            if (seam_corner_key(f->ax, f->ay) == seam_corner_key(e->bx, e->by) &&
+                seam_corner_key(f->bx, f->by) == seam_corner_key(e->ax, e->ay)) {
+                e->open = 0;
+                break;
+            }
+            slot = (slot + 1) & (table - 1);
+        }
+        open += e->open;
+    }
+    /* A grid of 2 px cells: an open edge is listed in the cells within the reach of points every px along it. */
+    for (i = 0; i < m; i++) {
+        const SeamEdge *e = &edges[i];
+        float length = sqrtf((e->bx - e->ax) * (e->bx - e->ax) + (e->by - e->ay) * (e->by - e->ay));
+        int steps = (int)length + 1, s, last[8][2], last_count = 0, c;
+        if (!e->open) continue;
+        if (steps > 256) steps = 256;
+        for (s = 0; s <= steps; s++) {
+            float t = (float)s / (float)steps, x = e->ax + (e->bx - e->ax) * t, y = e->ay + (e->by - e->ay) * t;
+            int now[8][2], now_count = 0, dx, dy;
+            for (dy = -1; dy <= 1; dy += 2) {
+                for (dx = -1; dx <= 1; dx += 2) {
+                    int cx = (int)floorf((x + (float)dx * SEAM_REACH) * 0.5f), cy = (int)floorf((y + (float)dy * SEAM_REACH) * 0.5f);
+                    int seen = 0;
+                    for (c = 0; c < now_count; c++) seen |= now[c][0] == cx && now[c][1] == cy;
+                    for (c = 0; c < last_count; c++) seen |= last[c][0] == cx && last[c][1] == cy;
+                    if (seen) continue;
+                    now[now_count][0] = cx;
+                    now[now_count][1] = cy;
+                    now_count++;
+                    if (entry_count == entry_room) {
+                        size_t room = entry_room ? entry_room * 2 : 8192;
+                        SeamEntry *more = realloc(entries, room * sizeof(*more));
+                        if (!more) return;
+                        entries = more;
+                        entry_room = room;
+                    }
+                    {
+                        uint32_t bucket = seam_cell(cx, cy) & (uint32_t)(cells - 1);
+                        entries[entry_count].edge = (uint32_t)i;
+                        entries[entry_count].next = cell_table[bucket];
+                        cell_table[bucket] = (uint32_t)++entry_count;
+                    }
+                }
+            }
+            for (c = 0; c < now_count; c++) {
+                last[c][0] = now[c][0];
+                last[c][1] = now[c][1];
+            }
+            last_count = now_count;
+        }
+    }
+    for (i = 0; i < m; i++) {
+        SeamEdge *e = &edges[i];
+        uint32_t at;
+        float mx = (e->ax + e->bx) * 0.5f, my = (e->ay + e->by) * 0.5f;
+        if (!e->open) continue;
+        for (at = cell_table[seam_cell((int)floorf(mx * 0.5f), (int)floorf(my * 0.5f)) & (uint32_t)(cells - 1)]; at;
+             at = entries[at - 1].next) {
+            SeamEdge *f = &edges[entries[at - 1].edge];
+            if (f != e && seam_partners(e, f)) {
+                e->seam = f->seam = 1;
+            }
+        }
+    }
+    if (getenv("MEMORIES_PGXP_SEAM_ALL")) { /* EXPERIMENT: every open edge grows */
+        for (i = 0; i < m; i++) edges[i].seam = edges[i].open;
+    }
+    /* Each corner position moves once, the same in every triangle that has it, so edges that two triangles share stay
+     * exactly shared: the seam edges' outward normals added up per corner, the corner pushed out along them by `grow`. */
+    {
+        static uint64_t *keys;
+        static float *sum_x, *sum_y;
+        static uint32_t *counts, *slots;
+        static size_t keys_room, slots_room;
+        size_t used = 0;
+        if (keys_room < m) {
+            uint64_t *k2 = realloc(keys, m * sizeof(*k2));
+            float *x2, *y2;
+            uint32_t *c2;
+            if (!k2) return;
+            keys = k2;
+            x2 = realloc(sum_x, m * sizeof(*x2));
+            if (!x2) return;
+            sum_x = x2;
+            y2 = realloc(sum_y, m * sizeof(*y2));
+            if (!y2) return;
+            sum_y = y2;
+            c2 = realloc(counts, m * sizeof(*c2));
+            if (!c2) return;
+            counts = c2;
+            keys_room = m;
+        }
+        if (slots_room < table) {
+            uint32_t *more = realloc(slots, table * sizeof(*more));
+            if (!more) return;
+            slots = more;
+            slots_room = table;
+        }
+        memset(slots, 0, table * sizeof(*slots));
+        for (i = 0; i < m; i++) {
+            const SeamEdge *e = &edges[i];
+            int end;
+            if (!e->seam) continue;
+            seamed++;
+            for (end = 0; end < 2; end++) {
+                uint64_t key = seam_corner_key(end ? e->bx : e->ax, end ? e->by : e->ay);
+                size_t slot = seam_hash(key, 0) & (table - 1);
+                while (slots[slot] && keys[slots[slot] - 1] != key) slot = (slot + 1) & (table - 1);
+                if (!slots[slot]) {
+                    keys[used] = key;
+                    sum_x[used] = sum_y[used] = 0.0f;
+                    counts[used] = 0;
+                    slots[slot] = (uint32_t)++used;
+                }
+                sum_x[slots[slot] - 1] += e->nx;
+                sum_y[slots[slot] - 1] += e->ny;
+                counts[slots[slot] - 1]++;
+            }
+        }
+        for (i = 0; i < n; i++) {
+            const SeamTriangle *t = &seam_triangles[i];
+            for (k = 0; k < 3; k++) {
+                uint64_t key = seam_corner_key(t->x[k] / (float)scale, t->y[k] / (float)scale);
+                size_t slot = seam_hash(key, 0) & (table - 1);
+                GlVertex *out = vertices + t->index + k;
+                float dx, dy, length, d;
+                while (slots[slot] && keys[slots[slot] - 1] != key) slot = (slot + 1) & (table - 1);
+                if (!slots[slot]) continue;
+                dx = sum_x[slots[slot] - 1];
+                dy = sum_y[slots[slot] - 1];
+                length = sqrtf(dx * dx + dy * dy);
+                if (length < 1e-4f) continue;
+                /* one normal: grow along it; several: the miter of the sum (a corner of two edges), at most 3 * grow */
+                d = counts[slots[slot] - 1] == 1 ? 1.0f : 2.0f / (length > 0.5f ? length : 0.5f);
+                d = d * grow * (float)scale;
+                dx = dx / length * d;
+                dy = dy / length * d;
+                length = sqrtf(dx * dx + dy * dy);
+                if (length > 3.0f * grow * (float)scale) {
+                    dx *= 3.0f * grow * (float)scale / length;
+                    dy *= 3.0f * grow * (float)scale / length;
+                }
+                out->x = t->x[k] + dx;
+                out->y = t->y[k] + dy;
+            }
+        }
+    }
+    {
+        static unsigned flushes;
+        if (getenv("MEMORIES_PGXP_SEAMLOG") && (++flushes % 8) == 0) {
+            LOG(LOG_FRAMES, "seam: %zu triangles, %zu edges, %u open, %u seam edges (grown)", n, m, open, seamed);
+        }
+    }
+}
+
 /* The primitives gathered so far, in order, into the picture. */
 static void flush_runs(void)
 {
@@ -2296,8 +2625,10 @@ static void flush_runs(void)
     if (!vertex_count || scale < 2) {
         vertex_count = 0;
         run_count = 0;
+        seam_count = 0;
         return;
     }
+    seam_apply();
     group_runs();
     sync_banks();
     sync_pack();
@@ -2356,6 +2687,7 @@ static void flush_runs(void)
     glDisable(GL_SCISSOR_TEST);
     vertex_count = 0;
     run_count = 0;
+    seam_count = 0;
 }
 
 /* A quad over picture pixels x,y,w,h drawn with the program's op 1 or 2
@@ -2569,6 +2901,7 @@ static void resync(int wanted, const uint32_t words[6])
 {
     vertex_count = 0;
     run_count = 0;
+    seam_count = 0;
     capture_rect[2] = capture_rect[3] = 0; /* VRAM may be anything now */
     if (program) capture_uniform();
     if (wanted < 2) {
@@ -2725,7 +3058,7 @@ int GlPicture_Replay(void)
             gp0(op + 2, op[1]);
             batch_words = NULL;
             batch_precise_count = 0;
-            if (scale < 2) vertex_count = run_count = 0; /* the state words still count */
+            if (scale < 2) vertex_count = run_count = seam_count = 0; /* the state words still count */
             break;
         case OP_LOAD:
             used = 5 + ((size_t)op[3] * op[4] + 1) / 2;
@@ -3054,7 +3387,7 @@ static void forget_names(void)
     shown_texture = shown_fbo = 0;
     shown_w = shown_h = 0;
     copy_fbo = 0;
-    vertex_count = run_count = 0;
+    vertex_count = run_count = seam_count = 0;
     want_resync = 1; /* VRAM whole into the new picture, at the next replay after Init */
 }
 
