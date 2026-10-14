@@ -681,6 +681,17 @@ void DrawOTag(u32 *list)
             if (!positions) {
                 vertex->x = (float)(int16_t)(frame_words[i] & 0xffffu);
                 vertex->y = (float)(int16_t)(frame_words[i] >> 16);
+            } else {
+                /* The GTE floors twice (IR1/IR2 before the divide, then the result), so the console's picture lies
+                 * 0.74 (x) and 0.80 (y) pixels up and left of where the vertices really fall (mean over a frame, 0.34 spread); 0.77 for both. The
+                 * precise position keeps that alignment with the console's 2D layers: MEMORIES_PGXP_BIAS overrides. */
+                static float bias = -1.0f;
+                if (bias < 0.0f) {
+                    const char *named = getenv("MEMORIES_PGXP_BIAS");
+                    bias = named ? (float)atof(named) : 0.77f;
+                }
+                vertex->x -= bias;
+                vertex->y -= bias;
             }
             vertex->index = (uint32_t)i;
             pending_precise++;
