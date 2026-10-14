@@ -2366,7 +2366,7 @@ typedef struct SeamEdge {
 } SeamEdge;
 typedef struct SeamEntry {
     uint32_t edge, next; /* next: another entry of the bucket, plus one */
-    float ux, uy, mx, my, len; /* the edge's, so most candidates are turned away without fetching it */
+    float ux, uy, mx, my, len, nx, ny; /* the edge's, so most candidates are turned away without fetching it */
 } SeamEntry;
 
 static uint64_t seam_corner_key(float x, float y)
@@ -2410,7 +2410,7 @@ static int seam_partners(const SeamEdge *e, const SeamEdge *f)
     return 1;
 }
 
-static uint64_t seam_phase[5];
+static uint64_t seam_phase[5], seam_stat[4];
 #define SEAM_PHASE(k) do { uint64_t now_ = SDL_GetPerformanceCounter(); seam_phase[k] += now_ - phase_t; phase_t = now_; } while (0)
 static void seam_apply_work(void)
 {
@@ -2554,6 +2554,8 @@ static void seam_apply_work(void)
                     entries[entry_count].mx = e->mx;
                     entries[entry_count].my = e->my;
                     entries[entry_count].len = e->len;
+                    entries[entry_count].nx = e->nx;
+                    entries[entry_count].ny = e->ny;
                     entries[entry_count].next = cell_table[bucket];
                     cell_table[bucket] = (uint32_t)++entry_count;
                 }
@@ -2569,10 +2571,15 @@ static void seam_apply_work(void)
         for (at = cell_table[seam_cell((int)floorf(mx * 0.5f), (int)floorf(my * 0.5f)) & (uint32_t)(cells - 1)]; at;
              at = entries[at - 1].next) {
             const SeamEntry *candidate = &entries[at - 1];
+            seam_stat[0]++;
             SeamEdge *f;
-            float reach = 0.5f * (e->len + candidate->len) + SEAM_REACH;
+            float reach = 0.5f * (e->len > candidate->len ? e->len : candidate->len) + SEAM_REACH;
+            float gx = candidate->mx - mx, gy = candidate->my - my;
             if (e->ux * candidate->ux + e->uy * candidate->uy > seam_dot) continue;
-            if (fabsf(mx - candidate->mx) > reach || fabsf(my - candidate->my) > reach) continue;
+            seam_stat[1]++;
+            if (gx * gx + gy * gy > reach * reach) continue; /* one midpoint must lie within the reach of the other segment */
+            if (gx * e->nx + gy * e->ny < -0.05f || -(gx * candidate->nx + gy * candidate->ny) < -0.05f) continue; /* not on the outer sides */
+            seam_stat[2]++;
             f = &edges[candidate->edge];
             if (f != e && seam_partners(e, f)) {
                 e->seam = f->seam = 1;
@@ -2743,12 +2750,30 @@ static void seam_apply(void)
 {
     static uint64_t spent, calls, triangles;
     uint64_t start = SDL_GetPerformanceCounter(), n = seam_count;
+    if (getenv("MEMORIES_PGXP_SEAMBENCH") && n) { /* the fastest of 12 runs on the same data: steady-state cost, free of load noise */
+        uint64_t best = ~0ull, ph[5] = {~0ull, ~0ull, ~0ull, ~0ull, ~0ull};
+        int r, q;
+        for (r = 0; r < 12; r++) {
+            uint64_t t0, dt;
+            for (q = 0; q < 5; q++) seam_phase[q] = 0;
+            t0 = SDL_GetPerformanceCounter();
+            seam_count = (size_t)n;
+            seam_apply_work();
+            dt = SDL_GetPerformanceCounter() - t0;
+            if (dt < best) best = dt;
+            for (q = 0; q < 5; q++) if (seam_phase[q] < ph[q]) ph[q] = seam_phase[q];
+        }
+        seam_count = (size_t)n;
+        LOG(LOG_FRAMES, "seam best of 12: %.0f us for %llu triangles (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f)", (double)best * 1e6 / (double)SDL_GetPerformanceFrequency(), (unsigned long long)n,
+            (double)ph[0] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[1] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[2] * 1e6 / (double)SDL_GetPerformanceFrequency(),
+            (double)ph[3] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[4] * 1e6 / (double)SDL_GetPerformanceFrequency());
+    }
     seam_apply_work();
     spent += SDL_GetPerformanceCounter() - start;
     triangles += n;
     if (getenv("MEMORIES_PGXP_SEAMLOG") && ++calls % 2 == 0) {
         double k = 1e6 / (double)SDL_GetPerformanceFrequency() / (double)calls;
-        LOG(LOG_FRAMES, "seam time: %.1f us per flush (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f), %.0f triangles per flush", (double)spent * k,
+        LOG(LOG_FRAMES, "seam cand %.0f dir-ok %.0f partner-calls %.0f entries; seam time: %.1f us per flush (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f), %.0f triangles per flush", seam_stat[0] / (double)calls, seam_stat[1] / (double)calls, seam_stat[2] / (double)calls, (double)spent * k,
             seam_phase[0] * k, seam_phase[1] * k, seam_phase[2] * k, seam_phase[3] * k, seam_phase[4] * k, (double)triangles / (double)calls);
     }
 }
