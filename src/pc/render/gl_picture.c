@@ -2335,7 +2335,7 @@ static void group_runs(void)
  * other triangle has the same two corners reversed (a shared edge is watertight). An open edge has a seam partner when
  * another triangle's open edge runs the opposite way within SEAM_REACH console pixels, on its outer side: the crack
  * between two pieces of a model. Outer outlines have no partner, so they stay where they are (no fringe). */
-static float seam_reach = 1.5f, seam_maxgrow = 0.8f, seam_needle = 0.3f; /* EXPERIMENT: MEMORIES_PGXP_SEAM_REACH / _MAXGROW / _NEEDLE (console px) */
+static float seam_reach = 1.5f, seam_maxgrow = 0.8f, seam_needle = 0.3f, seam_miter = 1.0f; /* EXPERIMENT: MEMORIES_PGXP_SEAM_REACH / _MAXGROW / _NEEDLE (console px), _MITER */
 #define SEAM_REACH seam_reach
 #define SEAM_MARGIN 0.05f
 #define seam_dot (-0.5f) /* the cosine of the angle between the two edges: opposite to within 60 degrees */
@@ -2439,6 +2439,7 @@ static void seam_apply_work(void)
             if (r) seam_reach = (float)atof(r);
             if (g) seam_maxgrow = (float)atof(g);
             if (nd) seam_needle = (float)atof(nd);
+            if (getenv("MEMORIES_PGXP_SEAM_MITER")) seam_miter = (float)atof(getenv("MEMORIES_PGXP_SEAM_MITER"));
             read = 1;
         }
     }
@@ -2678,16 +2679,13 @@ static void seam_apply_work(void)
                 dy = sum_y[slots[slot] - 1];
                 length = sqrtf(dx * dx + dy * dy);
                 if (length < 1e-4f) continue;
-                /* one normal: grow along it; several: the miter of the sum (a corner of two edges), at most 3 * grow */
-                d = counts[slots[slot] - 1] == 1 ? 1.0f : 2.0f / (length > 0.5f ? length : 0.5f);
+                /* one normal: grow along it; several: the miter of their average (a corner of two edges), but never more than
+                 * seam_miter times the growth, or a thin part (a bone, a finger) whose corners touch many seams is torn apart */
+                d = counts[slots[slot] - 1] == 1 ? 1.0f : (float)counts[slots[slot] - 1] / length;
+                if (d > seam_miter) d = seam_miter;
                 d = d * max_need[slots[slot] - 1] * (float)scale;
                 dx = dx / length * d;
                 dy = dy / length * d;
-                length = sqrtf(dx * dx + dy * dy);
-                if (length > 3.0f * max_need[slots[slot] - 1] * (float)scale) {
-                    dx *= 3.0f * max_need[slots[slot] - 1] * (float)scale / length;
-                    dy *= 3.0f * max_need[slots[slot] - 1] * (float)scale / length;
-                }
                 out->x = t->x[k] + dx;
                 out->y = t->y[k] + dy;
             }
