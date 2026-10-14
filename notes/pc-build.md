@@ -2690,7 +2690,7 @@ viewer and was not reached.
 
 ### Precise geometry (PGXP)
 
-Precise geometry (PGXP) has a Video menu option, *Off*/*Textures*
+Precise geometry (PGXP) has a Video menu option, *Off*/*Textures*/*Textures and positions*
 (`MENU_ITEM_PGXP`, `menu.c`), disabled where it cannot draw: below Internal
 2x, or without the OpenGL picture pass. It affects the OpenGL picture only,
 at 2x and up.
@@ -2698,21 +2698,22 @@ at 2x and up.
 - **Affine textures** (`pgxp=1`, *Textures*). The GTE keeps no depth with a
   vertex, so textures on 3D polygons bend. Textured polygons are drawn in
   perspective, at the console's whole-pixel vertices.
-- **Rounded vertices** (`pgxp=2`, *Textures and positions*). The GTE's
-  perspective transform rounds each vertex to a whole console pixel, which
-  makes 3D polygons wobble as they move. Polygons are also drawn at the
-  vertices' precise positions. A model's parts are projected each with its
-  own matrix, and where they meet, the vertices lie up to about a console
-  pixel apart; the console's rounding closes those seams. So a frame word
-  that carries two different precise positions keeps its whole-pixel one
-  (`snap_seams` in `libgpu.c`; its depth stays precise).
-
-  The `pgxp` setting is clamped to 1 for now: level 2 is not offered from
-  the menu yet, pending a fix to `snap_seams` (a small model or part that
-  happens to land on the same screen word as an unrelated one can be
-  wrongly treated as a seam) and independent testing across more than one
-  OS/GPU driver combination. Level 1 has none of that seam logic and is not
-  affected.
+- **Precise positions** (`pgxp=2`, *Textures and positions*). The GTE's
+  perspective transform rounds each vertex to a whole console pixel (and
+  floors twice, so the console's picture sits about 0.77 px up and left of
+  the exact projection), which makes 3D polygons wobble as they move.
+  Polygons are drawn at the vertices' precise positions, shifted by that
+  bias (`MEMORIES_PGXP_BIAS`) so the picture lines up with the 2D layers.
+  Rounding used to close the cracks between a model's pieces; `gl_picture.c`
+  closes them now: a seam between two pieces (two open edges running opposite
+  ways within 1.5 console px) is closed by moving the corners on it out by
+  half the crack plus a margin (at most 0.8 px; every corner position moves
+  once, the same in every triangle that has it, so shared edges stay
+  watertight); triangles thinner than 0.3 px do not take part; triangles
+  larger than 25 console px (floors, a monster filling the screen) get a
+  plain 0.2 px overlap instead, as the GPU clips their shared edges
+  differently. Transparent texels at the edge of a model's polygon take a
+  neighbouring texel. Level 0 and 1 pictures are unchanged by any of this.
 
 **How it works** (`src/pc/compat/pgxp.c`):
 

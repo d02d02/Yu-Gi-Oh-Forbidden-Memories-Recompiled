@@ -46,7 +46,7 @@ typedef struct PgxpVertex {
 
 /* Which model draw a vertex belongs to. Each GsSortUnit call is one: its
  * parts are projected with their own matrices and their seams must close
- * (libgpu.c snap_seams), while two models that happen to round to the same
+ * (libgpu.c weld_corners), while two models that happen to round to the same
  * screen word are unrelated and must not be glued. */
 extern uint32_t Pgxp_Draw;
 void Pgxp_BeginDraw(void);

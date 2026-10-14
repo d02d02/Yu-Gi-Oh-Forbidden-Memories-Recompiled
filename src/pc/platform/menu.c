@@ -293,10 +293,12 @@ static Menu submenus[SUB_COUNT] = {
                   {"", 0, ITEM_RADIO, RADIO_LANGUAGE, SET_LANGUAGE, LANGUAGE_IT},
                   {"", 0, ITEM_RADIO, RADIO_LANGUAGE, SET_LANGUAGE, LANGUAGE_ES}}, 6},
     /* PGXP recovers the GTE's discarded depth to fix affine texture warping
-     * on tilted polygons (pgxp.h). Level 2, precise positions, is not
-     * offered yet (settings.c clamps it). */
+     * on tilted polygons (pgxp.h), and at level 2 draws the 3D models at
+     * their precise vertex positions (no wobble; seams between a model's
+     * parts are closed in gl_picture.c). */
     {"Precise geometry", {{"Off", 0, ITEM_RADIO, 0, SET_PGXP, 0},
-                          {"Textures", 0, ITEM_RADIO, 0, SET_PGXP, 1}}, 2},
+                          {"Textures", 0, ITEM_RADIO, 0, SET_PGXP, 1},
+                          {"Textures and positions", 0, ITEM_RADIO, 0, SET_PGXP, 2}}, 3},
     /* The on-screen controller for touch screens (touch_pad.h). */
     {"Touch controls", {{"Automatic (after a touch)", 0, ITEM_RADIO, 0, SET_TOUCH_PAD, 0},
                         {"Show", 0, ITEM_RADIO, 0, SET_TOUCH_PAD, 1},
