@@ -602,6 +602,14 @@ static const char *fragment_source =
     "#endif\n"
     "        else {\n"
     "            word = texel_word(u, v);\n"
+    "#ifdef PAD_TRANSPARENT\n"
+    "            if (word == 0u && (flags & 32) != 0) {\n"
+    "                word = texel_word(clamp(u + 1, bounds.x, bounds.z) & 255, v);\n"
+    "                if (word == 0u) word = texel_word(clamp(u - 1, bounds.x, bounds.z) & 255, v);\n"
+    "                if (word == 0u) word = texel_word(u, clamp(v + 1, bounds.y, bounds.w) & 255);\n"
+    "                if (word == 0u) word = texel_word(u, clamp(v - 1, bounds.y, bounds.w) & 255);\n"
+    "            }\n"
+    "#endif\n"
     "        }\n"
     "        semi = semi && (word & 0x8000u) != 0u;\n"
     "        if (!replaced) {\n"
@@ -733,8 +741,9 @@ static int make_program(int xbr)
     if (!vs) return 0;
     { /* EXPERIMENT: MEMORIES_PGXP_CYAN_TRANSPARENT paints a transparent texel cyan instead of leaving what lies beneath */
         static char defines[128];
-        snprintf(defines, sizeof(defines), "%s%s", xbr ? "#define TEXTURE_XBR 1\n" : "",
-                 getenv("MEMORIES_PGXP_CYAN_TRANSPARENT") ? "#define DEBUG_TRANSPARENT 1\n" : "");
+        snprintf(defines, sizeof(defines), "%s%s%s", xbr ? "#define TEXTURE_XBR 1\n" : "",
+                 getenv("MEMORIES_PGXP_CYAN_TRANSPARENT") ? "#define DEBUG_TRANSPARENT 1\n" : "",
+                 getenv("MEMORIES_PGXP_PAD_TRANSPARENT") ? "#define PAD_TRANSPARENT 1\n" : "");
         fs = compile(GL_FRAGMENT_SHADER, fragment_source, defines[0] ? defines : NULL);
     }
     if (!fs) {
@@ -2523,6 +2532,73 @@ static void seam_apply(void)
             SeamEdge *f = &edges[entries[at - 1].edge];
             if (f != e && seam_partners(e, f)) {
                 e->seam = f->seam = 1;
+            }
+        }
+    }
+    if (getenv("MEMORIES_PGXP_SEAM_MASK")) {
+        /* EXPERIMENT: an open edge grows when something lies just beyond it (within MEMORIES_PGXP_SEAM_MASK console px,
+         * default 0.6): a coverage mask of the frame's precise triangles at 4 samples per console px; and a triangle
+         * under MEMORIES_PGXP_SEAM_SMALL px^2 grows on all its open edges. */
+        static unsigned char *mask;
+        static size_t mask_room;
+        float reach = (float)atof(getenv("MEMORIES_PGXP_SEAM_MASK")), small = 0.0f, lo_x = 1e9f, lo_y = 1e9f, hi_x = -1e9f, hi_y = -1e9f;
+        int w, h, gx, gy;
+        const char *sm = getenv("MEMORIES_PGXP_SEAM_SMALL");
+        if (reach <= 0.0f) reach = 0.6f;
+        if (sm) small = (float)atof(sm);
+        for (i = 0; i < m; i++) {
+            if (edges[i].ax < lo_x) lo_x = edges[i].ax;
+            if (edges[i].ax > hi_x) hi_x = edges[i].ax;
+            if (edges[i].ay < lo_y) lo_y = edges[i].ay;
+            if (edges[i].ay > hi_y) hi_y = edges[i].ay;
+        }
+        w = (int)((hi_x - lo_x) * 4.0f) + 8;
+        h = (int)((hi_y - lo_y) * 4.0f) + 8;
+        if (w > 0 && h > 0 && (size_t)w * (size_t)h <= 4000000u) {
+            if (mask_room < (size_t)w * (size_t)h) {
+                unsigned char *more = realloc(mask, (size_t)w * (size_t)h);
+                if (!more) return;
+                mask = more;
+                mask_room = (size_t)w * (size_t)h;
+            }
+            memset(mask, 0, (size_t)w * (size_t)h);
+            for (i = 0; i < n; i++) {
+                const SeamEdge *e0 = &edges[i * 3], *e1 = e0 + 1, *e2 = e0 + 2;
+                float x0 = e0->ax, y0 = e0->ay, x1 = e1->ax, y1 = e1->ay, x2 = e2->ax, y2 = e2->ay;
+                float ar = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0), sgn = ar > 0 ? 1.0f : -1.0f;
+                float bx0 = fminf(x0, fminf(x1, x2)), bx1 = fmaxf(x0, fmaxf(x1, x2)), by0 = fminf(y0, fminf(y1, y2)), by1 = fmaxf(y0, fmaxf(y1, y2));
+                if (ar > -1e-9f && ar < 1e-9f) continue;
+                for (gy = (int)((by0 - lo_y) * 4.0f); gy <= (int)((by1 - lo_y) * 4.0f) + 1; gy++) {
+                    for (gx = (int)((bx0 - lo_x) * 4.0f); gx <= (int)((bx1 - lo_x) * 4.0f) + 1; gx++) {
+                        float qx = lo_x + ((float)gx + 0.5f) * 0.25f, qy = lo_y + ((float)gy + 0.5f) * 0.25f;
+                        if (gx < 0 || gy < 0 || gx >= w || gy >= h) continue;
+                        if (((x1 - x0) * (qy - y0) - (y1 - y0) * (qx - x0)) * sgn >= 0 &&
+                            ((x2 - x1) * (qy - y1) - (y2 - y1) * (qx - x1)) * sgn >= 0 &&
+                            ((x0 - x2) * (qy - y2) - (y0 - y2) * (qx - x2)) * sgn >= 0) {
+                            mask[(size_t)gy * (size_t)w + (size_t)gx] = 1;
+                        }
+                    }
+                }
+            }
+            for (i = 0; i < m; i++) {
+                SeamEdge *e = &edges[i];
+                float ex = e->bx - e->ax, ey = e->by - e->ay;
+                int a, b;
+                if (!e->open) continue;
+                if (small > 0.0f) {
+                    const SeamEdge *e0 = &edges[(i / 3) * 3];
+                    float ar = (e0[1].ax - e0[0].ax) * (e0[2].ay - e0[0].ay) - (e0[1].ay - e0[0].ay) * (e0[2].ax - e0[0].ax);
+                    if (fabsf(ar) * 0.5f < small) e->seam = 1;
+                }
+                for (a = 1; a <= 3 && !e->seam; a++) {
+                    for (b = 1; b <= 3 && !e->seam; b++) {
+                        float t = (float)a / 4.0f, d = reach * (float)b / 3.0f;
+                        float qx = e->ax + ex * t + e->nx * d, qy = e->ay + ey * t + e->ny * d;
+                        gx = (int)((qx - lo_x) * 4.0f);
+                        gy = (int)((qy - lo_y) * 4.0f);
+                        if (gx >= 0 && gy >= 0 && gx < w && gy < h && mask[(size_t)gy * (size_t)w + (size_t)gx]) e->seam = 1;
+                    }
+                }
             }
         }
     }
