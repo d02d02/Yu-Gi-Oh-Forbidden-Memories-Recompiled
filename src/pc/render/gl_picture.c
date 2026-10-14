@@ -1738,51 +1738,350 @@ static int wide_target(void)
 static NativeDraw native_ring[NATIVE_RING];
 static int native_ring_valid[NATIVE_RING];
 
+/* One vertex of a native mesh, already projected: x, y in picture pixels, z the view depth, uv, and the light. */
+typedef struct NativeVertex {
+    float x, y, z, u, v, r, g, b;
+} NativeVertex;
+
+/* The pass draws each model into a framebuffer of its own (colour and depth, the picture's size), so the model
+ * has a real depth buffer while the picture has none, then lays the result over the picture where the model
+ * sorts. */
+static struct {
+    GLuint program, comp_program, texture, color, fbo, depth, buffer;
+    GLint u_size, u_tex, c_size, c_tex;
+    int w, h, failed;
+    const NativeMesh *textured; /* the mesh `texture` holds */
+    NativeVertex *vertices;
+    size_t capacity;
+} nat;
+
+static const char *native_vertex_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform vec2 picture_size;\n"
+    "in vec3 position;\n"
+    "in vec2 texcoord;\n"
+    "in vec3 shade;\n"
+    "out vec2 uv;\n"
+    "out vec3 rgb;\n"
+    "void main() {\n"
+    /* x, y are picture pixels, z the view depth: clip = (ndc * z, depth * z, z), so the interpolation is
+     * perspective-correct and the depth test is linear in the view depth. */
+    "    float depth = (position.z - 16.0) / (200000.0 - 16.0) * 2.0 - 1.0;\n"
+    "    vec2 ndc = position.xy / picture_size * 2.0 - 1.0;\n"
+    "    gl_Position = vec4(ndc * position.z, depth * position.z, position.z);\n"
+    "    uv = texcoord;\n"
+    "    rgb = shade;\n"
+    "}\n";
+
+static const char *native_fragment_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform sampler2D tex;\n"
+    "in vec2 uv;\n"
+    "in vec3 rgb;\n"
+    "out vec4 fragment;\n"
+    "void main() {\n"
+    "    vec4 texel = texture(tex, uv);\n"
+    "    if (texel.a < 0.5) discard;\n"
+    "    fragment = vec4(texel.rgb * rgb, 1.0);\n"
+    "}\n";
+
+static const char *native_comp_vertex_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform vec2 picture_size;\n"
+    "in vec2 position;\n"
+    "out vec2 uv;\n"
+    "void main() {\n"
+    "    uv = position / picture_size;\n"
+    "    gl_Position = vec4(position / picture_size * 2.0 - 1.0, 0.0, 1.0);\n"
+    "}\n";
+
+static const char *native_comp_fragment_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform sampler2D tex;\n"
+    "in vec2 uv;\n"
+    "out vec4 fragment;\n"
+    "void main() {\n"
+    "    fragment = texture(tex, uv);\n"
+    "}\n";
+
+static GLuint native_link(const char *vs_source, const char *fs_source, const char *attribute0, const char *attribute1,
+                          const char *attribute2)
+{
+    GLuint vs = compile(GL_VERTEX_SHADER, vs_source, NULL), fs, made;
+    GLint ok = 0;
+    if (!vs) return 0;
+    fs = compile(GL_FRAGMENT_SHADER, fs_source, NULL);
+    if (!fs) {
+        gl_DeleteShader(vs);
+        return 0;
+    }
+    made = gl_CreateProgram();
+    gl_AttachShader(made, vs);
+    gl_AttachShader(made, fs);
+    if (attribute0) gl_BindAttribLocation(made, 0, attribute0);
+    if (attribute1) gl_BindAttribLocation(made, 1, attribute1);
+    if (attribute2) gl_BindAttribLocation(made, 2, attribute2);
+    gl_LinkProgram(made);
+    gl_DeleteShader(vs);
+    gl_DeleteShader(fs);
+    gl_GetProgramiv(made, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[2048];
+        gl_GetProgramInfoLog(made, sizeof(log), NULL, log);
+        fprintf(stderr, "memories-pc: native model: program: %s\n", log);
+        gl_DeleteProgram(made);
+        return 0;
+    }
+    return made;
+}
+
+static void native_free(void)
+{
+    if (nat.program) gl_DeleteProgram(nat.program);
+    if (nat.comp_program) gl_DeleteProgram(nat.comp_program);
+    if (nat.texture) glDeleteTextures(1, &nat.texture);
+    if (nat.color) glDeleteTextures(1, &nat.color);
+    if (nat.fbo) gl_DeleteFramebuffers(1, &nat.fbo);
+    if (nat.depth) gl_DeleteRenderbuffers(1, &nat.depth);
+    if (nat.buffer) gl_DeleteBuffers(1, &nat.buffer);
+    free(nat.vertices);
+    memset(&nat, 0, sizeof(nat));
+    NativeModel_GlReady = 0;
+}
+
+/* The programs and the target, made once (and again when the picture's scale changes). */
+static int native_ready(void)
+{
+    int w = SOFT_GPU_WIDTH * scale, h = SOFT_GPU_HEIGHT * scale;
+    if (nat.failed || scale < 2) return 0;
+    if (!nat.program) {
+        nat.program = native_link(native_vertex_source, native_fragment_source, "position", "texcoord", "shade");
+        nat.comp_program = native_link(native_comp_vertex_source, native_comp_fragment_source, "position", NULL, NULL);
+        if (!nat.program || !nat.comp_program) {
+            native_free();
+            nat.failed = 1;
+            return 0;
+        }
+        nat.u_size = gl_GetUniformLocation(nat.program, "picture_size");
+        nat.u_tex = gl_GetUniformLocation(nat.program, "tex");
+        nat.c_size = gl_GetUniformLocation(nat.comp_program, "picture_size");
+        nat.c_tex = gl_GetUniformLocation(nat.comp_program, "tex");
+        gl_GenBuffers(1, &nat.buffer);
+    }
+    if (nat.w != w || nat.h != h) {
+        if (nat.fbo) gl_DeleteFramebuffers(1, &nat.fbo);
+        if (nat.depth) gl_DeleteRenderbuffers(1, &nat.depth);
+        if (nat.color) glDeleteTextures(1, &nat.color);
+        nat.fbo = nat.depth = nat.color = 0;
+        nat.color = make_texture(GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE);
+        gl_GenRenderbuffers(1, &nat.depth);
+        gl_BindRenderbuffer(GL_RENDERBUFFER, nat.depth);
+        gl_RenderbufferStorageMultisample(GL_RENDERBUFFER, 0, GL_DEPTH_COMPONENT24, w, h);
+        gl_BindRenderbuffer(GL_RENDERBUFFER, 0);
+        gl_GenFramebuffers(1, &nat.fbo);
+        gl_BindFramebuffer(GL_FRAMEBUFFER, nat.fbo);
+        gl_FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, nat.color, 0);
+        gl_FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, nat.depth);
+        if (gl_CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            fprintf(stderr, "memories-pc: native model: framebuffer incomplete\n");
+            gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
+            native_free();
+            nat.failed = 1;
+            return 0;
+        }
+        gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
+        nat.w = w;
+        nat.h = h;
+    }
+    NativeModel_GlReady = 1;
+    return 1;
+}
+
+static float native_clamp(float v, float lo, float hi)
+{
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
 /* The mesh of draw `id` posed with the parts' GTE matrices the game set (view = R v / 4096 + TR, screen =
- * offset + H x / z: the GTE's own arithmetic, in floats), as flat triangles through the ordinary triangle path. */
+ * offset + H x / z: the GTE's own arithmetic, in floats), lit as the GTE lights (NCCS: the colour matrix times
+ * the light matrix times the normal, plus the ambient), textured, depth-tested, laid over the picture. */
 static void native_draw(unsigned id)
 {
     const NativeDraw *d = &native_ring[id % NATIVE_RING];
     const NativeMesh *mesh;
     uint32_t i;
+    float min_x = 1e9f, min_y = 1e9f, max_x = -1e9f, max_y = -1e9f;
+    int x0, y0, x1, y1, lit;
     NativeModel_Stats[5]++;
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
     mesh = NativeModel_Mesh(d->model);
-    if (!mesh) return;
-    for (i = 0; i + 2 < mesh->vertices; i += 3) {
-        Vertex v[3];
-        int k, ok = 1;
-        memset(v, 0, sizeof(v));
-        for (k = 0; k < 3 && ok; k++) {
-            const uint32_t *w = mesh->words + (size_t)(i + k) * 9;
-            const float *f = (const float *)w;
-            const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
-            float vx, vy, vz, sx, sy;
-            if (!part->used) { ok = 0; break; }
-            vx = ((float)part->rot[0] * f[0] + (float)part->rot[1] * f[1] + (float)part->rot[2] * f[2]) / 4096.0f +
-                 (float)part->tr[0];
-            vy = ((float)part->rot[3] * f[0] + (float)part->rot[4] * f[1] + (float)part->rot[5] * f[2]) / 4096.0f +
-                 (float)part->tr[1];
-            vz = ((float)part->rot[6] * f[0] + (float)part->rot[7] * f[1] + (float)part->rot[8] * f[2]) / 4096.0f +
-                 (float)part->tr[2];
-            if (vz < 16.0f) { ok = 0; break; }
-            sx = (float)d->ofx / 65536.0f + (float)d->h * vx / vz;
-            sy = (float)d->ofy / 65536.0f + (float)d->h * vy / vz;
-            v[k].precise = 1;
-            v[k].fx = sx + (float)state.offset_x;
-            v[k].fy = sy + (float)state.offset_y;
-            v[k].q = 1.0f / vz;
-            v[k].x = (int)(v[k].fx + 0.5f);
-            v[k].y = (int)(v[k].fy + 0.5f);
-            v[k].r = 255;
-            v[k].g = 0;
-            v[k].b = 255;
-        }
-        if (ok) {
-            triangle(&v[0], &v[1], &v[2], 0);
-            NativeModel_Stats[6]++;
-        }
+    if (!mesh || !native_ready()) return;
+    /* The primitives before this model, in order, are in the picture first. */
+    flush_runs();
+    if (nat.textured != mesh) {
+        if (!nat.texture) glGenTextures(1, &nat.texture);
+        glBindTexture(GL_TEXTURE_2D, nat.texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)mesh->tex_w, (GLsizei)mesh->tex_h, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, mesh->rgba);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        nat.textured = mesh;
     }
+    if (nat.capacity < mesh->vertices) {
+        free(nat.vertices);
+        nat.vertices = (NativeVertex *)malloc((size_t)mesh->vertices * sizeof(NativeVertex));
+        nat.capacity = nat.vertices ? mesh->vertices : 0;
+        if (!nat.vertices) return;
+    }
+    /* Whether the slot's lights are set at all: a slot drawn from the colour cache has no light of its own. */
+    lit = 0;
+    for (i = 0; i < NATIVE_MAX_PARTS && !lit; i++) {
+        int k;
+        for (k = 0; k < 9; k++) lit |= d->parts[i].used && d->parts[i].lcm[k] != 0;
+    }
+    for (i = 0; i < mesh->vertices; i++) {
+        const uint32_t *w = mesh->words + (size_t)i * 9;
+        const float *f = (const float *)w;
+        const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
+        NativeVertex *out = &nat.vertices[i];
+        float vx, vy, vz, tint[3];
+        out->z = 1e7f; /* outside the far plane: not drawn */
+        if (!part->used) continue;
+        vx = ((float)part->rot[0] * f[0] + (float)part->rot[1] * f[1] + (float)part->rot[2] * f[2]) / 4096.0f +
+             (float)part->tr[0];
+        vy = ((float)part->rot[3] * f[0] + (float)part->rot[4] * f[1] + (float)part->rot[5] * f[2]) / 4096.0f +
+             (float)part->tr[1];
+        vz = ((float)part->rot[6] * f[0] + (float)part->rot[7] * f[1] + (float)part->rot[8] * f[2]) / 4096.0f +
+             (float)part->tr[2];
+        if (vz < 16.0f) continue;
+        out->x = ((float)d->ofx / 65536.0f + (float)d->h * vx / vz + (float)state.offset_x) * (float)scale;
+        out->y = ((float)d->ofy / 65536.0f + (float)d->h * vy / vz + (float)state.offset_y) * (float)scale;
+        out->z = vz;
+        out->u = f[6];
+        out->v = f[7];
+        tint[0] = (float)(d->tint & 0xff) / 128.0f;
+        tint[1] = (float)((d->tint >> 8) & 0xff) / 128.0f;
+        tint[2] = (float)((d->tint >> 16) & 0xff) / 128.0f;
+        if (lit) {
+            float ir[3], light[3];
+            int c, l;
+            for (l = 0; l < 3; l++) {
+                ir[l] = ((float)part->llm[l * 3] * f[3] + (float)part->llm[l * 3 + 1] * f[4] +
+                         (float)part->llm[l * 3 + 2] * f[5]) / 4096.0f;
+                if (ir[l] < 0.0f) ir[l] = 0.0f;
+            }
+            for (c = 0; c < 3; c++) {
+                light[c] = (float)d->bk[c] / 4096.0f + ((float)part->lcm[c * 3] * ir[0] + (float)part->lcm[c * 3 + 1] * ir[1] +
+                                                         (float)part->lcm[c * 3 + 2] * ir[2]) / 4096.0f;
+            }
+            out->r = native_clamp(light[0] * tint[0], 0.0f, 255.0f / 128.0f);
+            out->g = native_clamp(light[1] * tint[1], 0.0f, 255.0f / 128.0f);
+            out->b = native_clamp(light[2] * tint[2], 0.0f, 255.0f / 128.0f);
+        } else {
+            out->r = tint[0];
+            out->g = tint[1];
+            out->b = tint[2];
+        }
+        if (out->x < min_x) min_x = out->x;
+        if (out->y < min_y) min_y = out->y;
+        if (out->x > max_x) max_x = out->x;
+        if (out->y > max_y) max_y = out->y;
+    }
+    /* A triangle with one vertex out takes the others out with it. */
+    for (i = 0; i + 2 < mesh->vertices; i += 3) {
+        if (nat.vertices[i].z > 1e6f || nat.vertices[i + 1].z > 1e6f || nat.vertices[i + 2].z > 1e6f)
+            nat.vertices[i].z = nat.vertices[i + 1].z = nat.vertices[i + 2].z = 1e7f;
+    }
+    if (min_x > max_x) return;
+    /* Its box in picture pixels, inside the picture and the primitive clip rectangle the game has set. */
+    x0 = (int)min_x - 1;
+    y0 = (int)min_y - 1;
+    x1 = (int)max_x + 2;
+    y1 = (int)max_y + 2;
+    {
+        int cx0 = state.clip_x1 * scale, cy0 = state.clip_y1 * scale;
+        int cx1 = (state.clip_x2 + 1) * scale, cy1 = (state.clip_y2 + 1) * scale;
+        if (x0 < cx0) x0 = cx0;
+        if (y0 < cy0) y0 = cy0;
+        if (x1 > cx1) x1 = cx1;
+        if (y1 > cy1) y1 = cy1;
+        if (x0 < 0) x0 = 0;
+        if (y0 < 0) y0 = 0;
+        if (x1 > nat.w) x1 = nat.w;
+        if (y1 > nat.h) y1 = nat.h;
+    }
+    if (x1 <= x0 || y1 <= y0) return;
+    NativeModel_Stats[6] += mesh->vertices / 3;
+
+    /* The model, with depth, into the private target. */
+    gl_BindFramebuffer(GL_FRAMEBUFFER, nat.fbo);
+    glViewport(0, 0, nat.w, nat.h);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x0, y0, x1 - x0, y1 - y0);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glDepthMask(GL_TRUE);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    gl_UseProgram(nat.program);
+    gl_Uniform2f(nat.u_size, (float)nat.w, (float)nat.h);
+    gl_Uniform1i(nat.u_tex, 0);
+    gl_ActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, nat.texture);
+    gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer);
+    gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->vertices * sizeof(NativeVertex)), nat.vertices,
+                  GL_STREAM_DRAW);
+    gl_EnableVertexAttribArray(0);
+    gl_EnableVertexAttribArray(1);
+    gl_EnableVertexAttribArray(2);
+    gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)0);
+    gl_VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)(3 * sizeof(float)));
+    gl_VertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)(5 * sizeof(float)));
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mesh->vertices);
+    glDisable(GL_DEPTH_TEST);
+
+    /* Over the picture, where the model sorts. */
+    {
+        float quad[12] = {(float)x0, (float)y0, (float)x1, (float)y0, (float)x1, (float)y1,
+                          (float)x0, (float)y0, (float)x1, (float)y1, (float)x0, (float)y1};
+        gl_BindFramebuffer(GL_FRAMEBUFFER, picture_draw());
+        glViewport(0, 0, nat.w, nat.h);
+        glScissor(x0, y0, x1 - x0, y1 - y0);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        gl_UseProgram(nat.comp_program);
+        gl_Uniform2f(nat.c_size, (float)nat.w, (float)nat.h);
+        gl_Uniform1i(nat.c_tex, 0);
+        glBindTexture(GL_TEXTURE_2D, nat.color);
+        gl_BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
+        gl_VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (const void *)0);
+        gl_DisableVertexAttribArray(1);
+        gl_DisableVertexAttribArray(2);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisable(GL_BLEND);
+    }
+    gl_DisableVertexAttribArray(0);
+    glDisable(GL_SCISSOR_TEST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 static void gp0(const uint32_t *words, size_t count)
@@ -2919,6 +3218,7 @@ int GlPicture_CopyInto(unsigned from, int x, int y, int w, int h, unsigned to)
 static void delete_names(void)
 {
     int i;
+    native_free();
     if (program) {
         gl_UseProgram(0);
         gl_DeleteProgram(program);

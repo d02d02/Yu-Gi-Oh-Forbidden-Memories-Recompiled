@@ -26,6 +26,8 @@ typedef struct NativePart {
     int16_t rot[9]; /* the GTE rotation matrix, row by row, 1.3.12 fixed point */
     int16_t used;
     int32_t tr[3];  /* the GTE translation */
+    int16_t llm[9]; /* the GTE light matrix (lights in the part's local space), 1.3.12 */
+    int16_t lcm[9]; /* the GTE light colour matrix (rows: colour channels, columns: lights), 1.3.12 */
 } NativePart;
 
 typedef struct NativeDraw {
@@ -33,6 +35,8 @@ typedef struct NativeDraw {
     int32_t model;  /* the slot's model id */
     int32_t ofx, ofy; /* GTE screen offset (16.16) */
     int32_t h;      /* GTE projection distance */
+    int32_t bk[3];  /* GTE background (ambient) colour, 1.0 = 0x1000 */
+    uint32_t tint;  /* the polygons' base colour the slot is drawn with (0x80 = neutral), r in the low byte */
     NativePart parts[NATIVE_MAX_PARTS];
 } NativeDraw;
 
@@ -43,6 +47,11 @@ typedef struct NativeMesh {
 } NativeMesh;
 
 extern unsigned NativeModel_Stats[8];
+/* 1 while the slot being sorted has a replacement mesh the GL pass will draw: the drivers then leave the model's
+ * PS1 packets unlinked (they still run, so the packet cursor and the colour cache stay as they were). */
+extern volatile int NativeModel_Suppress;
+/* Set by the GL pass: it can draw native models now (a picture of 2x or more, programs made). */
+extern volatile int NativeModel_GlReady;
 /* The slot draw (game side). model < 0: not a duel model. */
 void NativeModel_BeginSlot(int model);
 void NativeModel_Part(int part);

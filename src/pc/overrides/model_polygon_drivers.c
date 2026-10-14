@@ -49,6 +49,7 @@
 #include "types.h"
 #include "pc/compat/gte.h"
 #include "pc/compat/pgxp.h"
+#include "pc/render/native_model.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -273,8 +274,10 @@ static u32 *draw(u32 *scratch, const Driver *kind)
             if (kind->window) {
                 *out++ = 0xe2000000u;
             }
-            packet[0] = (*entry & 0x00ffffffu) | ((u32)packet_words << 24);
-            *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
+            if (!NativeModel_Suppress) { /* a model the native pass draws: the packet is made but never linked */
+                packet[0] = (*entry & 0x00ffffffu) | ((u32)packet_words << 24);
+                *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
+            }
             packet += packet_words + 1;
             /* The translucent second pass: flat template color, its CLUT, blend mode 2. */
             if (at == 1 || !(color & 0x02000000u) || !second_clut) {
