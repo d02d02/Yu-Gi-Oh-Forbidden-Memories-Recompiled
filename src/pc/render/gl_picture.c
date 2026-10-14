@@ -1038,6 +1038,7 @@ static struct {
 typedef struct Vertex {
     int x, y, r, g, b, u, v;
     int precise;     /* PGXP: fx, fy and q hold where the vertex really is */
+    uint32_t id;     /* PGXP: the model data vertex it came from (PgxpVertex.id) */
     float fx, fy, q;
 } Vertex;
 
@@ -1054,6 +1055,7 @@ static void find_precise(Vertex *vertex, const uint32_t *word)
     size_t low = 0, high = batch_precise_count;
     uint32_t index;
     vertex->precise = 0;
+    vertex->id = 0;
     if (!batch_precise_count || !batch_words || word < batch_words) return;
     index = (uint32_t)(word - batch_words);
     while (low < high) {
@@ -1066,6 +1068,7 @@ static void find_precise(Vertex *vertex, const uint32_t *word)
         vertex->fx = batch_precise[low].x + (float)state.offset_x;
         vertex->fy = batch_precise[low].y + (float)state.offset_y;
         vertex->q = 1.0f / batch_precise[low].w;
+        vertex->id = batch_precise[low].id;
     }
 }
 /* The texels of the primitive being read (GlVertex's bounds). */
@@ -1277,10 +1280,10 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
                 probe_y <= hi_y + probe_r) {
                 LOG(LOG_FRAMES,
                     "gltri: flags %d int area %lld | a %d,%d %s %.2f,%.2f uv %d,%d | b %d,%d %s %.2f,%.2f uv %d,%d | "
-                    "c %d,%d %s %.2f,%.2f uv %d,%d | offset %d,%d scale %d",
+                    "c %d,%d %s %.2f,%.2f uv %d,%d | offset %d,%d scale %d | ids %x %x %x",
                     flags, (long long)area, a->x, a->y, a->precise ? "P" : "-", a->fx, a->fy, a->u, a->v, b->x, b->y,
                     b->precise ? "P" : "-", b->fx, b->fy, b->u, b->v, c->x, c->y, c->precise ? "P" : "-", c->fx, c->fy,
-                    c->u, c->v, state.offset_x, state.offset_y, scale);
+                    c->u, c->v, state.offset_x, state.offset_y, scale, a->id, b->id, c->id);
             }
         }
     }

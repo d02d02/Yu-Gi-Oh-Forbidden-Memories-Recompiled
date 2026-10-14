@@ -205,6 +205,7 @@ static u32 *draw(u32 *scratch, const Driver *kind)
         for (i = 0; i < 3; i++) {
             screen[i] = Memories_GteReadData(12 + i);
             exact_from_gte(&exact[i], i);
+            exact[i].point.id = (uint32_t)(uintptr_t)(vertices + vertex[i] * 8);
         }
         if (kind->quad) {
             load_vector(0, vertices, vertex[3]);
@@ -214,6 +215,7 @@ static u32 *draw(u32 *scratch, const Driver *kind)
             }
             screen[3] = Memories_GteReadData(14);
             exact_from_gte(&exact[3], 2);
+            exact[3].point.id = (uint32_t)(uintptr_t)(vertices + vertex[3] * 8);
         }
         Memories_GteCommand(kind->quad ? AVSZ4 : AVSZ3);
         if (mode != 0) {
@@ -378,6 +380,7 @@ u32 *func_80067220(u32 *scratch)
                  * the result's own address (it can lie outside guest RAM). */
                 Exact exact;
                 exact_from_gte(&exact, 2);
+                exact.point.id = (uint32_t)(uintptr_t)source;
                 Pgxp_StoreAt((uint32_t)(uintptr_t)result, result[0],
                              exact.known && result[1] != 0xffffffffu ? &exact.point : NULL);
             }

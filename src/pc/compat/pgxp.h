@@ -38,6 +38,7 @@ typedef struct PgxpVertex {
     float view[3];
     float scale;   /* camera-space units per model unit: the size of its part's rotation matrix */
     uint32_t draw; /* the model draw (Pgxp_BeginDraw) that projected it */
+    uint32_t id;   /* address of the model data vertex it came from (0: unknown); tells shared corners from separate ones */
 } PgxpVertex;
 /* The arena records a PgxpVertex as this many words (gl_picture.c): keep
  * the two in step by deriving one from the other, never by hand. */
