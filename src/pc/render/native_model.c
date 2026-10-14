@@ -42,7 +42,8 @@ static void load(void)
     size = ftell(file);
     fseek(file, 0, SEEK_SET);
     data = (uint32_t *)malloc((size_t)size);
-    if (!data || fread(data, 1, (size_t)size, file) != (size_t)size || size < 20 || memcmp(data, "HDM1", 4) != 0) {
+    if (!data || fread(data, 1, (size_t)size, file) != (size_t)size || size < 20 ||
+        (memcmp(data, "HDM1", 4) != 0 && memcmp(data, "HDM2", 4) != 0)) {
         fprintf(stderr, "memories-pc: native model: %s is not a model.hdm\n", path);
         free(data);
         fclose(file);
@@ -53,13 +54,14 @@ static void load(void)
     mesh.parts = data[2];
     mesh.tex_w = data[3];
     mesh.tex_h = data[4];
-    if ((size_t)size != 20 + (size_t)mesh.vertices * 36 + (size_t)mesh.tex_w * mesh.tex_h * 4) {
+    mesh.stride = memcmp(data, "HDM2", 4) == 0 ? 17 : 9;
+    if ((size_t)size != 20 + (size_t)mesh.vertices * mesh.stride * 4 + (size_t)mesh.tex_w * mesh.tex_h * 4) {
         fprintf(stderr, "memories-pc: native model: %s has the wrong size\n", path);
         free(data);
         return;
     }
     mesh.words = data + 5;
-    mesh.rgba = (const uint8_t *)(data + 5) + (size_t)mesh.vertices * 36;
+    mesh.rgba = (const uint8_t *)(data + 5) + (size_t)mesh.vertices * mesh.stride * 4;
     mesh_model = id ? atoi(id) : 364;
     fprintf(stderr, "memories-pc: native model: %s for model %d (%u vertices, %u parts)\n", path, mesh_model,
             mesh.vertices, mesh.parts);
@@ -156,6 +158,24 @@ void NativeModel_Link(uint32_t *ot, int draw)
 
 void NativeModel_Take(void)
 {
+    if (logged && frame_count) { /* how often the pose changes from one frame to the next: 1 = changed, 0 = the same */
+        static uint32_t last_hash;
+        static char history[65];
+        static unsigned n;
+        uint32_t hash = 2166136261u;
+        size_t i;
+        const uint8_t *bytes = (const uint8_t *)frame[0].parts;
+        for (i = 0; i < sizeof(frame[0].parts); i++) hash = (hash ^ bytes[i]) * 16777619u;
+        history[n % 64] = hash != last_hash ? '1' : '0';
+        last_hash = hash;
+        if (++n % 120 == 0) {
+            char line[65];
+            size_t k;
+            for (k = 0; k < 64; k++) line[k] = history[(n + k) % 64];
+            line[64] = 0;
+            fprintf(stderr, "memories-pc: native model: pose changed per frame (oldest first): %s\n", line);
+        }
+    }
     taken_count = frame_count;
     if (frame_count) NativeModel_Stats[3]++;
     if (logged && frame_count) {

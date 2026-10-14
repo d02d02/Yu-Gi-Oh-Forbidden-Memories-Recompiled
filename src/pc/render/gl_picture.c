@@ -1958,6 +1958,34 @@ static float native_clamp(float v, float lo, float hi)
     return v < lo ? lo : v > hi ? hi : v;
 }
 
+/* A part-local point to view space, with the part's GTE matrices (view = R v / 4096 + TR). */
+static void native_view(const NativePart *part, const float *v, float out[3])
+{
+    out[0] = ((float)part->rot[0] * v[0] + (float)part->rot[1] * v[1] + (float)part->rot[2] * v[2]) / 4096.0f +
+             (float)part->tr[0];
+    out[1] = ((float)part->rot[3] * v[0] + (float)part->rot[4] * v[1] + (float)part->rot[5] * v[2]) / 4096.0f +
+             (float)part->tr[1];
+    out[2] = ((float)part->rot[6] * v[0] + (float)part->rot[7] * v[1] + (float)part->rot[8] * v[2]) / 4096.0f +
+             (float)part->tr[2];
+}
+
+/* The GTE's lighting (NCCS) of a part-local normal: the colour matrix times the light matrix times the normal, plus the
+ * ambient; 1.0 = full light. */
+static void native_light(const NativeDraw *d, const NativePart *part, const float *n, float out[3])
+{
+    float ir[3];
+    int c, l;
+    for (l = 0; l < 3; l++) {
+        ir[l] = ((float)part->llm[l * 3] * n[0] + (float)part->llm[l * 3 + 1] * n[1] +
+                 (float)part->llm[l * 3 + 2] * n[2]) / 4096.0f;
+        if (ir[l] < 0.0f) ir[l] = 0.0f;
+    }
+    for (c = 0; c < 3; c++) {
+        out[c] = (float)d->bk[c] / 4096.0f + ((float)part->lcm[c * 3] * ir[0] + (float)part->lcm[c * 3 + 1] * ir[1] +
+                                              (float)part->lcm[c * 3 + 2] * ir[2]) / 4096.0f;
+    }
+}
+
 /* The mesh of draw `id` posed with the parts' GTE matrices the game set (view = R v / 4096 + TR, screen =
  * offset + H x / z: the GTE's own arithmetic, in floats), lit as the GTE lights (NCCS: the colour matrix times
  * the light matrix times the normal, plus the ambient), textured, depth-tested, laid over the picture. */
@@ -2043,39 +2071,45 @@ static void native_draw(unsigned id)
         for (k = 0; k < 9; k++) lit |= d->parts[i].used && d->parts[i].lcm[k] != 0;
     }
     for (i = 0; i < mesh->vertices; i++) {
-        const uint32_t *w = mesh->words + (size_t)i * 9;
+        const uint32_t *w = mesh->words + (size_t)i * mesh->stride;
         const float *f = (const float *)w;
-        const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
         NativeVertex *out = &nat.vertices[i];
-        float vx, vy, vz, tint[3];
+        float view[3], other[3], light[3], tint[3], weight = 0.0f;
+        const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
+        const NativePart *second = NULL;
         out->z = 1e7f; /* outside the far plane: not drawn */
         if (!part->used) continue;
-        vx = ((float)part->rot[0] * f[0] + (float)part->rot[1] * f[1] + (float)part->rot[2] * f[2]) / 4096.0f +
-             (float)part->tr[0];
-        vy = ((float)part->rot[3] * f[0] + (float)part->rot[4] * f[1] + (float)part->rot[5] * f[2]) / 4096.0f +
-             (float)part->tr[1];
-        vz = ((float)part->rot[6] * f[0] + (float)part->rot[7] * f[1] + (float)part->rot[8] * f[2]) / 4096.0f +
-             (float)part->tr[2];
-        if (vz < 16.0f) continue;
-        out->x = ((float)d->ofx / 65536.0f + (float)d->h * vx / vz + (float)state.offset_x) * (float)scale;
-        out->y = ((float)d->ofy / 65536.0f + (float)d->h * vy / vz + (float)state.offset_y) * (float)scale;
-        out->z = vz;
+        if (mesh->stride >= 17 && w[10] != 0) { /* smooth skin: this vertex also follows a neighbour part */
+            const float *fb = (const float *)w;
+            weight = fb[10];
+            second = &d->parts[w[9] < NATIVE_MAX_PARTS ? w[9] : 0];
+            if (!second->used || weight <= 0.0f) second = NULL;
+        }
+        native_view(part, f, view);
+        if (second) {
+            float other_position[3] = {((const float *)w)[11], ((const float *)w)[12], ((const float *)w)[13]};
+            native_view(second, other_position, other);
+            view[0] += (other[0] - view[0]) * weight;
+            view[1] += (other[1] - view[1]) * weight;
+            view[2] += (other[2] - view[2]) * weight;
+        }
+        if (view[2] < 16.0f) continue;
+        out->x = ((float)d->ofx / 65536.0f + (float)d->h * view[0] / view[2] + (float)state.offset_x) * (float)scale;
+        out->y = ((float)d->ofy / 65536.0f + (float)d->h * view[1] / view[2] + (float)state.offset_y) * (float)scale;
+        out->z = view[2];
         out->u = f[6];
         out->v = f[7];
         tint[0] = (float)(d->tint & 0xff) / 128.0f;
         tint[1] = (float)((d->tint >> 8) & 0xff) / 128.0f;
         tint[2] = (float)((d->tint >> 16) & 0xff) / 128.0f;
         if (lit) {
-            float ir[3], light[3];
-            int c, l;
-            for (l = 0; l < 3; l++) {
-                ir[l] = ((float)part->llm[l * 3] * f[3] + (float)part->llm[l * 3 + 1] * f[4] +
-                         (float)part->llm[l * 3 + 2] * f[5]) / 4096.0f;
-                if (ir[l] < 0.0f) ir[l] = 0.0f;
-            }
-            for (c = 0; c < 3; c++) {
-                light[c] = (float)d->bk[c] / 4096.0f + ((float)part->lcm[c * 3] * ir[0] + (float)part->lcm[c * 3 + 1] * ir[1] +
-                                                         (float)part->lcm[c * 3 + 2] * ir[2]) / 4096.0f;
+            native_light(d, part, f + 3, light);
+            if (second) {
+                float light_b[3], normal_b[3] = {((const float *)w)[14], ((const float *)w)[15], ((const float *)w)[16]};
+                native_light(d, second, normal_b, light_b);
+                light[0] += (light_b[0] - light[0]) * weight;
+                light[1] += (light_b[1] - light[1]) * weight;
+                light[2] += (light_b[2] - light[2]) * weight;
             }
             out->r = native_clamp(light[0] * tint[0], 0.0f, 255.0f / 128.0f);
             out->g = native_clamp(light[1] * tint[1], 0.0f, 255.0f / 128.0f);
