@@ -1372,7 +1372,7 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
                 static float big = -1.0f;
                 if (big < 0.0f) {
                     const char *named = getenv("MEMORIES_PGXP_SEAM_BIG"); /* console px; EXPERIMENT */
-                    big = named ? (float)atof(named) : 30.0f;
+                    big = named ? (float)atof(named) : 25.0f;
                 }
                 for (i = 1; i < 3; i++) {
                     if (px[i] < lo_x) lo_x = px[i];
