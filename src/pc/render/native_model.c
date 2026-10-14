@@ -6,6 +6,7 @@
 #include <string.h>
 
 extern uint32_t D_800FE240; /* LIBGS packet cursor */
+extern uint32_t D_8009AFB4; /* the slot's Gouraud triangle template (colour in the low 3 bytes) */
 
 static NativeDraw frame[NATIVE_MAX_DRAWS];
 static size_t frame_count;
@@ -18,6 +19,8 @@ static int loaded; /* 1 once the environment was read */
 static int mesh_model = -1;
 static NativeMesh mesh;
 static int logged;
+volatile int NativeModel_Suppress;
+volatile int NativeModel_GlReady;
 unsigned NativeModel_Stats[8]; /* parts captured, draws closed, markers linked, takes with draws, replayed ops, markers hit, triangles */
 
 static void load(void)
@@ -82,6 +85,8 @@ void NativeModel_BeginSlot(int model)
     current = &frame[frame_count];
     memset(current, 0, sizeof(*current));
     current->model = model;
+    current->tint = D_8009AFB4 & 0x00ffffffu; /* the Gouraud triangle template: its colour is what the lighting scales */
+    NativeModel_Suppress = NativeModel_GlReady;
 }
 
 void NativeModel_Part(int part)
@@ -102,6 +107,19 @@ void NativeModel_Part(int part)
     p->rot[7] = (int16_t)(c[3] >> 16);
     p->rot[8] = (int16_t)c[4];
     for (i = 0; i < 3; i++) p->tr[i] = (int32_t)Memories_GteReadControl(5 + i);
+    for (i = 0; i < 5; i++) {
+        uint32_t l = Memories_GteReadControl(8 + i), k = Memories_GteReadControl(16 + i);
+        if (i < 4) {
+            p->llm[i * 2] = (int16_t)l;
+            p->llm[i * 2 + 1] = (int16_t)(l >> 16);
+            p->lcm[i * 2] = (int16_t)k;
+            p->lcm[i * 2 + 1] = (int16_t)(k >> 16);
+        } else {
+            p->llm[8] = (int16_t)l;
+            p->lcm[8] = (int16_t)k;
+        }
+    }
+    for (i = 0; i < 3; i++) current->bk[i] = (int32_t)Memories_GteReadControl(13 + i);
     p->used = 1;
     NativeModel_Stats[0]++;
     current->ofx = (int32_t)Memories_GteReadControl(24);
@@ -112,7 +130,9 @@ void NativeModel_Part(int part)
 int NativeModel_EndSlot(void)
 {
     int draw;
+    NativeModel_Suppress = 0;
     if (!current) return 0;
+    NativeModel_Suppress = 0;
     current->id = next_id++;
     NativeModel_Stats[1]++;
     draw = (int)current->id + 1;
