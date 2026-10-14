@@ -12,3 +12,7 @@ attack, camera pin, shots at battle steps, pixel checks). `--record` stores gold
 
 `rigkit.py ab <spec> --exe-a A --exe-b B [--settings-b k=v ...] [--max-pct N]`: the same situation on two builds (or one build with a
 setting changed on side B), shots matched by battle step, per-shot pixel diff, wall time, `ab.json` + `ab-sheet.png`, exit 1 on a difference.
+
+`rigkit.py matrix <matrix.json> --golden-dir G [--record|--check]`: mod QA matrix, one situation x combinations of mods/settings x scales
+(per-combo `scales`, `boot_timeout`, `data_mods` linked by junction into the private exe copy). Example `situations/matrix-mods.json`.
+A build with the Duel Links art data mod takes ~120 s to accept a client (600 PNGs at startup): give its combos `boot_timeout`.

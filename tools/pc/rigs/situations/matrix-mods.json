@@ -1,0 +1,91 @@
+{
+  "spec": "ab-attack-3d.json",
+  "scales": [
+    1,
+    2,
+    4
+  ],
+  "combos": {
+    "vanilla": {
+      "settings": {
+        "mod.3d-monsters": 0,
+        "mod.2d-monsters": 0
+      }
+    },
+    "3d": {
+      "settings": {
+        "mod.3d-monsters": 1,
+        "mod.2d-monsters": 0
+      }
+    },
+    "2d": {
+      "settings": {
+        "mod.3d-monsters": 0,
+        "mod.2d-monsters": 1
+      }
+    },
+    "hd": {
+      "settings": {
+        "mod.3d-monsters": 0,
+        "mod.2d-monsters": 0,
+        "mod.forbidden-memories-hd": 1,
+        "mod.forbidden-memories-hd.full_bleed": 1
+      },
+      "data_mods": [
+        "assets-hd"
+      ]
+    },
+    "3d+hd": {
+      "settings": {
+        "mod.3d-monsters": 1,
+        "mod.2d-monsters": 0,
+        "mod.forbidden-memories-hd": 1,
+        "mod.forbidden-memories-hd.full_bleed": 1
+      },
+      "data_mods": [
+        "assets-hd"
+      ]
+    },
+    "2d+hd": {
+      "settings": {
+        "mod.3d-monsters": 0,
+        "mod.2d-monsters": 1,
+        "mod.forbidden-memories-hd": 1,
+        "mod.forbidden-memories-hd.full_bleed": 1
+      },
+      "data_mods": [
+        "assets-hd"
+      ]
+    },
+    "duel-links-art": {
+      "settings": {
+        "mod.3d-monsters": 1,
+        "mod.2d-monsters": 0,
+        "mod.duel-links-2d-arts": 1,
+        "mod.3d-monsters.style": 1
+      },
+      "data_mods": [],
+      "boot_timeout": 420,
+      "scales": [
+        4
+      ]
+    },
+    "duel-links+hd": {
+      "settings": {
+        "mod.3d-monsters": 1,
+        "mod.2d-monsters": 0,
+        "mod.duel-links-2d-arts": 1,
+        "mod.forbidden-memories-hd": 1,
+        "mod.forbidden-memories-hd.full_bleed": 1,
+        "mod.3d-monsters.style": 1
+      },
+      "data_mods": [
+        "assets-hd"
+      ],
+      "boot_timeout": 420,
+      "scales": [
+        4
+      ]
+    }
+  }
+}

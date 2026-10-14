@@ -12,6 +12,9 @@
       the same situation on two builds (each in its own private copy), shots matched by battle step, per-shot pixel
       diff + wall time, ab.json and ab-sheet.png, exit 1 when any shot differs by more than --max-pct. Both builds must
       have the mods the spec turns on (camera-pin only when the spec pins a camera).
+  python -I rigkit.py matrix matrix.json --exe X --out DIR --golden-dir G [--record | --check]
+      mod QA matrix: one situation x combinations of mods/settings x scales, each cell checked against its golden;
+      data mods (e.g. assets-hd) are linked into the private exe copy by junction; table + matrix-report.json.
   python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
       attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
       --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
@@ -82,6 +85,77 @@ def camera_pin(g, angle=None, distance=None):
     if distance is not None:
         g.pad(0x8000 | (distance & 0x7FF), 2); g.step(1)
     g.pad(0, 2)
+
+
+SHARED_MODS_DATA = Path(r"C:\Users\mdahh\OneDrive\Desktop\Perso\hacking\shared\mods-data")
+
+
+def link_data_mods(executable, names):
+    """Junction each data mod (hacking\\shared\\mods-data\\<name>) into the PRIVATE exe copy's mods folder.
+    Refuses to touch a build folder that is not a private copy (the user's real build must stay untouched)."""
+    import subprocess
+    if not names:
+        return
+    exe_dir = Path(executable).resolve().parent
+    if exe_dir.name != "_exe":
+        raise RuntimeError("data mods are linked only into a private exe copy (do not use --in-place with data_mods)")
+    for name in names:
+        dst, src = exe_dir / "mods" / name, SHARED_MODS_DATA / name
+        if not src.is_dir():
+            raise FileNotFoundError(f"no data mod {src}")
+        want = json.loads((src / "mod.json").read_text(encoding="utf-8")).get("id")
+        have = {}
+        for mj in (exe_dir / "mods").glob("*/mod.json"):
+            try:
+                have[json.loads(mj.read_text(encoding="utf-8")).get("id")] = mj.parent.name
+            except ValueError:
+                pass
+        if want in have:   # the game refuses two mods with one id and never opens its channel (cost 3 x 70 s once)
+            print(f"link_data_mods: id {want} is already in the build as mods/{have[want]}; not linking {name}", flush=True)
+            continue
+        if not dst.exists():
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(dst), str(src)], check=True, capture_output=True)
+
+
+def run_matrix(a):
+    """matrix.json: {"spec": "<situation spec>", "scales": [1, 2], "combos": {"name": {"settings": {...}, "data_mods": [...]}}}.
+    Every cell (combo x scale) = `rigkit situation` on a generated spec with the combo's settings merged; --record stores
+    goldens in --golden-dir/<combo>/, --check compares (exit 1 on any difference or error)."""
+    import subprocess, time
+    out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
+    m = json.loads(Path(a.spec).read_text(encoding="utf-8"))
+    base_spec = json.loads((Path(a.spec).parent / m["spec"]).read_text(encoding="utf-8") if not Path(m["spec"]).is_absolute() else Path(m["spec"]).read_text(encoding="utf-8"))
+    gold_root = Path(a.golden_dir).resolve() if a.golden_dir else Path(a.spec).resolve().parent / "golden"
+    rows, ok = [], True
+    for name, combo in m["combos"].items():
+        for scale in combo.get("scales", m.get("scales", [1])):
+            spec = dict(base_spec)
+            if combo.get("boot_timeout"):
+                spec["boot_timeout"] = combo["boot_timeout"]
+            spec["settings"] = {**base_spec.get("settings", {}), **combo.get("settings", {})}
+            spec["data_mods"] = combo.get("data_mods", [])
+            spec["scale"] = scale
+            cell = out / f"{name}-{scale}x"; cell.mkdir(parents=True, exist_ok=True)
+            spec_file = cell / "spec.json"; spec_file.write_text(json.dumps(spec), encoding="utf-8")
+            cmd = [sys.executable, "-I", str(Path(__file__).resolve()), "situation", str(spec_file), "--repo", a.repo,
+                   "--out", str(cell), "--golden-dir", str(gold_root / name)] + (["--exe", a.exe] if a.exe else [])
+            cmd += ["--record"] if a.record else (["--check"] if a.check else [])
+            t = time.time()
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            rf = cell / "result.json"
+            if r.returncode not in (0, 1) or not rf.is_file():
+                status, detail = "ERROR", (r.stdout + r.stderr)[-300:].replace("\n", " | ")
+            else:
+                res = json.loads(rf.read_text())
+                worst = max([e.get("detail", {}).get("pct", 0.0) if isinstance(e.get("detail"), dict) else 0.0 for e in res["shots"]] or [0.0])
+                status = "RECORDED" if a.record else ("PASS" if res["ok"] in (True, "True") else "FAIL")
+                detail = f"{len(res['shots'])} shots, worst {worst}%"
+            ok &= status in ("PASS", "RECORDED")
+            rows.append({"combo": name, "scale": scale, "status": status, "detail": detail, "wall_s": round(time.time() - t, 1)})
+            print(f"{status:8s} {name:22s} {scale}x  {rows[-1]['wall_s']:5.1f}s  {detail}", flush=True)
+    (out / "matrix-report.json").write_text(json.dumps({"ok": ok, "rows": rows}, indent=1))
+    print("matrix verdict:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
 
 
 def run_ab(a):
@@ -179,6 +253,8 @@ def run_situation(a, yc, out, base):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import pxkit
     spec = json.loads(Path(a.spec).read_text(encoding="utf-8"))
+    link_data_mods(base["executable"], spec.get("data_mods", []))
+    base = {**base, "timeout": float(spec.get("boot_timeout", 60))}   # a build with a big data mod needs minutes to boot (Duel Links art: ~120 s)
     settings = {"mod.3d-monsters": 0, "mod.camera-pin": 1, **spec.get("settings", {})}
     env = dict(spec.get("env", {}))
     scale = int(spec.get("scale", a.scale))
@@ -209,7 +285,7 @@ def run_situation(a, yc, out, base):
             if not state.exists():
                 g0.save(state)
     res = {"spec": str(a.spec), "state": state.name, "scale": scale, "shots": [], "ok": True}
-    gold = Path(a.spec).resolve().parent / "golden" / f"{Path(a.spec).stem}-{scale}x"
+    gold = (Path(a.golden_dir) if a.golden_dir else Path(a.spec).resolve().parent / "golden") / f"{Path(a.spec).stem}-{scale}x"
     chk = spec.get("checks", {})
     shots = []
     with yc.Game(out=out / "look", settings={**settings, "internal_scale": scale}, env=dict(env, MEMORIES_DUMP_PICTURE="1"), **base) as g:
@@ -278,7 +354,7 @@ def title_to_option_scene(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab", "matrix"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -297,6 +373,7 @@ def main():
     ap.add_argument("--exe-a", help="ab: build A (the reference)")
     ap.add_argument("--exe-b", help="ab: build B (the change)")
     ap.add_argument("--settings-b", nargs="*", help="ab: key=value settings applied to side B only (compare a setting, or a build with a setting changed)")
+    ap.add_argument("--golden-dir", help="situation/matrix: where goldens live (default: golden/ next to the spec)")
     ap.add_argument("--max-pct", type=float, default=0.0, help="ab: allowed differing pixels, percent of the picture")
     ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
@@ -307,6 +384,8 @@ def main():
     a = ap.parse_args()
     if a.kind == "ab":
         return run_ab(a)
+    if a.kind == "matrix":
+        return run_matrix(a)
     if a.kind == "sets":
         return run_sets(a)
     yc = load_client(a.repo)
