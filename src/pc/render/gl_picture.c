@@ -2330,8 +2330,8 @@ static void group_runs(void)
  * other triangle has the same two corners reversed (a shared edge is watertight). An open edge has a seam partner when
  * another triangle's open edge runs the opposite way within SEAM_REACH console pixels, on its outer side: the crack
  * between two pieces of a model. Outer outlines have no partner, so they stay where they are (no fringe). */
-#define SEAM_REACH_DEFAULT 0.5f
-static float SEAM_REACH = SEAM_REACH_DEFAULT, seam_dot = -0.5f; /* EXPERIMENT: MEMORIES_PGXP_SEAM_REACH / _DOT */
+#define SEAM_REACH 0.5f
+#define seam_dot (-0.5f) /* the cosine of the angle between the two edges: opposite to within 60 degrees */
 typedef struct SeamTriangle {
     size_t index; /* of its first vertex in `vertices` */
     float x[3], y[3]; /* picture pixels, as pushed */
@@ -2410,7 +2410,7 @@ static int seam_partners(const SeamEdge *e, const SeamEdge *f)
     return 1;
 }
 
-static uint64_t seam_phase[5], seam_stat[4];
+static uint64_t seam_phase[5];
 #define SEAM_PHASE(k) do { uint64_t now_ = SDL_GetPerformanceCounter(); seam_phase[k] += now_ - phase_t; phase_t = now_; } while (0)
 static void seam_apply_work(void)
 {
@@ -2426,15 +2426,6 @@ static void seam_apply_work(void)
     if (named) grow = (float)atof(named);
     seam_count = 0;
     if (!n) return;
-    {
-        static int read;
-        if (!read) {
-            const char *r = getenv("MEMORIES_PGXP_SEAM_REACH"), *d = getenv("MEMORIES_PGXP_SEAM_DOT");
-            if (r) SEAM_REACH = (float)atof(r);
-            if (d) seam_dot = (float)atof(d);
-            read = 1;
-        }
-    }
     if (edge_room < m) {
         SeamEdge *more = realloc(edges, m * sizeof(*more));
         if (!more) return;
@@ -2571,15 +2562,12 @@ static void seam_apply_work(void)
         for (at = cell_table[seam_cell((int)floorf(mx * 0.5f), (int)floorf(my * 0.5f)) & (uint32_t)(cells - 1)]; at;
              at = entries[at - 1].next) {
             const SeamEntry *candidate = &entries[at - 1];
-            seam_stat[0]++;
             SeamEdge *f;
             float reach = 0.5f * (e->len > candidate->len ? e->len : candidate->len) + SEAM_REACH;
             float gx = candidate->mx - mx, gy = candidate->my - my;
             if (e->ux * candidate->ux + e->uy * candidate->uy > seam_dot) continue;
-            seam_stat[1]++;
             if (gx * gx + gy * gy > reach * reach) continue; /* one midpoint must lie within the reach of the other segment */
             if (gx * e->nx + gy * e->ny < -0.05f || -(gx * candidate->nx + gy * candidate->ny) < -0.05f) continue; /* not on the outer sides */
-            seam_stat[2]++;
             f = &edges[candidate->edge];
             if (f != e && seam_partners(e, f)) {
                 e->seam = f->seam = 1;
@@ -2587,76 +2575,6 @@ static void seam_apply_work(void)
         }
     }
     SEAM_PHASE(3);
-    if (getenv("MEMORIES_PGXP_SEAM_MASK")) {
-        /* EXPERIMENT: an open edge grows when something lies just beyond it (within MEMORIES_PGXP_SEAM_MASK console px,
-         * default 0.6): a coverage mask of the frame's precise triangles at 4 samples per console px; and a triangle
-         * under MEMORIES_PGXP_SEAM_SMALL px^2 grows on all its open edges. */
-        static unsigned char *mask;
-        static size_t mask_room;
-        float reach = (float)atof(getenv("MEMORIES_PGXP_SEAM_MASK")), small = 0.0f, lo_x = 1e9f, lo_y = 1e9f, hi_x = -1e9f, hi_y = -1e9f;
-        int w, h, gx, gy;
-        const char *sm = getenv("MEMORIES_PGXP_SEAM_SMALL");
-        if (reach <= 0.0f) reach = 0.6f;
-        if (sm) small = (float)atof(sm);
-        for (i = 0; i < m; i++) {
-            if (edges[i].ax < lo_x) lo_x = edges[i].ax;
-            if (edges[i].ax > hi_x) hi_x = edges[i].ax;
-            if (edges[i].ay < lo_y) lo_y = edges[i].ay;
-            if (edges[i].ay > hi_y) hi_y = edges[i].ay;
-        }
-        w = (int)((hi_x - lo_x) * 4.0f) + 8;
-        h = (int)((hi_y - lo_y) * 4.0f) + 8;
-        if (w > 0 && h > 0 && (size_t)w * (size_t)h <= 4000000u) {
-            if (mask_room < (size_t)w * (size_t)h) {
-                unsigned char *more = realloc(mask, (size_t)w * (size_t)h);
-                if (!more) return;
-                mask = more;
-                mask_room = (size_t)w * (size_t)h;
-            }
-            memset(mask, 0, (size_t)w * (size_t)h);
-            for (i = 0; i < n; i++) {
-                const SeamEdge *e0 = &edges[i * 3], *e1 = e0 + 1, *e2 = e0 + 2;
-                float x0 = e0->ax, y0 = e0->ay, x1 = e1->ax, y1 = e1->ay, x2 = e2->ax, y2 = e2->ay;
-                float ar = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0), sgn = ar > 0 ? 1.0f : -1.0f;
-                float bx0 = fminf(x0, fminf(x1, x2)), bx1 = fmaxf(x0, fmaxf(x1, x2)), by0 = fminf(y0, fminf(y1, y2)), by1 = fmaxf(y0, fmaxf(y1, y2));
-                if (ar > -1e-9f && ar < 1e-9f) continue;
-                for (gy = (int)((by0 - lo_y) * 4.0f); gy <= (int)((by1 - lo_y) * 4.0f) + 1; gy++) {
-                    for (gx = (int)((bx0 - lo_x) * 4.0f); gx <= (int)((bx1 - lo_x) * 4.0f) + 1; gx++) {
-                        float qx = lo_x + ((float)gx + 0.5f) * 0.25f, qy = lo_y + ((float)gy + 0.5f) * 0.25f;
-                        if (gx < 0 || gy < 0 || gx >= w || gy >= h) continue;
-                        if (((x1 - x0) * (qy - y0) - (y1 - y0) * (qx - x0)) * sgn >= 0 &&
-                            ((x2 - x1) * (qy - y1) - (y2 - y1) * (qx - x1)) * sgn >= 0 &&
-                            ((x0 - x2) * (qy - y2) - (y0 - y2) * (qx - x2)) * sgn >= 0) {
-                            mask[(size_t)gy * (size_t)w + (size_t)gx] = 1;
-                        }
-                    }
-                }
-            }
-            for (i = 0; i < m; i++) {
-                SeamEdge *e = &edges[i];
-                float ex = e->bx - e->ax, ey = e->by - e->ay;
-                int a, b;
-                if (!e->open) continue;
-                if (small > 0.0f) {
-                    const SeamEdge *e0 = &edges[(i / 3) * 3];
-                    float ar = (e0[1].ax - e0[0].ax) * (e0[2].ay - e0[0].ay) - (e0[1].ay - e0[0].ay) * (e0[2].ax - e0[0].ax);
-                    if (fabsf(ar) * 0.5f < small) e->seam = 1;
-                }
-                for (a = 1; a <= 3 && !e->seam; a++) {
-                    for (b = 1; b <= 3 && !e->seam; b++) {
-                        float t = (float)a / 4.0f, d = reach * (float)b / 3.0f;
-                        float qx = e->ax + ex * t + e->nx * d, qy = e->ay + ey * t + e->ny * d;
-                        gx = (int)((qx - lo_x) * 4.0f);
-                        gy = (int)((qy - lo_y) * 4.0f);
-                        if (gx >= 0 && gy >= 0 && gx < w && gy < h && mask[(size_t)gy * (size_t)w + (size_t)gx]) e->seam = 1;
-                    }
-                }
-            }
-        }
-    }
-    if (getenv("MEMORIES_PGXP_SEAM_ALL")) { /* EXPERIMENT: every open edge grows */
-        for (i = 0; i < m; i++) edges[i].seam = edges[i].open;
-    }
     /* Each corner position moves once, the same in every triangle that has it, so edges that two triangles share stay
      * exactly shared: the seam edges' outward normals added up per corner, the corner pushed out along them by `grow`. */
     {
@@ -2750,30 +2668,12 @@ static void seam_apply(void)
 {
     static uint64_t spent, calls, triangles;
     uint64_t start = SDL_GetPerformanceCounter(), n = seam_count;
-    if (getenv("MEMORIES_PGXP_SEAMBENCH") && n) { /* the fastest of 12 runs on the same data: steady-state cost, free of load noise */
-        uint64_t best = ~0ull, ph[5] = {~0ull, ~0ull, ~0ull, ~0ull, ~0ull};
-        int r, q;
-        for (r = 0; r < 12; r++) {
-            uint64_t t0, dt;
-            for (q = 0; q < 5; q++) seam_phase[q] = 0;
-            t0 = SDL_GetPerformanceCounter();
-            seam_count = (size_t)n;
-            seam_apply_work();
-            dt = SDL_GetPerformanceCounter() - t0;
-            if (dt < best) best = dt;
-            for (q = 0; q < 5; q++) if (seam_phase[q] < ph[q]) ph[q] = seam_phase[q];
-        }
-        seam_count = (size_t)n;
-        LOG(LOG_FRAMES, "seam best of 12: %.0f us for %llu triangles (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f)", (double)best * 1e6 / (double)SDL_GetPerformanceFrequency(), (unsigned long long)n,
-            (double)ph[0] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[1] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[2] * 1e6 / (double)SDL_GetPerformanceFrequency(),
-            (double)ph[3] * 1e6 / (double)SDL_GetPerformanceFrequency(), (double)ph[4] * 1e6 / (double)SDL_GetPerformanceFrequency());
-    }
     seam_apply_work();
     spent += SDL_GetPerformanceCounter() - start;
     triangles += n;
     if (getenv("MEMORIES_PGXP_SEAMLOG") && ++calls % 2 == 0) {
         double k = 1e6 / (double)SDL_GetPerformanceFrequency() / (double)calls;
-        LOG(LOG_FRAMES, "seam cand %.0f dir-ok %.0f partner-calls %.0f entries; seam time: %.1f us per flush (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f), %.0f triangles per flush", seam_stat[0] / (double)calls, seam_stat[1] / (double)calls, seam_stat[2] / (double)calls, (double)spent * k,
+        LOG(LOG_FRAMES, "seam time: %.1f us per flush (edges %.0f, open %.0f, grid %.0f, query %.0f, move %.0f), %.0f triangles per flush", (double)spent * k,
             seam_phase[0] * k, seam_phase[1] * k, seam_phase[2] * k, seam_phase[3] * k, seam_phase[4] * k, (double)triangles / (double)calls);
     }
 }
