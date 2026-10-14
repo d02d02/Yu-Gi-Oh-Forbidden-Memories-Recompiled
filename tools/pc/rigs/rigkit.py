@@ -18,6 +18,12 @@
   python -I rigkit.py replays --repo R --out DIR [--replay-timeout 900] [--skip name ...]
       the repo's recorded replays (tests/pc/replays) as a gate: each played with --check from a private exe copy, own timeout,
       skipped when a prerequisite is missing (x64-data-mods needs an extracted game\\DATA), table + exit code.
+  python -I rigkit.py arena --models 374,380 [--stage 0-6] --vb 781,1141,1861,2161 --scale 2 --out DIR
+      the GAME'S OWN 3D battle scene (not the 3D Monsters mod): debug menu entry '3D' = main mode 1 (animated battle): arena,
+      summoning circle, two 3D monsters, attack. Shots at the given vblanks counted from the scene's start (it runs ~2400);
+      a state is saved just before the first shot at 1x so a higher --scale only renders from there. --models picks the two
+      monsters (card ids; written into the scene's property records D_800EF658 before it starts; default: the scene's own
+      pair, Blue-Eyes White Dragon), --stage the terrain (gDuel_bTerrain). The scene cuts between the two monsters.
   python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
       attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
       --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
@@ -120,6 +126,46 @@ def link_data_mods(executable, names):
             continue
         if not dst.exists():
             subprocess.run(["cmd", "/c", "mklink", "/J", str(dst), str(src)], check=True, capture_output=True)
+
+
+def enter_arena(g, models=None, stage=-1):
+    """Debug menu > '3D' (cursor 0) = MAIN_MODE_ANIMATED_BATTLE, the game's own 3D battle. `models` = two card ids written into the
+    scene's property records (D_800EF658, 8 bytes each: model id first, the scene uses id-1) BEFORE the scene starts; `stage` into
+    gDuel_bTerrain. Returns the VBlank the scene starts at."""
+    import struct
+    g.goto("debug"); g.step(20)
+    if models:
+        g.poke("D_800EF658", b"".join(struct.pack("<hhhBB", int(m), 0, 0, 0, 0) for m in models))
+    if stage >= 0:
+        g.poke("gDuel_bTerrain", bytes([stage]))
+    g.press("cross", hold=6, after=2)
+    g.wait_until(lambda g: g.mode() == 1, 120, what="the animated battle (main mode 1)")
+    return g.vblank
+
+
+def run_arena(a, yc, out, settings, env, base):
+    """Shots of the native 3D battle at the vblanks in --vb (from the scene start). Deterministic: the monsters come from the
+    scene's own RNG draw at a fixed boot time, so the same build shows the same pair (checked A/A)."""
+    want = sorted(int(x) for x in a.vb.split(",") if x)
+    settings = {"mod.3d-monsters": 0, **settings}
+    lead = max(0, want[0] - 5)
+    models = [int(x) for x in a.models.split(",") if x]
+    state = out / f"arena-{'_'.join(map(str, models)) or 'default'}-s{a.stage}-{lead}.state"
+    with yc.Game(out=out / "make", settings={**settings, "internal_scale": 1}, env=env, **base) as g:
+        if not state.exists():
+            enter_arena(g, models, a.stage); g.step(lead); g.save(state)
+    shots = []
+    with yc.Game(out=out / "look", settings={**settings, "internal_scale": a.scale}, env=dict(env, MEMORIES_DUMP_PICTURE="1"), **base) as g:
+        g.load(state)
+        at = lead
+        for vb in want:
+            if vb > at:
+                g.step(vb - at); at = vb
+            shots.append(str(g.shot(out / f"arena-vb{vb:04d}.png")))
+        if a.every:
+            pass
+    print("arena shots:", [Path(x).name for x in shots])
+    return 0
 
 
 def run_replays(a):
@@ -484,7 +530,7 @@ def title_to_option_scene(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab", "matrix", "replays", "guide"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab", "matrix", "replays", "arena", "guide"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -507,6 +553,9 @@ def main():
     ap.add_argument("--lock-timeout", type=float, default=3600, help="seconds to wait for another rig run to finish")
     ap.add_argument("--replay-timeout", type=int, default=900, help="replays: seconds allowed per replay")
     ap.add_argument("--skip", nargs="*", default=[], help="replays: replay names to skip")
+    ap.add_argument("--vb", default="781,1141,1861,2161", help="arena: vblanks (from the scene start) to shoot")
+    ap.add_argument("--models", default="", help="arena: two card ids for the two 3D monsters, e.g. 374,380")
+    ap.add_argument("--stage", type=int, default=-1, help="arena: terrain/stage 0-6 (gDuel_bTerrain)")
     ap.add_argument("--max-pct", type=float, default=0.0, help="ab: allowed differing pixels, percent of the picture")
     ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
@@ -545,6 +594,8 @@ def main():
             shutil.copytree(exe.parent, private, ignore=shutil.ignore_patterns("*.pdb", "*.c", "*.s", "obj"))
         exe = private / exe.name
     base = dict(executable=str(exe))
+    if a.kind == "arena":
+        return run_arena(a, yc, out, settings, env, base)
     if a.kind == "situation":
         return run_situation(a, yc, out, base)
     if a.kind == "attack":

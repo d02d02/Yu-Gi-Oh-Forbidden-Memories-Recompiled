@@ -47,6 +47,8 @@
 
 | 17 | **`rigkit matrix`** (2026-10-13) | `recipes/rigkit.py`, `situations/matrix-mods.json`, `golden-matrix/` (shared, not git) | Mod QA: combos x scales, per-cell goldens, junctioned data mods, boot_timeout | 24 cells recorded and re-checked (second run: all 24 PASS, 0.0%) |
 
+| 18 | **`rigkit arena`** (2026-10-14) | `recipes/rigkit.py` | The game's native 3D battle scene (debug menu `3D`, main mode 1): chosen monsters/stage, shots at chosen vblanks, state saved before the first shot | New; A/A identical; 4x in ~21 s |
+
 ## D. Facts that are easy to forget (each cost time once)
 - States are tied to the exact exe (build id in the name); a `game32` state does not load in `game32dbg`. Redo after every rebuild.
 - `goto("title")` from boot returns during the Konami logo; the menu needs ~1800 vblanks. Menu order: NEW GAME, LOAD, 2P DUEL, TRADE, OPTION.

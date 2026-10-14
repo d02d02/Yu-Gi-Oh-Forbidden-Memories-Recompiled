@@ -62,3 +62,9 @@ Always look at **1x first**, then 2x/4x from the saved state. Use `--exe` / `$YF
 
 ## U12 Save/settings/user-folder behaviour  [D1]
 - Always a throwaway `MEMORIES_USER_DIR` (`Game` does this); `test_state_resume.py` for state resume; never point two builds at `shared\user\states`.
+
+## U13 The game's own 3D models (native animated battle, not the 3D Monsters mod)  [D1]
+- Scene = debug menu entry `3D` -> `MAIN_MODE_ANIMATED_BATTLE` (1): colosseum, summoning circle, two 3D monsters, attack. `rigkit.py arena --models <idA>,<idB> --stage 0-6 --vb 900,1300,1900 --scale 4`.
+- Choose the pair by writing the scene's records before it starts (`rigkit.enter_arena`); ids = card ids; the scene uses id-1. Stage = terrain 0-6 (random when the debug controller rerolls).
+- For model/texture work (HD models, model replace): A/B two builds on the same pair/stage/vb with `pxkit diff`; shots at 4x cost ~21 s from the saved state.
+- Not covered yet: model ids the controller refuses (300-349, 650-699, 720 are excluded by its random draw but pokes bypass it: check it renders), per-model animation names, camera control in this scene.

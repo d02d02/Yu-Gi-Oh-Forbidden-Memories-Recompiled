@@ -27,6 +27,7 @@ or to play the game for the user.
 | A declared situation (hand, plays into columns, attack, camera, shots, checks) | `situation spec.json [--record\|--check]` | 6-9 s |
 | Same situation on two builds / one setting changed | `ab spec.json --exe-a A --exe-b B [--settings-b k=v]` | 2 x spec |
 | Mod x scale QA | `matrix matrix.json --golden-dir G --record\|--check` | 35 min full |
+| The GAME's own 3D battle (arena, two 3D monsters, attack; NOT the 3D Monsters mod) | `arena --models 374,380 [--stage 0-6] --vb 781,1141,1861,2161 --scale 2` | ~10-20 s |
 | Exact pixel diff / count / golden | `pxkit.py diff\|count\|golden` | instant |
 | Replay regression gate (repo's recorded replays) | `replays --repo R --out D` (private exe, skips x64-data-mods without game\DATA) | ~5 min |
 | This table, from the tool itself | `guide` | instant |
@@ -39,6 +40,7 @@ Exit codes: 0 = pass, 1 = pixel difference / failed check, 2 = a side produced n
 - A state loads only in the same exe with the same enabled mods **and mod setting values**; vary things at runtime (pad-2 camera
   mailbox, `poke`), not by settings.
 - Shots right after a change may not show it: `delay` (default 3 vblanks). A green cell proves nothing until you looked at the picture once.
+- Native 3D battle (debug menu `3D` = main mode 1, ~2400 vblanks): fade-in to ~240, summoning circle ~480-780, monsters ~840-1740 (the scene cuts between the two), attack flash ~1860-2260. Pick monsters by poking the two property records `D_800EF658` (8 bytes each, model id = card id first) and `gDuel_bTerrain` BEFORE pressing Cross on the entry; without it the pair is Blue-Eyes White Dragon. Bit-identical on repeat.
 - Battle phase: steps 3-10 are full-screen cards (no field); field art/models show at vb 0-30 and after ~228; camera pin matters there only.
 - A big data mod (Duel Links art) delays boot ~120 s: set `boot_timeout`. Two mods with one id = game never connects.
 - `goto("title")` returns during the logo; use rigkit's `title_menu` / `test_scene` (closed loop on the menu's green highlight; scene in ~3 s).
