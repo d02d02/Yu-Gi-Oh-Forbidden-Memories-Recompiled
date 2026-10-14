@@ -106,6 +106,8 @@ typedef struct SoftGpuRecorder {
     /* SoftGpu_Capture: dx,dy was just loaded with what sx,sy shows. May be
      * NULL. */
     void (*capture)(int sx, int sy, int dx, int dy, int w, int h);
+    /* Native model draws (render/native_model.h) of the batch recorded next: `count` NativeDraws. May be NULL. */
+    void (*native)(const void *draws, size_t count);
 } SoftGpuRecorder;
 /* The game read w x h of the picture at sx,sy (StoreImage) and loaded it,
  * as good as unchanged, at dx,dy to draw with (LoadImage): the recorder
@@ -117,6 +119,8 @@ void SoftGpu_SetRecorder(const SoftGpuRecorder *recorder);
 /* The precise vertices of the next SoftGpu_Gp0's words (PGXP), handed to
  * the recorder with them; the software GPU itself draws as ever. */
 void SoftGpu_SetPrecise(const PgxpVertex *vertices, size_t count);
+/* The native model draws of the next SoftGpu_Gp0's words, handed to the recorder with them. */
+void SoftGpu_SetNative(const void *draws, size_t count);
 void SoftGpu_StateWords(uint32_t words[6]);
 
 /* Save states: VRAM (index 0) and the drawing state (index 1). */
