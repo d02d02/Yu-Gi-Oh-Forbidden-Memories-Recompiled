@@ -15,6 +15,9 @@
   python -I rigkit.py matrix matrix.json --exe X --out DIR --golden-dir G [--record | --check]
       mod QA matrix: one situation x combinations of mods/settings x scales, each cell checked against its golden;
       data mods (e.g. assets-hd) are linked into the private exe copy by junction; table + matrix-report.json.
+  python -I rigkit.py replays --repo R --out DIR [--replay-timeout 900] [--skip name ...]
+      the repo's recorded replays (tests/pc/replays) as a gate: each played with --check from a private exe copy, own timeout,
+      skipped when a prerequisite is missing (x64-data-mods needs an extracted game\\DATA), table + exit code.
   python -I rigkit.py attack --deck 374 --camera 2048,400 --at 2,4,7,10 --scale 2 --out DIR
       attack = monster attacks monster; the state is saved just before the battle (made at 1x), then loaded at
       --scale, the camera pinned (--camera angle[,distance]; needs the camera-pin mod, built in) and a shot taken
@@ -31,6 +34,8 @@ No paths are hardcoded: --repo / $YFM_REPO is the checkout whose tools/pc/yfm_co
 (default: the dev worktree), --exe / $YFM_EXECUTABLE picks another exe (a release install, a PR build).
 Run with python -I from a folder of its own. The game runs from a PRIVATE COPY of the build folder (OUT/_exe), so a
 rig never locks the real build (a running exe makes the user's link fail "Permission denied"); --in-place disables it.
+ONE heavy run at a time: every game-running kind takes a machine-wide lock (file, owner PID, stale locks are taken over,
+--lock-timeout seconds to wait, YFM_RIG_LOCK to move it); `ab`/`matrix` hold it for their child runs. `rigkit.py guide` prints this text.
 Never kill games by image name (taskkill /IM memories-pc.exe also kills the user's own game): Game ends its own process.
 """
 import argparse, json, os, sys, time
@@ -115,6 +120,40 @@ def link_data_mods(executable, names):
             continue
         if not dst.exists():
             subprocess.run(["cmd", "/c", "mklink", "/J", str(dst), str(src)], check=True, capture_output=True)
+
+
+def run_replays(a):
+    """Gate: every replay under <repo>/tests/pc/replays played with `replay.py play --check` from a private exe copy."""
+    import shutil, subprocess, time
+    repo, out = Path(a.repo), Path(a.out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    exe = Path(a.exe or repo / "tmp/pc/game32/memories-pc.exe")
+    private = out / "_exe"
+    if not private.exists():
+        shutil.copytree(exe.parent, private, ignore=shutil.ignore_patterns("*.pdb", "*.c", "*.s", "obj"))
+    rows, ok = [], True
+    for d in sorted(p for p in (repo / "tests/pc/replays").iterdir() if p.is_dir()):
+        name = d.name
+        if name in a.skip:
+            rows.append((name, "SKIP", "--skip", 0)); continue
+        if name == "x64-data-mods" and not (repo / "game/DATA/SU.MRG").is_file():
+            rows.append((name, "SKIP", "needs an extracted game/DATA (only the .bin is present)", 0)); continue
+        t = time.time()
+        r = subprocess.run([sys.executable, "-I", str(repo / "tools/pc/replay.py"), "play", str(d), "--check",
+                            "--executable", str(private / exe.name), "--timeout", str(a.replay_timeout)],
+                           capture_output=True, text=True, timeout=a.replay_timeout + 120)
+        (out / f"{name}.log").write_text(r.stdout + r.stderr, encoding="utf-8")
+        last = (r.stdout + r.stderr).strip().splitlines()[-1][:110] if (r.stdout + r.stderr).strip() else ""
+        status = "PASS" if r.returncode == 0 else "FAIL"
+        ok &= status == "PASS"
+        rows.append((name, status, last, round(time.time() - t)))
+        print(f"{status:5s} {name:16s} {rows[-1][3]:4d}s  {last}", flush=True)
+    for n, st, why, _ in rows:
+        if st == "SKIP":
+            print(f"SKIP  {n:16s}       {why}")
+    (out / "replays-report.json").write_text(json.dumps([dict(zip(("name", "status", "detail", "wall_s"), r)) for r in rows], indent=1))
+    print("replay gate:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
 
 
 def run_matrix(a):
@@ -330,6 +369,54 @@ def run_situation(a, yc, out, base):
     return 0 if res["ok"] else 1
 
 
+def _pid_alive(pid):
+    import ctypes
+    k = ctypes.windll.kernel32
+    h = k.OpenProcess(0x1000, False, int(pid))      # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    code = ctypes.c_ulong()
+    k.GetExitCodeProcess(h, ctypes.byref(code)); k.CloseHandle(h)
+    return code.value == 259                         # STILL_ACTIVE
+
+
+def acquire_run_lock(timeout):
+    """Machine-wide lock for heavy runs. Returns a release function. Children of a run that holds it (YFM_RIG_LOCK_HELD)
+    pass through. A lock whose owner PID is gone is taken over."""
+    import atexit, time
+    if os.environ.get("YFM_RIG_LOCK_HELD"):
+        return lambda: None
+    path = Path(os.environ.get("YFM_RIG_LOCK") or Path(os.environ.get("TEMP", ".")) / "yfm-rig.lock")
+    start, told = time.time(), False
+    while True:
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {' '.join(sys.argv[1:4])}".encode()); os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                owner = path.read_text().split()[0]
+                if not _pid_alive(owner):
+                    path.unlink(missing_ok=True); continue
+            except (OSError, IndexError, ValueError):
+                path.unlink(missing_ok=True); continue
+            if not told:
+                print(f"rigkit: waiting for the run lock held by pid {owner} ({path.read_text()[:80]})", flush=True); told = True
+            if time.time() - start > timeout:
+                raise SystemExit(f"rigkit: run lock still held by pid {owner} after {timeout:.0f} s")
+            time.sleep(2)
+    os.environ["YFM_RIG_LOCK_HELD"] = str(os.getpid())    # inherited by the child runs of ab / matrix
+
+    def release():
+        try:
+            if path.read_text().split()[0] == str(os.getpid()):
+                path.unlink()
+        except OSError:
+            pass
+    atexit.register(release)
+    return release
+
+
 def find_set(repo, name):
     """sets/<name>.json from the repo's test-scenes, else the dev worktree's (only dev tracks the sets)."""
     for root in (Path(repo), Path(DEFAULT_REPO)):
@@ -339,22 +426,65 @@ def find_set(repo, name):
     raise FileNotFoundError(f"no scene set {name}")
 
 
-def title_to_option_scene(g):
-    """Cold boot -> title menu -> hold L1 + confirm OPTION = the test-scenes duel (mod.test-scenes=1)."""
+MENU = {"new_game": 0, "load": 1, "2p_duel": 2, "trade": 3, "option": 4}
+MENU_Y = (49, 81, 113, 145, 177)   # y of the five items in the 320x240 picture
+
+
+def menu_item(g):
+    """Which title-menu item is highlighted (0-4), or None when the menu is not up. No RAM byte tracks the live cursor,
+    so look: the highlighted item has a bright green frame (>=120 green pixels; the 'PUSH START' text has ~34)."""
+    import numpy as np
+    from PIL import Image
+    img = np.asarray(Image.open(g.shot("_menu_probe.png")).convert("RGB"), dtype=int)
+    if img.shape[1] != 320:                       # scaled picture: sample back to 320x240
+        img = img[:: img.shape[0] // 240, :: img.shape[1] // 320]
+    m = (img[:, :, 1] > 170) & (img[:, :, 0] < 130) & (img[:, :, 2] < 150)
+    ys, _ = np.nonzero(m[:, 96:224])
+    if len(ys) < 120:
+        return None
+    return int(np.argmin([abs(float(ys.mean()) - y) for y in MENU_Y]))
+
+
+def title_menu(g, timeout=4000):
+    """Boot to the title MENU (past logos, intro movie and 'PUSH START'): Start is pressed every ~1 s until the menu's
+    green frame shows. (goto('title') returns during the Konami logo.) Returns the vblanks it took."""
+    start = g.vblank
     g.goto("title")
-    g.step(1800)                     # goto('title') returns during the Konami logo; the menu needs ~1800 vblanks
-    g.press("start", hold=6, after=60)
-    for _ in range(4):               # NEW GAME, LOAD, 2P DUEL, TRADE, OPTION
-        g.press("down", hold=6, after=20)
+    while g.vblank - start < timeout:
+        g.press("start", hold=6, after=50)
+        if menu_item(g) is not None:
+            return g.vblank - start
+        g.step(40)
+    raise TimeoutError("the title menu did not open (no highlighted item seen)")
+
+
+def menu_select(g, item):
+    """Move the title cursor to MENU[item] with Down, checking the highlight each press (at most 6)."""
+    for _ in range(6):
+        if menu_item(g) == MENU[item]:
+            return
+        g.press("down", hold=4, after=20)
+    raise RuntimeError(f"title cursor did not reach {item} (at {menu_item(g)})")
+
+
+def test_scene(g, timeout=1500):
+    """Cold boot -> title menu -> hold L1 and confirm OPTION = the test-scenes duel (needs mod.test-scenes=1 and the
+    MEMORIES_MOD_TEST_SCENES_P1..O5 env). Waits for the duel itself instead of a fixed step count."""
+    title_menu(g)
+    menu_select(g, "option")
     g.press(["l1", "cross"], hold=8, after=10)
     g.pad(0)
-    g.step(500)
-    assert g.mode() == 3, f"scene did not open (mode {g.mode()}): mod.test-scenes=1 set? every zone card a monster?"
+    g.wait_until(lambda g: g.mode() == 3 and g.phase() in (4, 5), timeout, what="the test-scenes duel (every zone card a monster? mod enabled?)")
+
+
+def title_to_option_scene(g):
+    """Kept for old callers: see test_scene."""
+    test_scene(g)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab", "matrix"])
+    ap.add_argument("kind", choices=["hand", "scene", "duel", "sets", "attack", "situation", "ab", "matrix", "replays", "guide"])
     ap.add_argument("--repo", default=os.environ.get("YFM_REPO", DEFAULT_REPO))
     ap.add_argument("--exe", default=os.environ.get("YFM_EXECUTABLE"))
     ap.add_argument("--out", required=True)
@@ -374,6 +504,9 @@ def main():
     ap.add_argument("--exe-b", help="ab: build B (the change)")
     ap.add_argument("--settings-b", nargs="*", help="ab: key=value settings applied to side B only (compare a setting, or a build with a setting changed)")
     ap.add_argument("--golden-dir", help="situation/matrix: where goldens live (default: golden/ next to the spec)")
+    ap.add_argument("--lock-timeout", type=float, default=3600, help="seconds to wait for another rig run to finish")
+    ap.add_argument("--replay-timeout", type=int, default=900, help="replays: seconds allowed per replay")
+    ap.add_argument("--skip", nargs="*", default=[], help="replays: replay names to skip")
     ap.add_argument("--max-pct", type=float, default=0.0, help="ab: allowed differing pixels, percent of the picture")
     ap.add_argument("--in-place", action="store_true", help="run the exe where it is (locks it while running)")
     ap.add_argument("--set", default="plain", help="scene: a name in <repo>/mods/test-scenes/sets/")
@@ -382,10 +515,15 @@ def main():
     ap.add_argument("--steps", type=int, default=30, help="vblanks to run after loading, before the shot")
     ap.add_argument("--press", default="", help="comma list of keys pressed (e.g. triangle) after loading")
     a = ap.parse_args()
+    if a.kind == "guide":
+        print(__doc__); return 0
+    acquire_run_lock(a.lock_timeout)
     if a.kind == "ab":
         return run_ab(a)
     if a.kind == "matrix":
         return run_matrix(a)
+    if a.kind == "replays":
+        return run_replays(a)
     if a.kind == "sets":
         return run_sets(a)
     yc = load_client(a.repo)

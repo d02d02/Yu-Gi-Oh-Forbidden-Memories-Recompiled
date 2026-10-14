@@ -12,7 +12,7 @@ or to play the game for the user.
 1. Games run from a **private copy** of the build folder (`OUT/_exe`; rigkit does it). Never `--in-place` on the user's build:
    a running exe there makes their link fail "Permission denied".
 2. **Never kill games by name** (`taskkill /IM memories-pc.exe`): it kills the user's own game. `Game` ends its own process.
-3. One heavy run at a time (a smoke gate failed under CPU contention). Long runs: background + log + timeout.
+3. One heavy run at a time: rigkit takes a machine-wide lock itself (waits for another run, takes over a dead owner's lock; `--lock-timeout`). Other tools (smoke.py, replay.py) do not: do not start them during a rig run. Long runs: background + log + timeout.
 4. Outward actions (PR, release, Discord, push to upstream) are the user's to confirm. Pushes to `origin/dev` only if asked.
 5. Never commit disc data: goldens, screenshots, states stay in `shared\` (git-ignored).
 6. Check you test the build you think: `git log -1` in the worktree, exe rebuilt, mod `.o` rebuilt.
@@ -28,6 +28,8 @@ or to play the game for the user.
 | Same situation on two builds / one setting changed | `ab spec.json --exe-a A --exe-b B [--settings-b k=v]` | 2 x spec |
 | Mod x scale QA | `matrix matrix.json --golden-dir G --record\|--check` | 35 min full |
 | Exact pixel diff / count / golden | `pxkit.py diff\|count\|golden` | instant |
+| Replay regression gate (repo's recorded replays) | `replays --repo R --out D` (private exe, skips x64-data-mods without game\DATA) | ~5 min |
+| This table, from the tool itself | `guide` | instant |
 
 Exit codes: 0 = pass, 1 = pixel difference / failed check, 2 = a side produced no result. Outputs: PNGs, `result.json`,
 `ab.json`, `ab-sheet.png`, `matrix-report.json`. Specs: `recipes\situations\*.json` (keys in `run_situation`'s docstring).
@@ -39,11 +41,11 @@ Exit codes: 0 = pass, 1 = pixel difference / failed check, 2 = a side produced n
 - Shots right after a change may not show it: `delay` (default 3 vblanks). A green cell proves nothing until you looked at the picture once.
 - Battle phase: steps 3-10 are full-screen cards (no field); field art/models show at vb 0-30 and after ~228; camera pin matters there only.
 - A big data mod (Duel Links art) delays boot ~120 s: set `boot_timeout`. Two mods with one id = game never connects.
-- `goto("title")` returns during the logo; use rigkit's title navigation.
+- `goto("title")` returns during the logo; use rigkit's `title_menu` / `test_scene` (closed loop on the menu's green highlight; scene in ~3 s).
 
 ## Where to read more
 `README.md` (index), `01-state-of-the-art.md` (all tools, measured), `03-playbook.md` (per use case), `04-testing-strategy.md`
 (levels, pre-flight checklist), `05-release-strategy.md`, `02-gaps-and-roadmap.md` (what is missing), `evidence\` (proofs).
 
 ## Known gaps
-No run lock (two LLMs at once can contend); `replay.py run` unproven here; no opponent-side slot placement; goldens per build.
+`smoke.py` / `replay.py` do not take the run lock; no opponent-side slot placement; goldens per build; `x64-data-mods` replay needs an extracted `game\DATA`.
