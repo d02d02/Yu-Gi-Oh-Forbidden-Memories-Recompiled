@@ -708,6 +708,12 @@ void DrawOTag(u32 *list)
     /* Only the OpenGL picture draws the precise vertices (SoftGpu_Gp0 hands
      * them to its recorder): without one at 2x and up, nothing is tracked. */
     Pgxp_Active = Settings_Get(SET_PGXP) && !SoftGpu_WideRastered();
+    {
+        static unsigned calls;
+        if (getenv("MEMORIES_PGXP_STATELOG") && ++calls % 30 == 0) {
+            LOG(LOG_FRAMES, "pgxp state: setting %d, wide-rastered %d, active %d, words %zu", Settings_Get(SET_PGXP), SoftGpu_WideRastered(), Pgxp_Active, count);
+        }
+    }
 }
 
 void GsDrawOt(void *descriptor)

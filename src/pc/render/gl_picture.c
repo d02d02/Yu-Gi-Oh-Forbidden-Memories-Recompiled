@@ -1360,8 +1360,28 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
             py[i] = v[i]->precise ? v[i]->fy * (float)scale + shift : (float)(v[i]->y * scale) + shift;
         }
         if (grow > 0 && a->precise && b->precise && c->precise) {
-            static int seam_mode = -1;
-            if (seam_mode < 0) seam_mode = getenv("MEMORIES_PGXP_NOSEAM") == NULL; /* default: seam growth */
+            static int seam_default = -1;
+            int seam_mode;
+            if (seam_default < 0) seam_default = getenv("MEMORIES_PGXP_NOSEAM") == NULL; /* default: seam growth */
+            seam_mode = seam_default;
+            /* Seams are a matter of a model's small pieces. A big triangle (the arena's floor and walls, a monster filling the
+             * screen) has none, and the GPU clips the ones reaching off the screen differently from their neighbours, which
+             * can open a sliver along a shared edge: it gets the plain overlap, every edge out by `grow`. */
+            if (seam_mode) {
+                float lo_x = px[0], hi_x = px[0], lo_y = py[0], hi_y = py[0];
+                static float big = -1.0f;
+                if (big < 0.0f) {
+                    const char *named = getenv("MEMORIES_PGXP_SEAM_BIG"); /* console px; EXPERIMENT */
+                    big = named ? (float)atof(named) : 30.0f;
+                }
+                for (i = 1; i < 3; i++) {
+                    if (px[i] < lo_x) lo_x = px[i];
+                    if (px[i] > hi_x) hi_x = px[i];
+                    if (py[i] < lo_y) lo_y = py[i];
+                    if (py[i] > hi_y) hi_y = py[i];
+                }
+                if (hi_x - lo_x > big * (float)scale || hi_y - lo_y > big * (float)scale) seam_mode = 0;
+            }
             if (seam_mode) { /* pushed where it is; flush_runs() grows the edges that close a seam */
                 for (i = 0; i < 3; i++) set_vertex(&out[i], px[i], py[i], (float)v[i]->u, (float)v[i]->v, v[i], flags);
                 seam_remember((size_t)(out - vertices), px, py);
@@ -2418,6 +2438,33 @@ static int seam_partners(const SeamEdge *e, const SeamEdge *f)
     return 1;
 }
 
+/* A model's corners can be drawn in several flushes of one frame (a copy or a state change in between): every corner position
+ * keeps the displacement the first flush gave it, so triangles that share it in another flush still meet it exactly. */
+#define SEAM_FRAME_SLOTS 65536
+static struct SeamFrameCorner {
+    uint64_t key;
+    unsigned frame;
+    float dx, dy;
+} seam_frame_table[SEAM_FRAME_SLOTS];
+static unsigned seam_frame = 1;
+
+static struct SeamFrameCorner *seam_frame_find(uint64_t key, int create)
+{
+    size_t slot = seam_hash(key, 7) & (SEAM_FRAME_SLOTS - 1), probes;
+    for (probes = 0; probes < 64; probes++, slot = (slot + 1) & (SEAM_FRAME_SLOTS - 1)) {
+        struct SeamFrameCorner *c = &seam_frame_table[slot];
+        if (c->frame == seam_frame && c->key == key) return c;
+        if (c->frame != seam_frame) { /* a free slot (from an earlier frame) */
+            if (!create) return NULL;
+            c->key = key;
+            c->frame = seam_frame;
+            c->dx = c->dy = 0.0f;
+            return c;
+        }
+    }
+    return NULL; /* crowded: this corner gets no memory */
+}
+
 static uint64_t seam_phase[5];
 #define SEAM_PHASE(k) do { uint64_t now_ = SDL_GetPerformanceCounter(); seam_phase[k] += now_ - phase_t; phase_t = now_; } while (0)
 static void seam_apply_work(void)
@@ -2673,12 +2720,25 @@ static void seam_apply_work(void)
                 size_t slot = seam_hash(key, 0) & (table - 1);
                 GlVertex *out = vertices + t->index + k;
                 float dx, dy, length, d;
+                struct SeamFrameCorner *known = seam_frame_find(key, 0);
+                if (known) { /* the position was already placed in this frame: the same again */
+                    out->x = t->x[k] + known->dx;
+                    out->y = t->y[k] + known->dy;
+                    continue;
+                }
                 while (slots[slot] && keys[slots[slot] - 1] != key) slot = (slot + 1) & (table - 1);
-                if (!slots[slot]) continue;
+                if (!slots[slot]) {
+                    struct SeamFrameCorner *fresh = seam_frame_find(key, 1);
+                    (void)fresh; /* stays where it is (0, 0): remembered so a later flush leaves it too */
+                    continue;
+                }
                 dx = sum_x[slots[slot] - 1];
                 dy = sum_y[slots[slot] - 1];
                 length = sqrtf(dx * dx + dy * dy);
-                if (length < 1e-4f) continue;
+                if (length < 1e-4f) {
+                    seam_frame_find(key, 1);
+                    continue;
+                }
                 /* one normal: grow along it; several: the miter of their average (a corner of two edges), but never more than
                  * seam_miter times the growth, or a thin part (a bone, a finger) whose corners touch many seams is torn apart */
                 d = counts[slots[slot] - 1] == 1 ? 1.0f : (float)counts[slots[slot] - 1] / length;
@@ -2688,6 +2748,25 @@ static void seam_apply_work(void)
                 dy = dy / length * d;
                 out->x = t->x[k] + dx;
                 out->y = t->y[k] + dy;
+                {
+                    struct SeamFrameCorner *fresh = seam_frame_find(key, 1);
+                    if (fresh) {
+                        fresh->dx = dx;
+                        fresh->dy = dy;
+                    }
+                }
+                {
+                    static int dbg = -1;
+                    static float dbg_x, dbg_y, dbg_r;
+                    if (dbg < 0) {
+                        const char *named = getenv("MEMORIES_PGXP_SEAMDEBUG");
+                        dbg = named && sscanf(named, "%f,%f,%f", &dbg_x, &dbg_y, &dbg_r) == 3;
+                    }
+                    if (dbg && fabsf(t->x[k] / (float)scale - dbg_x) < dbg_r && fabsf(t->y[k] / (float)scale - dbg_y) < dbg_r) {
+                        LOG(LOG_FRAMES, "seamdbg: tri %zu corner %zu at %.2f,%.2f moved %.2f,%.2f (picture px) normals %u need %.2f", i, k, t->x[k] / (float)scale,
+                            t->y[k] / (float)scale, dx, dy, counts[slots[slot] - 1], max_need[slots[slot] - 1]);
+                    }
+                }
             }
         }
     }
@@ -2753,7 +2832,44 @@ static void gap_debug(void)
     int w, h;
     unsigned char *image;
     gap_count = 0;
-    if (!path || n < 1000) return;
+    if (!path || n < (getenv("MEMORIES_PGXP_PIXDEBUG") ? 1u : 1000u)) return;
+    {
+        const char *pix = getenv("MEMORIES_PGXP_PIXDEBUG"); /* x,y of a picture pixel: which remembered triangles cover it, at their final positions */
+        int px, py;
+        if (pix && sscanf(pix, "%d,%d", &px, &py) == 2) {
+            size_t t;
+            unsigned covering = 0;
+            for (t = 0; t < n; t++) {
+                const GlVertex *a = &vertices[gap_list[t].index], *b = a + 1, *c = a + 2;
+                float qx = (float)px + 0.5f, qy = (float)py + 0.5f;
+                float area = (b->x - a->x) * (c->y - a->y) - (b->y - a->y) * (c->x - a->x), sgn = area > 0 ? 1.0f : -1.0f;
+                if (area > -1e-9f && area < 1e-9f) continue;
+                if (((b->x - a->x) * (qy - a->y) - (b->y - a->y) * (qx - a->x)) * sgn >= 0.0f &&
+                    ((c->x - b->x) * (qy - b->y) - (c->y - b->y) * (qx - b->x)) * sgn >= 0.0f &&
+                    ((a->x - c->x) * (qy - c->y) - (a->y - c->y) * (qx - c->x)) * sgn >= 0.0f) {
+                    covering++;
+                    LOG(LOG_FRAMES, "pixdebug %d,%d: triangle %zu (index %zu) covers; corners %.2f,%.2f %.2f,%.2f %.2f,%.2f flags %d", px, py, t, gap_list[t].index, a->x, a->y, b->x, b->y, c->x, c->y, a->flags);
+                }
+            }
+            for (t = 0; t < n; t++) {
+                const GlVertex *v3[3] = {&vertices[gap_list[t].index], &vertices[gap_list[t].index + 1], &vertices[gap_list[t].index + 2]};
+                float qx = (float)px + 0.5f, qy = (float)py + 0.5f, best = 1e9f;
+                int e;
+                for (e = 0; e < 3; e++) {
+                    const GlVertex *p0 = v3[e], *p1 = v3[(e + 1) % 3];
+                    float ex = p1->x - p0->x, ey = p1->y - p0->y, l2 = ex * ex + ey * ey, u = l2 > 1e-12f ? ((qx - p0->x) * ex + (qy - p0->y) * ey) / l2 : 0.0f, dx, dy;
+                    u = u < 0 ? 0 : (u > 1 ? 1 : u);
+                    dx = p0->x + u * ex - qx;
+                    dy = p0->y + u * ey - qy;
+                    if (sqrtf(dx * dx + dy * dy) < best) best = sqrtf(dx * dx + dy * dy);
+                }
+                if (best < 3.0f) {
+                    LOG(LOG_FRAMES, "pixdebug near %.2f px: triangle %zu (index %zu): %.3f,%.3f  %.3f,%.3f  %.3f,%.3f", best, t, gap_list[t].index, v3[0]->x, v3[0]->y, v3[1]->x, v3[1]->y, v3[2]->x, v3[2]->y);
+                }
+            }
+            LOG(LOG_FRAMES, "pixdebug %d,%d: %u of %zu remembered triangles cover it", px, py, covering, n);
+        }
+    }
     qsort(gap_list, n, sizeof(*gap_list), gap_compare);
     for (i = 0; i < n; i++) {
         int k;
@@ -3292,6 +3408,7 @@ int GlPicture_Replay(void)
         case OP_PRECISE:
             used = 2 + (size_t)op[1] * PGXP_VERTEX_WORDS;
             if (at + used > count) { at = count; break; }
+            seam_frame++;
             batch_precise = (const PgxpVertex *)(op + 2);
             batch_precise_count = op[1];
             break;
