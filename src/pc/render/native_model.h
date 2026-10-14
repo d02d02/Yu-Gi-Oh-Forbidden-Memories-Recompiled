@@ -42,6 +42,7 @@ typedef struct NativeDraw {
 
 typedef struct NativeMesh {
     uint32_t vertices, parts, tex_w, tex_h;
+    uint32_t stride; /* words per vertex: 9 (HDM1) or 17 (HDM2: the same, then part B, weight B, pos B[3], normal B[3]) */
     const uint32_t *words; /* per vertex 9 words: f32 pos[3], f32 normal[3], f32 uv[2], u32 part */
     const uint8_t *rgba;   /* tex_w x tex_h */
 } NativeMesh;
