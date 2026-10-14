@@ -60,6 +60,9 @@
 #include "../game/screen_projection.h"
 #include "../game/model_handler_registry.h"
 #include "../game/func_800540B4.h"
+#ifdef MEMORIES_PC
+#include "pc/render/native_model.h"
+#endif
 
 #define B(p, o) (*((u8 *)(p) + (o)))
 #define S(p, o) (*(s16 *)((u8 *)(p) + (o)))
@@ -268,6 +271,9 @@ void func_800540B4(s32 index)
         D_8009AFD4 = 0xE1000220;
     }
 
+#ifdef MEMORIES_PC
+    NativeModel_BeginSlot(index < 2 ? (s32)slot->field_DF8 : -1);
+#endif
     e = slot->field_000;
     if (D_8009AFE4 >= 3) {
         D_8009AFE0 = 0;
@@ -362,9 +368,15 @@ void func_800540B4(s32 index)
                 }
                 GsSetLsMatrix(&ls);
             }
+#ifdef MEMORIES_PC
+            NativeModel_Part((s32)(GS_COORD_UNIT_VIEW(e->field_00) - GS_COORD_UNIT_VIEW(slot->entries)));
+#endif
             GsSortUnit((GsUNIT *)e, ot, (u32 *)SCRATCHPAD_ADDR(0x1F800000));
         }
     }
+#ifdef MEMORIES_PC
+    NativeModel_Link((u32 *)ot, NativeModel_EndSlot());
+#endif
 
     if (D_8009AF9C != 0) {
         if (index < 2) {

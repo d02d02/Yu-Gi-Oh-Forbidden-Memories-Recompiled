@@ -28,6 +28,7 @@
 #include "gl_picture.h"
 #include "soft_gpu.h"
 #include "texture_pack.h"
+#include "native_model.h"
 #include "pc/cards/card_layout.h"
 #include "pc/text/hd_text.h"
 #include "pc/platform/settings.h"
@@ -115,7 +116,7 @@ static int load_functions(void)
 }
 
 /* --- the record ---------------------------------------------------------- */
-enum { OP_GP0 = 1, OP_LOAD, OP_MOVE, OP_FILL, OP_RESYNC, OP_PRECISE, OP_CAPTURE };
+enum { OP_GP0 = 1, OP_LOAD, OP_MOVE, OP_FILL, OP_RESYNC, OP_PRECISE, OP_CAPTURE, OP_NATIVE };
 #define ARENA_WORDS (8u << 20) /* 32 MiB: a frame's list is at most 2 MiB */
 static uint32_t *arena;
 static volatile size_t arena_used;
@@ -217,8 +218,19 @@ static void record_resync(int scale, const uint32_t state[6])
     memcpy(at + 2, state, 6 * sizeof(uint32_t));
 }
 
+/* Native model draws (native_model.h): `count` NativeDraws, kept by the replay until their markers come by. */
+static void record_native(const void *draws, size_t count)
+{
+    size_t words = count * sizeof(NativeDraw) / sizeof(uint32_t);
+    uint32_t *at = reserve(2 + words);
+    if (!at) return;
+    at[0] = OP_NATIVE;
+    at[1] = (uint32_t)count;
+    memcpy(at + 2, draws, count * sizeof(NativeDraw));
+}
+
 static const SoftGpuRecorder recorder = {record_gp0, record_load, record_move, record_fill, record_resync,
-                                          record_precise, record_capture};
+                                          record_precise, record_capture, record_native};
 
 /* --- GL objects ---------------------------------------------------------- */
 /* What the replays cost the GPU beyond the primitives, summed over 120 of
@@ -1722,6 +1734,57 @@ static int wide_target(void)
 }
 
 /* The batch, as SoftGpu_Gp0 reads it: the same commands, the same cuts. */
+/* --- native model pass (native_model.h) ------------------------------------ */
+static NativeDraw native_ring[NATIVE_RING];
+static int native_ring_valid[NATIVE_RING];
+
+/* The mesh of draw `id` posed with the parts' GTE matrices the game set (view = R v / 4096 + TR, screen =
+ * offset + H x / z: the GTE's own arithmetic, in floats), as flat triangles through the ordinary triangle path. */
+static void native_draw(unsigned id)
+{
+    const NativeDraw *d = &native_ring[id % NATIVE_RING];
+    const NativeMesh *mesh;
+    uint32_t i;
+    NativeModel_Stats[5]++;
+    if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
+    mesh = NativeModel_Mesh(d->model);
+    if (!mesh) return;
+    for (i = 0; i + 2 < mesh->vertices; i += 3) {
+        Vertex v[3];
+        int k, ok = 1;
+        memset(v, 0, sizeof(v));
+        for (k = 0; k < 3 && ok; k++) {
+            const uint32_t *w = mesh->words + (size_t)(i + k) * 9;
+            const float *f = (const float *)w;
+            const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
+            float vx, vy, vz, sx, sy;
+            if (!part->used) { ok = 0; break; }
+            vx = ((float)part->rot[0] * f[0] + (float)part->rot[1] * f[1] + (float)part->rot[2] * f[2]) / 4096.0f +
+                 (float)part->tr[0];
+            vy = ((float)part->rot[3] * f[0] + (float)part->rot[4] * f[1] + (float)part->rot[5] * f[2]) / 4096.0f +
+                 (float)part->tr[1];
+            vz = ((float)part->rot[6] * f[0] + (float)part->rot[7] * f[1] + (float)part->rot[8] * f[2]) / 4096.0f +
+                 (float)part->tr[2];
+            if (vz < 16.0f) { ok = 0; break; }
+            sx = (float)d->ofx / 65536.0f + (float)d->h * vx / vz;
+            sy = (float)d->ofy / 65536.0f + (float)d->h * vy / vz;
+            v[k].precise = 1;
+            v[k].fx = sx + (float)state.offset_x;
+            v[k].fy = sy + (float)state.offset_y;
+            v[k].q = 1.0f / vz;
+            v[k].x = (int)(v[k].fx + 0.5f);
+            v[k].y = (int)(v[k].fy + 0.5f);
+            v[k].r = 255;
+            v[k].g = 0;
+            v[k].b = 255;
+        }
+        if (ok) {
+            triangle(&v[0], &v[1], &v[2], 0);
+            NativeModel_Stats[6]++;
+        }
+    }
+}
+
 static void gp0(const uint32_t *words, size_t count)
 {
     size_t at = 0;
@@ -1781,6 +1844,8 @@ static void gp0(const uint32_t *words, size_t count)
             }
         } else if (command >= 0xc0 && command < 0xe0) {
             used = count - at >= 3 ? 3 : 0;
+        } else if (command == 0 && (word & 0xffffff00u) == NATIVE_MARKER) {
+            native_draw(word & 0xffu);
         } else if (command == 0xe1) {
             set_page(word);
         } else if (command == 0xe2) {
@@ -2599,6 +2664,18 @@ int GlPicture_Replay(void)
             used = 7;
             apply_capture((int)op[1], (int)op[2], (int)op[3], (int)op[4], (int)op[5], (int)op[6]);
             break;
+        case OP_NATIVE: {
+            size_t n = op[1], k;
+            used = 2 + n * sizeof(NativeDraw) / sizeof(uint32_t);
+            if (at + used > count) { at = count; break; }
+            NativeModel_Stats[4]++;
+            for (k = 0; k < n; k++) {
+                const NativeDraw *d = (const NativeDraw *)(op + 2) + k;
+                native_ring[(unsigned)d->id % NATIVE_RING] = *d;
+                native_ring_valid[(unsigned)d->id % NATIVE_RING] = 1;
+            }
+            break;
+        }
         case OP_RESYNC:
             used = 8;
             flush_runs();

@@ -1271,6 +1271,15 @@ void SoftGpu_SetPrecise(const PgxpVertex *vertices, size_t count)
     precise_count = count;
 }
 
+static const void *native_draws;
+static size_t native_count;
+
+void SoftGpu_SetNative(const void *draws, size_t count)
+{
+    native_draws = draws;
+    native_count = count;
+}
+
 size_t SoftGpu_Gp0(const uint32_t *words, size_t count)
 {
 #if defined(MEMORIES_TRANSLATED) && !defined(MEMORIES_INSTRUMENT_SOFTGPU)
@@ -1278,10 +1287,13 @@ size_t SoftGpu_Gp0(const uint32_t *words, size_t count)
 #endif
     size_t at = 0;
     if (recorder && scale > 1) {
+        /* Before the precise vertices: the replay forgets them at any op that is not the GP0 batch they belong to. */
+        if (native_count && recorder->native) recorder->native(native_draws, native_count);
         if (precise_count && recorder->precise) recorder->precise(precise, precise_count);
         recorder->gp0(words, count);
     }
     precise_count = 0;
+    native_count = 0;
     while (at < count) {
         uint32_t word = words[at], command = word >> 24;
         size_t used = 1;

@@ -9,6 +9,7 @@
 #include "pc/platform/platform.h"
 #include "pc/platform/credits.h"
 #include "pc/render/soft_gpu.h"
+#include "pc/render/native_model.h"
 #include "pc/sdk/display.h"
 #include <stdio.h>
 #include <time.h>
@@ -408,6 +409,11 @@ static void flush_drawing(void)
     SoftGpu_PanelCut = SoftGpu_PanelName && HdText_PanelCut();
     SoftGpu_SetPrecise(frame_precise, pending_precise);
     pending_precise = 0;
+    {
+        size_t natives;
+        const NativeDraw *draws = NativeModel_Taken(&natives);
+        SoftGpu_SetNative(draws, natives);
+    }
     SoftGpu_Gp0(frame_words, count);
     clock_gettime(CLOCK_MONOTONIC, &t1);
     {
@@ -479,6 +485,7 @@ void DrawOTag(u32 *list)
         exit(70);
     }
     pending_words = count;
+    NativeModel_Take(); /* the draws sorted for this frame go with its words */
     /* PGXP (pgxp.h): the frame's words that are vertices projected since the
      * last DrawOTag, with where they really are: those the game's drawing
      * wrote by address, the rest by value; then the next frame's. Below
