@@ -1063,6 +1063,7 @@ typedef struct Vertex {
     int x, y, r, g, b, u, v;
     int precise;     /* PGXP: fx, fy and q hold where the vertex really is */
     uint32_t id;     /* PGXP: the model data vertex it came from (PgxpVertex.id) */
+    uint32_t draw;   /* PGXP: the model draw that projected it (PgxpVertex.draw) */
     float fx, fy, q;
 } Vertex;
 
@@ -1080,6 +1081,7 @@ static void find_precise(Vertex *vertex, const uint32_t *word)
     uint32_t index;
     vertex->precise = 0;
     vertex->id = 0;
+    vertex->draw = 0;
     if (!batch_precise_count || !batch_words || word < batch_words) return;
     index = (uint32_t)(word - batch_words);
     while (low < high) {
@@ -1093,6 +1095,7 @@ static void find_precise(Vertex *vertex, const uint32_t *word)
         vertex->fy = batch_precise[low].y + (float)state.offset_y;
         vertex->q = 1.0f / batch_precise[low].w;
         vertex->id = batch_precise[low].id;
+        vertex->draw = batch_precise[low].draw;
     }
 }
 /* The texels of the primitive being read (GlVertex's bounds). */
@@ -1180,6 +1183,7 @@ static void set_vertex(GlVertex *out, float x, float y, float u, float v, const 
 
 static int drawn_multisampled(void); /* the target of the primitive being read (below) */
 static void seam_remember(size_t index, const float *px, const float *py); /* seam-aware growth (below) */
+static void gap_remember(size_t index, uint32_t draw); /* MEMORIES_PGXP_DRAWGAPS (below) */
 
 /* Conservative coverage for a precise triangle: level 1's rounded vertices fattened thin parts of a
  * model (a spike, a sliver between two parts) into pixels; at precise positions they can fall between
@@ -1327,6 +1331,7 @@ static void triangle(const Vertex *a, const Vertex *b, const Vertex *c, int flag
     out = push_vertices(3, (flags & 2) && state.blend == 2);
     if (!out) return;
     for (i = 0; i < 3; i++) out[i].corner[i] = 255;
+    if (a->precise && b->precise && c->precise && Settings_Get(SET_PGXP) >= 2) gap_remember((size_t)(out - vertices), a->draw);
     /* PGXP: a textured polygon with all its depths is drawn in perspective
      * (flag 32, set by polygon()); a precise vertex stands where it really is. */
     if (!(a->precise && b->precise && c->precise)) flags &= ~32;
@@ -2330,7 +2335,9 @@ static void group_runs(void)
  * other triangle has the same two corners reversed (a shared edge is watertight). An open edge has a seam partner when
  * another triangle's open edge runs the opposite way within SEAM_REACH console pixels, on its outer side: the crack
  * between two pieces of a model. Outer outlines have no partner, so they stay where they are (no fringe). */
-#define SEAM_REACH 0.5f
+static float seam_reach = 1.5f, seam_maxgrow = 0.8f, seam_needle = 0.3f; /* EXPERIMENT: MEMORIES_PGXP_SEAM_REACH / _MAXGROW / _NEEDLE (console px) */
+#define SEAM_REACH seam_reach
+#define SEAM_MARGIN 0.05f
 #define seam_dot (-0.5f) /* the cosine of the angle between the two edges: opposite to within 60 degrees */
 typedef struct SeamTriangle {
     size_t index; /* of its first vertex in `vertices` */
@@ -2362,7 +2369,8 @@ typedef struct SeamEdge {
     float ax, ay, bx, by, nx, ny; /* console pixels; n: the outward unit normal */
     float ux, uy, len, mx, my; /* direction (unit), length, midpoint */
     uint32_t triangle;
-    uint8_t open, seam;
+    float need; /* how far each side of the crack it closes must move out */
+    uint8_t open, seam, needle; /* needle: its triangle is thinner than seam_needle: it neither grows nor closes a crack */
 } SeamEdge;
 typedef struct SeamEntry {
     uint32_t edge, next; /* next: another entry of the bucket, plus one */
@@ -2424,6 +2432,16 @@ static void seam_apply_work(void)
     float grow = 0.2f;
     const char *named = getenv("MEMORIES_PGXP_GROW");
     if (named) grow = (float)atof(named);
+    {
+        static int read;
+        if (!read) {
+            const char *r = getenv("MEMORIES_PGXP_SEAM_REACH"), *g = getenv("MEMORIES_PGXP_SEAM_MAXGROW"), *nd = getenv("MEMORIES_PGXP_SEAM_NEEDLE");
+            if (r) seam_reach = (float)atof(r);
+            if (g) seam_maxgrow = (float)atof(g);
+            if (nd) seam_needle = (float)atof(nd);
+            read = 1;
+        }
+    }
     seam_count = 0;
     if (!n) return;
     if (edge_room < m) {
@@ -2461,6 +2479,15 @@ static void seam_apply_work(void)
             e->triangle = (uint32_t)i;
             e->open = 1;
             e->seam = 0;
+            {
+                float ex1 = t->x[1] - t->x[0], ey1 = t->y[1] - t->y[0], ex2 = t->x[2] - t->x[0], ey2 = t->y[2] - t->y[0];
+                float ex3 = t->x[2] - t->x[1], ey3 = t->y[2] - t->y[1];
+                float cross = fabsf(ex1 * ey2 - ey1 * ex2), l1 = ex1 * ex1 + ey1 * ey1, l2 = ex2 * ex2 + ey2 * ey2, l3 = ex3 * ex3 + ey3 * ey3;
+                float longest = sqrtf(l1 > l2 ? (l1 > l3 ? l1 : l3) : (l2 > l3 ? l2 : l3));
+                /* the shortest altitude, in console pixels: twice the area over the longest edge */
+                e->needle = longest > 1e-6f && cross / longest / (float)scale < seam_needle;
+            }
+            e->need = 0.0f;
             dx = e->bx - e->ax;
             dy = e->by - e->ay;
             l = sqrtf(dx * dx + dy * dy);
@@ -2499,6 +2526,7 @@ static void seam_apply_work(void)
             }
             slot = (slot + 1) & (table - 1);
         }
+        if (e->needle) e->open = 0;
         open += e->open;
     }
     SEAM_PHASE(1);
@@ -2570,7 +2598,13 @@ static void seam_apply_work(void)
             if (gx * e->nx + gy * e->ny < -0.05f || -(gx * candidate->nx + gy * candidate->ny) < -0.05f) continue; /* not on the outer sides */
             f = &edges[candidate->edge];
             if (f != e && seam_partners(e, f)) {
+                /* the crack is as wide as the nearer midpoint is from the other edge: each side moves half of it, and a margin */
+                float w = fminf(seam_distance(e->mx, e->my, f), seam_distance(f->mx, f->my, e)), need = 0.5f * w + SEAM_MARGIN;
+                if (need > seam_maxgrow) need = seam_maxgrow;
+                if (need < grow) need = grow;
                 e->seam = f->seam = 1;
+                if (need > e->need) e->need = need;
+                if (need > f->need) f->need = need;
             }
         }
     }
@@ -2579,13 +2613,13 @@ static void seam_apply_work(void)
      * exactly shared: the seam edges' outward normals added up per corner, the corner pushed out along them by `grow`. */
     {
         static uint64_t *keys;
-        static float *sum_x, *sum_y;
+        static float *sum_x, *sum_y, *max_need;
         static uint32_t *counts, *slots;
         static size_t keys_room, slots_room;
         size_t used = 0;
         if (keys_room < m) {
             uint64_t *k2 = realloc(keys, m * sizeof(*k2));
-            float *x2, *y2;
+            float *x2, *y2, *n2;
             uint32_t *c2;
             if (!k2) return;
             keys = k2;
@@ -2598,6 +2632,9 @@ static void seam_apply_work(void)
             c2 = realloc(counts, m * sizeof(*c2));
             if (!c2) return;
             counts = c2;
+            n2 = realloc(max_need, m * sizeof(*n2));
+            if (!n2) return;
+            max_need = n2;
             keys_room = m;
         }
         if (slots_room < table) {
@@ -2618,11 +2655,12 @@ static void seam_apply_work(void)
                 while (slots[slot] && keys[slots[slot] - 1] != key) slot = (slot + 1) & (table - 1);
                 if (!slots[slot]) {
                     keys[used] = key;
-                    sum_x[used] = sum_y[used] = 0.0f;
+                    sum_x[used] = sum_y[used] = max_need[used] = 0.0f;
                     counts[used] = 0;
                     slots[slot] = (uint32_t)++used;
                 }
                 sum_x[slots[slot] - 1] += e->nx;
+                if (e->need > max_need[slots[slot] - 1]) max_need[slots[slot] - 1] = e->need;
                 sum_y[slots[slot] - 1] += e->ny;
                 counts[slots[slot] - 1]++;
             }
@@ -2642,13 +2680,13 @@ static void seam_apply_work(void)
                 if (length < 1e-4f) continue;
                 /* one normal: grow along it; several: the miter of the sum (a corner of two edges), at most 3 * grow */
                 d = counts[slots[slot] - 1] == 1 ? 1.0f : 2.0f / (length > 0.5f ? length : 0.5f);
-                d = d * grow * (float)scale;
+                d = d * max_need[slots[slot] - 1] * (float)scale;
                 dx = dx / length * d;
                 dy = dy / length * d;
                 length = sqrtf(dx * dx + dy * dy);
-                if (length > 3.0f * grow * (float)scale) {
-                    dx *= 3.0f * grow * (float)scale / length;
-                    dy *= 3.0f * grow * (float)scale / length;
+                if (length > 3.0f * max_need[slots[slot] - 1] * (float)scale) {
+                    dx *= 3.0f * max_need[slots[slot] - 1] * (float)scale / length;
+                    dy *= 3.0f * max_need[slots[slot] - 1] * (float)scale / length;
                 }
                 out->x = t->x[k] + dx;
                 out->y = t->y[k] + dy;
@@ -2678,6 +2716,152 @@ static void seam_apply(void)
     }
 }
 
+/* DEBUG (MEMORIES_PGXP_DRAWGAPS=<ppm path>): the pixels a model draw leaves uncovered although it surrounds them: per model
+ * draw, the union of its triangles (at their final, grown positions) is closed by one pixel; what closing adds is a crack in
+ * that mesh, whatever lies behind it. Counted and written as a picture (grey covered, red cracks) for the biggest flush. */
+typedef struct GapTriangle {
+    size_t index;
+    uint32_t draw;
+} GapTriangle;
+static GapTriangle *gap_list;
+static size_t gap_count, gap_room;
+
+static void gap_remember(size_t index, uint32_t draw)
+{
+    if (!getenv("MEMORIES_PGXP_DRAWGAPS")) return;
+    if (gap_count == gap_room) {
+        size_t room = gap_room ? gap_room * 2 : 4096;
+        GapTriangle *more = realloc(gap_list, room * sizeof(*more));
+        if (!more) return;
+        gap_list = more;
+        gap_room = room;
+    }
+    gap_list[gap_count].index = index;
+    gap_list[gap_count].draw = draw;
+    gap_count++;
+}
+
+static int gap_compare(const void *a, const void *b)
+{
+    const GapTriangle *x = a, *y = b;
+    return x->draw < y->draw ? -1 : (x->draw > y->draw ? 1 : (x->index < y->index ? -1 : (x->index > y->index)));
+}
+
+static void gap_debug(void)
+{
+    const char *path = getenv("MEMORIES_PGXP_DRAWGAPS");
+    size_t i, start, total = 0, draws = 0, n = gap_count;
+    float lo_x = 1e9f, lo_y = 1e9f, hi_x = -1e9f, hi_y = -1e9f;
+    int w, h;
+    unsigned char *image;
+    gap_count = 0;
+    if (!path || n < 1000) return;
+    qsort(gap_list, n, sizeof(*gap_list), gap_compare);
+    for (i = 0; i < n; i++) {
+        int k;
+        if (gap_list[i].index + 3 > vertex_count) return; /* a record cut short */
+        for (k = 0; k < 3; k++) {
+            const GlVertex *v = &vertices[gap_list[i].index + (size_t)k];
+            if (v->x < lo_x) lo_x = v->x;
+            if (v->x > hi_x) hi_x = v->x;
+            if (v->y < lo_y) lo_y = v->y;
+            if (v->y > hi_y) hi_y = v->y;
+        }
+    }
+    w = (int)(hi_x - lo_x) + 8;
+    h = (int)(hi_y - lo_y) + 8;
+    if (w < 8 || h < 8 || (size_t)w * (size_t)h > 40000000u) return;
+    image = calloc((size_t)w * (size_t)h, 3);
+    if (!image) return;
+    for (start = 0; start < n;) {
+        size_t end = start, x, y;
+        float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
+        int mw, mh, ox, oy;
+        unsigned char *mask, *closed;
+        while (end < n && gap_list[end].draw == gap_list[start].draw) end++;
+        for (i = start; i < end; i++) {
+            int k;
+            for (k = 0; k < 3; k++) {
+                const GlVertex *v = &vertices[gap_list[i].index + (size_t)k];
+                if (v->x < bx0) bx0 = v->x;
+                if (v->x > bx1) bx1 = v->x;
+                if (v->y < by0) by0 = v->y;
+                if (v->y > by1) by1 = v->y;
+            }
+        }
+        ox = (int)floorf(bx0) - 3;
+        oy = (int)floorf(by0) - 3;
+        mw = (int)ceilf(bx1) - ox + 4;
+        mh = (int)ceilf(by1) - oy + 4;
+        mask = calloc((size_t)mw * (size_t)mh, 1);
+        closed = calloc((size_t)mw * (size_t)mh, 1);
+        if (!mask || !closed) {
+            free(mask);
+            free(closed);
+            break;
+        }
+        for (i = start; i < end; i++) {
+            const GlVertex *a = &vertices[gap_list[i].index], *b = a + 1, *c = a + 2;
+            float area = (b->x - a->x) * (c->y - a->y) - (b->y - a->y) * (c->x - a->x), sgn = area > 0 ? 1.0f : -1.0f;
+            int x0 = (int)floorf(fminf(a->x, fminf(b->x, c->x))) - ox, x1 = (int)ceilf(fmaxf(a->x, fmaxf(b->x, c->x))) - ox;
+            int y0 = (int)floorf(fminf(a->y, fminf(b->y, c->y))) - oy, y1 = (int)ceilf(fmaxf(a->y, fmaxf(b->y, c->y))) - oy;
+            if (area > -1e-9f && area < 1e-9f) continue;
+            for (int yy = y0; yy <= y1; yy++) {
+                for (int xx = x0; xx <= x1; xx++) {
+                    float qx = (float)(xx + ox) + 0.5f, qy = (float)(yy + oy) + 0.5f;
+                    if (xx < 0 || yy < 0 || xx >= mw || yy >= mh) continue;
+                    if (((b->x - a->x) * (qy - a->y) - (b->y - a->y) * (qx - a->x)) * sgn >= 0.0f &&
+                        ((c->x - b->x) * (qy - b->y) - (c->y - b->y) * (qx - b->x)) * sgn >= 0.0f &&
+                        ((a->x - c->x) * (qy - c->y) - (a->y - c->y) * (qx - c->x)) * sgn >= 0.0f) {
+                        mask[(size_t)yy * (size_t)mw + (size_t)xx] = 1;
+                    }
+                }
+            }
+        }
+        /* closing by one pixel: dilate (3x3), then erode (3x3) */
+        for (y = 1; y + 1 < (size_t)mh; y++) {
+            for (x = 1; x + 1 < (size_t)mw; x++) {
+                int any = 0, dy, dx;
+                for (dy = -1; dy <= 1; dy++) for (dx = -1; dx <= 1; dx++) any |= mask[(y + (size_t)dy) * (size_t)mw + x + (size_t)dx];
+                closed[y * (size_t)mw + x] = (unsigned char)any;
+            }
+        }
+        for (y = 2; y + 2 < (size_t)mh; y++) {
+            for (x = 2; x + 2 < (size_t)mw; x++) {
+                int all = 1, dy, dx;
+                for (dy = -1; dy <= 1; dy++) for (dx = -1; dx <= 1; dx++) all &= closed[(y + (size_t)dy) * (size_t)mw + x + (size_t)dx];
+                if (all || mask[y * (size_t)mw + x]) {
+                    int ix = (int)x + ox - (int)floorf(lo_x), iy = (int)y + oy - (int)floorf(lo_y);
+                    if (ix >= 0 && iy >= 0 && ix < w && iy < h) {
+                        unsigned char *px = image + ((size_t)iy * (size_t)w + (size_t)ix) * 3;
+                        if (mask[y * (size_t)mw + x]) {
+                            if (!(px[0] == 255 && px[1] == 0)) px[0] = px[1] = px[2] = 110;
+                        } else {
+                            px[0] = 255;
+                            px[1] = px[2] = 0;
+                            total++;
+                        }
+                    }
+                }
+            }
+        }
+        free(mask);
+        free(closed);
+        draws++;
+        start = end;
+    }
+    {
+        FILE *f = fopen(path, "wb");
+        if (f) {
+            fprintf(f, "P6\n%d %d\n255\n", w, h);
+            fwrite(image, 3, (size_t)w * (size_t)h, f);
+            fclose(f);
+        }
+    }
+    LOG(LOG_FRAMES, "drawgaps: %zu crack pixels in %zu draws (%zu triangles), origin %d,%d scale %d", total, draws, n, (int)floorf(lo_x), (int)floorf(lo_y), scale);
+    free(image);
+}
+
 /* The primitives gathered so far, in order, into the picture. */
 static void flush_runs(void)
 {
@@ -2690,6 +2874,7 @@ static void flush_runs(void)
         return;
     }
     seam_apply();
+    gap_debug();
     group_runs();
     sync_banks();
     sync_pack();
