@@ -1748,6 +1748,8 @@ typedef struct NativeVertex {
  * sorts. */
 static struct {
     GLuint program, comp_program, texture, color, fbo, depth, buffer;
+    GLuint ms_fbo, ms_color, ms_depth; /* the multisampled target the model is drawn into, resolved into `fbo` */
+    int samples;
     GLint u_size, u_tex, c_size, c_tex;
     int w, h, failed;
     const NativeMesh *textured; /* the mesh `texture` holds */
@@ -1859,6 +1861,9 @@ static void native_free(void)
     if (nat.color) glDeleteTextures(1, &nat.color);
     if (nat.fbo) gl_DeleteFramebuffers(1, &nat.fbo);
     if (nat.depth) gl_DeleteRenderbuffers(1, &nat.depth);
+    if (nat.ms_fbo) gl_DeleteFramebuffers(1, &nat.ms_fbo);
+    if (nat.ms_color) gl_DeleteRenderbuffers(1, &nat.ms_color);
+    if (nat.ms_depth) gl_DeleteRenderbuffers(1, &nat.ms_depth);
     if (nat.buffer) gl_DeleteBuffers(1, &nat.buffer);
     free(nat.vertices);
     memset(&nat, 0, sizeof(nat));
@@ -1888,7 +1893,10 @@ static int native_ready(void)
         if (nat.fbo) gl_DeleteFramebuffers(1, &nat.fbo);
         if (nat.depth) gl_DeleteRenderbuffers(1, &nat.depth);
         if (nat.color) glDeleteTextures(1, &nat.color);
-        nat.fbo = nat.depth = nat.color = 0;
+        if (nat.ms_fbo) gl_DeleteFramebuffers(1, &nat.ms_fbo);
+        if (nat.ms_color) gl_DeleteRenderbuffers(1, &nat.ms_color);
+        if (nat.ms_depth) gl_DeleteRenderbuffers(1, &nat.ms_depth);
+        nat.fbo = nat.depth = nat.color = nat.ms_fbo = nat.ms_color = nat.ms_depth = 0;
         nat.color = make_texture(GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE);
         gl_GenRenderbuffers(1, &nat.depth);
         gl_BindRenderbuffer(GL_RENDERBUFFER, nat.depth);
@@ -1908,6 +1916,38 @@ static int native_ready(void)
         gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
         nat.w = w;
         nat.h = h;
+        /* Anti-aliasing for the model: MEMORIES_NATIVE_MSAA samples (default 4, 0 = off), within what the driver has. */
+        {
+            const char *want = getenv("MEMORIES_NATIVE_MSAA");
+            GLint most = 0;
+            nat.samples = want ? atoi(want) : 4;
+            glGetIntegerv(GL_MAX_SAMPLES, &most);
+            if (nat.samples > most) nat.samples = most;
+            if (nat.samples > 1) {
+                while (glGetError() != GL_NO_ERROR) continue;
+                gl_GenRenderbuffers(1, &nat.ms_color);
+                gl_BindRenderbuffer(GL_RENDERBUFFER, nat.ms_color);
+                gl_RenderbufferStorageMultisample(GL_RENDERBUFFER, nat.samples, GL_RGBA8, w, h);
+                gl_GenRenderbuffers(1, &nat.ms_depth);
+                gl_BindRenderbuffer(GL_RENDERBUFFER, nat.ms_depth);
+                gl_RenderbufferStorageMultisample(GL_RENDERBUFFER, nat.samples, GL_DEPTH_COMPONENT24, w, h);
+                gl_BindRenderbuffer(GL_RENDERBUFFER, 0);
+                gl_GenFramebuffers(1, &nat.ms_fbo);
+                gl_BindFramebuffer(GL_FRAMEBUFFER, nat.ms_fbo);
+                gl_FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, nat.ms_color);
+                gl_FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, nat.ms_depth);
+                if (glGetError() != GL_NO_ERROR || gl_CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                    fprintf(stderr, "memories-pc: native model: no room for %dx anti-aliasing\n", nat.samples);
+                    gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
+                    gl_DeleteFramebuffers(1, &nat.ms_fbo);
+                    gl_DeleteRenderbuffers(1, &nat.ms_color);
+                    gl_DeleteRenderbuffers(1, &nat.ms_depth);
+                    nat.ms_fbo = nat.ms_color = nat.ms_depth = 0;
+                    nat.samples = 0;
+                }
+                gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
+            }
+        }
     }
     NativeModel_GlReady = 1;
     return 1;
@@ -1939,8 +1979,53 @@ static void native_draw(unsigned id)
         glBindTexture(GL_TEXTURE_2D, nat.texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)mesh->tex_w, (GLsizei)mesh->tex_h, 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, mesh->rgba);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        if (mesh->tex_w > 384 || mesh->tex_h > 256) {
+            /* A texture above the disc's own (384x256): filtered, with a mip chain made here (alpha-weighted box
+             * filter, so the transparent texels' colour does not darken the edges). */
+            size_t w = mesh->tex_w, h = mesh->tex_h;
+            uint8_t *from = (uint8_t *)malloc(w * h * 4), *to;
+            int level = 0;
+            if (from) memcpy(from, mesh->rgba, w * h * 4);
+            while (from && (w > 1 || h > 1)) {
+                size_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1, x, y;
+                to = (uint8_t *)malloc(nw * nh * 4);
+                if (!to) break;
+                for (y = 0; y < nh; y++) {
+                    for (x = 0; x < nw; x++) {
+                        float sum[3] = {0, 0, 0}, alpha = 0;
+                        int k;
+                        for (k = 0; k < 4; k++) {
+                            size_t sx = x * 2 + (size_t)(k & 1), sy = y * 2 + (size_t)(k >> 1);
+                            const uint8_t *p;
+                            if (sx >= w) sx = w - 1;
+                            if (sy >= h) sy = h - 1;
+                            p = from + (sy * w + sx) * 4;
+                            sum[0] += (float)p[0] * p[3];
+                            sum[1] += (float)p[1] * p[3];
+                            sum[2] += (float)p[2] * p[3];
+                            alpha += (float)p[3];
+                        }
+                        to[(y * nw + x) * 4 + 0] = alpha > 0 ? (uint8_t)(sum[0] / alpha + 0.5f) : 0;
+                        to[(y * nw + x) * 4 + 1] = alpha > 0 ? (uint8_t)(sum[1] / alpha + 0.5f) : 0;
+                        to[(y * nw + x) * 4 + 2] = alpha > 0 ? (uint8_t)(sum[2] / alpha + 0.5f) : 0;
+                        to[(y * nw + x) * 4 + 3] = (uint8_t)(alpha / 4.0f + 0.5f);
+                    }
+                }
+                level++;
+                glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA8, (GLsizei)nw, (GLsizei)nh, 0, GL_RGBA, GL_UNSIGNED_BYTE, to);
+                free(from);
+                from = to;
+                w = nw;
+                h = nh;
+            }
+            free(from);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        } else {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         nat.textured = mesh;
@@ -2031,8 +2116,8 @@ static void native_draw(unsigned id)
     if (x1 <= x0 || y1 <= y0) return;
     NativeModel_Stats[6] += mesh->vertices / 3;
 
-    /* The model, with depth, into the private target. */
-    gl_BindFramebuffer(GL_FRAMEBUFFER, nat.fbo);
+    /* The model, with depth, into the private target (multisampled when there is one). */
+    gl_BindFramebuffer(GL_FRAMEBUFFER, nat.ms_fbo ? nat.ms_fbo : nat.fbo);
     glViewport(0, 0, nat.w, nat.h);
     glEnable(GL_SCISSOR_TEST);
     glScissor(x0, y0, x1 - x0, y1 - y0);
@@ -2057,6 +2142,13 @@ static void native_draw(unsigned id)
     gl_VertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)(5 * sizeof(float)));
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mesh->vertices);
     glDisable(GL_DEPTH_TEST);
+    if (nat.ms_fbo) { /* the samples into the texture, over the box */
+        glDisable(GL_SCISSOR_TEST);
+        gl_BindFramebuffer(GL_READ_FRAMEBUFFER, nat.ms_fbo);
+        gl_BindFramebuffer(GL_DRAW_FRAMEBUFFER, nat.fbo);
+        gl_BlitFramebuffer(x0, y0, x1, y1, x0, y0, x1, y1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glEnable(GL_SCISSOR_TEST);
+    }
 
     /* Over the picture, where the model sorts. */
     {
