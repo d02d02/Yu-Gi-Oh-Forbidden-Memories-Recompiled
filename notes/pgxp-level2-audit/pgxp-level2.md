@@ -27,6 +27,16 @@ Verdict now: level 2 is clearly cleaner than the original (unpainted holes 627 -
 - Remaining visible defects: light fringe at Celtic Guardian's cuffs, robed monster's headdress spiky + faint collar crack, thin spikes still thinner than level 1, hair hairline sliver is a drawn-black edge-on triangle.
 - Level 2 sits +0.75 console px (3 px at 4x) right/down of level 1 (the known +0.77 bias, open decision: compare against pixel+0.5?); L1-vs-L2 "% pixels changed" (18-21%) is mostly that shift.
 
+## Review 2026-10-14 (strategy question "rewrite the renderer?"): answer no, a GL-pass bug instead
+- `gl_picture.c` `triangle()`: `if (area == 0) return;` tests the ROUNDED area, also at level 2. Small scene, 4x: 438 of 3,665
+  GL triangles per frame (12%) are fully precise yet dropped; 160 px are covered only by them, 159 of those unpainted in the
+  magenta capture. Fix: at level 2 with all three vertices precise, test the precise area (level 1 unchanged: fx == x there).
+- 0 mixed-precision triangles per frame (3,659 all precise, 6 none = 2D): the packet path does not lose vertex identity.
+- The `gltri:` line is logged BEFORE that return, and the log's frame counter is one ahead of the capture (capture "frame 40" =
+  log frame 39: 179 stray px vs 2,849). On the matching frame no unpainted pixel lies deeper than 0.1 px inside a drawn
+  triangle, so the "116 covered-but-unpainted" class = dropped triangles + on-edge cracks. Re-run the hole anatomy after the fix.
+- Check: `python -I hacking\shared\tools\gltri_check.py <log with gltri> <L2 magenta ppm> 4` (finds the matching frame itself).
+
 ## Tools and how to measure (details in WIP_NOTES.md)
 `python tools\pc\scene_measure.py --game tmp\pc\game32 [--out DIR --cards 58,62,41,59,39,3,2,4,7,97] [--seams] [--env K=V] state|capture --pgxp N --scale S [--frame F] out.ppm|diff|controls`
 (patched copy of origin/dev's, untracked; needs mods/test-scenes linked: `hacking\shared\link.ps1 -Worktree <repo> -Code test-scenes`; states die with every rebuild; no other memories-pc may hold the link).

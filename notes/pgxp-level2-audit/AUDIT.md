@@ -53,6 +53,16 @@ C. **Supersample or pixel-snap instead of geometric precision** (e.g. render 3D 
 D. Ship level 1 only and drop level 2.
 Please say which you would choose and why, what you would prototype first (cheapest decisive experiment), and what in my trail is wrong or unverified.
 
+## Review outcome (2026-10-14): keep option A; a GL-pass bug explains the "unexplained" class
+Checked against the kept triangle log and magenta capture (`tools/gltri_check.py`), no new run:
+- `gl_picture.c` `triangle()` returns when the ROUNDED area is 0, also at level 2: 438 of 3,665 GL triangles per frame (12%, small scene, 4x) are fully
+  precise yet never drawn; 160 px are covered only by them and 159 of those are unpainted in the capture.
+- 0 mixed-precision triangles per frame (3,659 all precise, 6 none = 2D): the packet path keeps vertex identity, which was option B's main promise.
+- The `gltri:` log line is written before that return, and the log's frame counter is one ahead of the capture (capture "frame 40" = log frame 39).
+  On the matching frame no unpainted pixel lies more than 0.1 px inside a drawn triangle: the 116 = dropped triangles + on-edge cracks.
+- The remaining classes (thin slivers, pieces without shared vertices, edge-on dark slivers, transparent texels, the 0.75 px bias) come from the model data
+  at precise positions; an indexed-mesh renderer would inherit them and need the same weld and coverage. Next: fix the area test, re-measure, lower the growth.
+
 ## How to reproduce (Windows)
 Disc image `game\ygofm-orig-usa.bin` (USA, SLUS-01411; not in git). Build `python tools\pc\build.py --target windows`. Test scenes mod (`mods/test-scenes`, from the fork's `dev` branch) must be linked and built for `scene_measure.py`.
 Measurement commands, the C-test recipe (they DO run on Windows) and every number are in `WIP_NOTES.md` (this folder) -> sections "Setup", "Findings", "Hole anatomy", "Conservative coverage".
