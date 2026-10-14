@@ -1,5 +1,5 @@
 # tools/pc/rigs
-nLLMs/scripts: read `notes/dev-tools/AGENTS.md` first (one page: when to use, rules, command table).
+LLMs/scripts: read `notes/dev-tools/AGENTS.md` first (one page: when to use, rules, command table).
 
 `rigkit.py`: scripted situations on the control channel (`tools/pc/yfm_control.py`), made once at Internal 1x,
 saved as a state named with the build id, then looked at at any scale (about 1 s even at 4x).
