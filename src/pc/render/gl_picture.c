@@ -64,6 +64,7 @@
     X(PFNGLUNIFORM3IPROC, Uniform3i) \
     X(PFNGLUNIFORM4IPROC, Uniform4i) \
     X(PFNGLUNIFORM2FPROC, Uniform2f) \
+    X(PFNGLUNIFORM3FPROC, Uniform3f) \
     X(PFNGLGENBUFFERSPROC, GenBuffers) \
     X(PFNGLDELETEBUFFERSPROC, DeleteBuffers) \
     X(PFNGLBINDBUFFERPROC, BindBuffer) \
@@ -1760,6 +1761,9 @@ static struct {
     GLuint skin_program, skin_vbo, skin_ebo, skin_tex; /* HDM4: the model's own skeleton (4-weight vertex-shader skinning) */
     const NativeMesh *skin_mesh;
     GLint s_size, s_tex, s_bones;
+    GLuint pbr_program, normal_tex, mr_tex; /* HDM4 PBR-lite: program, normal map, metal/roughness map */
+    const NativeMesh *pbr_mesh;             /* the mesh the two maps hold */
+    int pbr_failed;
     int skin_failed;
     float *skin_rows;
     float *bones;
@@ -1883,6 +1887,9 @@ static void native_free(void)
     if (nat.gpu_vbo) gl_DeleteBuffers(1, &nat.gpu_vbo);
     if (nat.bones_tex) glDeleteTextures(1, &nat.bones_tex);
     if (nat.skin_program) gl_DeleteProgram(nat.skin_program);
+    if (nat.pbr_program) gl_DeleteProgram(nat.pbr_program);
+    if (nat.normal_tex) glDeleteTextures(1, &nat.normal_tex);
+    if (nat.mr_tex) glDeleteTextures(1, &nat.mr_tex);
     if (nat.skin_vbo) gl_DeleteBuffers(1, &nat.skin_vbo);
     if (nat.skin_ebo) gl_DeleteBuffers(1, &nat.skin_ebo);
     if (nat.skin_tex) glDeleteTextures(1, &nat.skin_tex);
@@ -2135,6 +2142,8 @@ static const char *native_skin_vertex_source =
     "in vec4 aweight;\n"
     "out vec2 uv;\n"
     "out vec3 rgb;\n"
+    "out vec3 vpos;\n"
+    "out vec3 vnrm;\n"
     "vec4 texel(int x, int y) { return texelFetch(bones, ivec2(x, y), 0); }\n"
     "void main() {\n"
     "    vec3 view = vec3(0.0), n = vec3(0.0);\n"
@@ -2158,11 +2167,146 @@ static const char *native_skin_vertex_source =
     "        shade = clamp(l * k1.xyz, 0.0, 255.0 / 128.0);\n"
     "    }\n"
     "    rgb = shade;\n"
+    "    vpos = view;\n"
+    "    vnrm = n;\n"
     "    vec2 px = vec2(k0.x + k0.z * view.x / view.z, k0.y + k0.z * view.y / view.z) * k0.w;\n"
     "    float depth = (view.z - 16.0) / (200000.0 - 16.0) * 2.0 - 1.0;\n"
     "    vec2 ndc = px / picture_size * 2.0 - 1.0;\n"
     "    gl_Position = vec4(ndc * view.z, depth * view.z, view.z);\n"
     "}\n";
+
+/* PBR-lite fragment shader (models with a normal map and a metal/roughness map): the per-pixel normal comes from the normal map
+ * through a cotangent frame built from screen-space derivatives (no stored tangents), the game's own three lights (view-space
+ * directions, colour matrix, ambient: the same rows the vertex path reads) light it, and a Blinn-Phong highlight whose width comes
+ * from the roughness (G) and whose colour from the metalness (B) is added. The slot's tint (the hit flash) multiplies the result. */
+static const char *native_pbr_fragment_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform sampler2D tex;\n"
+    "uniform sampler2D nmap;\n"
+    "uniform sampler2D mrmap;\n"
+    "uniform sampler2D bones;\n"
+    "uniform vec3 pbr;\n" /* x: flip the normal map's green (0/1), y: highlight strength, z: normal map strength */
+    "in vec2 uv;\n"
+    "in vec3 rgb;\n"
+    "in vec3 vpos;\n"
+    "in vec3 vnrm;\n"
+    "out vec4 fragment;\n"
+    "vec4 texel(int x, int y) { return texelFetch(bones, ivec2(x, y), 0); }\n"
+    "void main() {\n"
+    "    vec4 base = texture(tex, uv);\n"
+    "    if (base.a < 0.5) discard;\n"
+    "    vec4 k1 = texel(1, 128);\n"
+    "    if (k1.w < 0.5) { fragment = vec4(base.rgb * rgb, 1.0); return; }\n"
+    "    vec3 N = normalize(vnrm);\n"
+    "    vec3 dp1 = dFdx(vpos), dp2 = dFdy(vpos);\n"
+    "    vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);\n"
+    "    vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);\n"
+    "    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;\n"
+    "    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;\n"
+    "    float inv = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-12));\n"
+    "    vec3 nm = texture(nmap, uv).xyz * 2.0 - 1.0;\n"
+    "    if (pbr.x > 0.5) nm.y = -nm.y;\n"
+    "    nm.xy *= pbr.z;\n"
+    "    vec3 Nm = normalize(mat3(T * inv, B * inv, N) * nm);\n"
+    "    vec4 mr = texture(mrmap, uv);\n"
+    "    float rough = clamp(mr.g, 0.08, 1.0), metal = mr.b;\n"
+    "    vec4 k3 = texel(3, 128);\n"
+    "    vec3 ir = max(vec3(dot(texel(0, 129).xyz, Nm), dot(texel(1, 129).xyz, Nm), dot(texel(2, 129).xyz, Nm)), 0.0);\n"
+    "    vec3 diff = texel(2, 128).xyz + k3.x + k3.y * vec3(dot(texel(0, 130).xyz, ir), dot(texel(1, 130).xyz, ir), dot(texel(2, 130).xyz, ir));\n"
+    "    vec3 V = normalize(-vpos), spec = vec3(0.0);\n"
+    "    float shin = clamp(2.0 / (rough * rough) - 2.0, 4.0, 400.0);\n"
+    "    for (int i = 0; i < 3; i++) {\n"
+    "        vec3 L = normalize(texel(i, 129).xyz);\n"
+    "        vec3 c = vec3(texel(0, 130)[i], texel(1, 130)[i], texel(2, 130)[i]);\n"
+    "        float s = pow(max(dot(Nm, normalize(L + V)), 0.0), shin) * step(0.0, dot(Nm, L));\n"
+    "        spec += s * c;\n"
+    "    }\n"
+    "    vec3 f0 = mix(vec3(0.04), base.rgb, metal);\n"
+    "    vec3 albedo = base.rgb * (1.0 - 0.3 * metal);\n"
+    "    vec3 env = f0 * (texel(2, 128).xyz + k3.x + 0.25) * (1.0 - rough) * 0.35;\n"
+    "    vec3 col = albedo * diff + spec * f0 * pbr.y + env * metal;\n"
+    "    fragment = vec4(clamp(col * k1.xyz, 0.0, 255.0 / 128.0), 1.0);\n"
+    "}\n";
+
+/* The PBR program (the skin vertex shader + the fragment shader above), made once; 0 = not available. */
+static GLuint native_pbr_program(void)
+{
+    if (nat.pbr_failed) return 0;
+    if (!nat.pbr_program) {
+        GLuint vs = compile(GL_VERTEX_SHADER, native_skin_vertex_source, NULL), fs, made;
+        GLint ok = 0;
+        static const char *names[5] = {"apos", "anorm", "auv", "ajoint", "aweight"};
+        int k;
+        if (!vs) { nat.pbr_failed = 1; return 0; }
+        fs = compile(GL_FRAGMENT_SHADER, native_pbr_fragment_source, NULL);
+        if (!fs) { gl_DeleteShader(vs); nat.pbr_failed = 1; return 0; }
+        made = gl_CreateProgram();
+        gl_AttachShader(made, vs);
+        gl_AttachShader(made, fs);
+        for (k = 0; k < 5; k++) gl_BindAttribLocation(made, (GLuint)k, names[k]);
+        gl_LinkProgram(made);
+        gl_DeleteShader(vs);
+        gl_DeleteShader(fs);
+        gl_GetProgramiv(made, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[2048];
+            gl_GetProgramInfoLog(made, sizeof(log), NULL, log);
+            fprintf(stderr, "memories-pc: native model: PBR program: %s (plain lighting is used)\n", log);
+            gl_DeleteProgram(made);
+            nat.pbr_failed = 1;
+            return 0;
+        }
+        nat.pbr_program = made;
+    }
+    return nat.pbr_program;
+}
+
+/* A map (normal, metal/roughness) into texture `*tex`, with a plain box-filtered mip chain. */
+static void native_upload_map(GLuint *tex, uint32_t width, uint32_t height, const uint8_t *rgba)
+{
+    size_t w = width, h = height;
+    uint8_t *from = (uint8_t *)malloc(w * h * 4), *to;
+    int level = 0;
+    if (!*tex) glGenTextures(1, tex);
+    glBindTexture(GL_TEXTURE_2D, *tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    if (from) memcpy(from, rgba, w * h * 4);
+    while (from && (w > 1 || h > 1)) {
+        size_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1, x, y;
+        to = (uint8_t *)malloc(nw * nh * 4);
+        if (!to) break;
+        for (y = 0; y < nh; y++)
+            for (x = 0; x < nw; x++) {
+                int c, k;
+                for (c = 0; c < 4; c++) {
+                    unsigned sum = 0;
+                    for (k = 0; k < 4; k++) {
+                        size_t sx = x * 2 + (size_t)(k & 1), sy = y * 2 + (size_t)(k >> 1);
+                        if (sx >= w) sx = w - 1;
+                        if (sy >= h) sy = h - 1;
+                        sum += from[(sy * w + sx) * 4 + (size_t)c];
+                    }
+                    to[(y * nw + x) * 4 + (size_t)c] = (uint8_t)((sum + 2) / 4);
+                }
+            }
+        level++;
+        glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA8, (GLsizei)nw, (GLsizei)nh, 0, GL_RGBA, GL_UNSIGNED_BYTE, to);
+        free(from);
+        from = to;
+        w = nw;
+        h = nh;
+    }
+    free(from);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
 
 static int native_skin_ready(const NativeMesh *mesh)
 {
@@ -2615,6 +2759,12 @@ static void native_draw(unsigned id)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         nat.textured = mesh;
     }
+    if (nat.pbr_mesh != mesh && mesh->bones && mesh->normal_rgba && mesh->mr_rgba) { /* HDM4 PBR-lite maps (units 2 and 3 at draw time) */
+        native_upload_map(&nat.normal_tex, mesh->normal_w, mesh->normal_h, mesh->normal_rgba);
+        native_upload_map(&nat.mr_tex, mesh->mr_w, mesh->mr_h, mesh->mr_rgba);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        nat.pbr_mesh = mesh;
+    }
     if (nat.capacity < mesh->vertices) {
         free(nat.vertices);
         nat.vertices = (NativeVertex *)malloc((size_t)mesh->vertices * sizeof(NativeVertex));
@@ -2789,10 +2939,28 @@ static void native_draw(unsigned id)
     glDepthFunc(GL_LEQUAL);
     if (skinned) {
         int k;
-        gl_UseProgram(nat.skin_program);
-        gl_Uniform2f(nat.s_size, (float)nat.w, (float)nat.h);
-        gl_Uniform1i(nat.s_tex, 0);
-        gl_Uniform1i(nat.s_bones, 1);
+        GLuint program = nat.skin_program;
+        if (nat.pbr_mesh == mesh && !getenv("MEMORIES_NATIVE_NOPBR") && native_pbr_program()) program = nat.pbr_program;
+        gl_UseProgram(program);
+        gl_Uniform2f(gl_GetUniformLocation(program, "picture_size"), (float)nat.w, (float)nat.h);
+        gl_Uniform1i(gl_GetUniformLocation(program, "tex"), 0);
+        gl_Uniform1i(gl_GetUniformLocation(program, "bones"), 1);
+        if (program == nat.pbr_program) {
+            static float flip = -1.0f, strength = 0.6f, normal_strength = 1.0f;
+            if (flip < 0.0f) {
+                const char *f_ = getenv("MEMORIES_NATIVE_NORMAL_FLIPY"), *s_ = getenv("MEMORIES_NATIVE_SPEC"), *n_ = getenv("MEMORIES_NATIVE_NORMAL_STRENGTH");
+                flip = f_ && *f_ ? (float)atof(f_) : 1.0f; /* glTF: green = up in the image, our v runs down: B must be negated */
+                strength = s_ && *s_ ? (float)atof(s_) : 0.6f;
+                normal_strength = n_ && *n_ ? (float)atof(n_) : 1.0f;
+            }
+            gl_Uniform1i(gl_GetUniformLocation(program, "nmap"), 2);
+            gl_Uniform1i(gl_GetUniformLocation(program, "mrmap"), 3);
+            gl_Uniform3f(gl_GetUniformLocation(program, "pbr"), flip, strength, normal_strength);
+            gl_ActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, nat.normal_tex);
+            gl_ActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, nat.mr_tex);
+        }
         gl_ActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
         gl_ActiveTexture(GL_TEXTURE0);

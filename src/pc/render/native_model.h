@@ -77,6 +77,8 @@ typedef struct NativeMesh {
     uint32_t joint_parts;  /* HDM3: entries in the joint table (0 = none: the game's own part translations are used) */
     /* HDM4 (the model's OWN skeleton and clips; `words` = vertices of 13 words: f32 pos[3], normal[3], uv[2], u32 4 x u8 joints, f32 weights[4]) */
     uint32_t bones, index_count, clip_count;
+    uint32_t normal_w, normal_h, mr_w, mr_h; /* HDM4 PBR-lite maps (0 = none): normal map, metal (B) / roughness (G) */
+    const uint8_t *normal_rgba, *mr_rgba;
     const uint32_t *bone_table; /* per bone 16 words: i32 parent, f32 ibm[12] (3x4 row major) */
     const uint32_t *indices;
     NativeClip clips[NATIVE_MAX_CLIPS];
