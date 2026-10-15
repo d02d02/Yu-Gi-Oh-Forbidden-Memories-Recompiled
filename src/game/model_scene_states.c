@@ -67,7 +67,24 @@ void Model_UpdateScene(void)
     if (D_8009AF94 == 20) {
         func_800507D0();
     }
+#ifdef MEMORIES_PC
+    { /* MEMORIES_ARENA_CAMERA_SCALE=<k>: the arena camera k times as far from its look-at point (the scripted camera is framed for the small PS1 models;
+       big native models want more room). The game's own view (D_800F56F0) is untouched: only the matrix the frame is drawn with changes. */
+        extern float NativeModel_ArenaCameraScale(void);
+        float k = NativeModel_ArenaCameraScale();
+        if (k != 1.0f) {
+            GsRVIEW2 wide = *(GsRVIEW2 *)state;
+            wide.vpx = wide.vrx + (s32)((float)(wide.vpx - wide.vrx) * k);
+            wide.vpy = wide.vry + (s32)((float)(wide.vpy - wide.vry) * k);
+            wide.vpz = wide.vrz + (s32)((float)(wide.vpz - wide.vrz) * k);
+            GsSetRefView2(&wide);
+        } else {
+            GsSetRefView2((GsRVIEW2 *)state);
+        }
+    }
+#else
     GsSetRefView2((GsRVIEW2 *)state);
+#endif
     func_800540B4(0);
     func_800540B4(1);
     func_800540B4(2);

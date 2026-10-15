@@ -254,3 +254,15 @@ const NativeDraw *NativeModel_Taken(size_t *count)
     *count = taken_count;
     return taken;
 }
+
+/* MEMORIES_ARENA_CAMERA_SCALE=<k> (0.2..6, default 1): the arena camera k times as far from its look-at point (model_scene_states.c). */
+float NativeModel_ArenaCameraScale(void)
+{
+    static float k = -1.0f;
+    if (k < 0.0f) {
+        const char *e = getenv("MEMORIES_ARENA_CAMERA_SCALE");
+        k = e && *e ? (float)atof(e) : 1.0f;
+        if (k < 0.2f || k > 6.0f) k = 1.0f;
+    }
+    return k;
+}
