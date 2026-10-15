@@ -1,6 +1,8 @@
 /* Native model pass: the capture side (see native_model.h). */
 #include "pc/render/native_model.h"
 #include "pc/compat/gte.h"
+#include "pc/mods/json.h"
+#include "pc/mods/mods.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +28,148 @@ volatile int NativeModel_Suppress;
 volatile int NativeModel_GlReady;
 unsigned NativeModel_Stats[8]; /* parts captured, draws closed, markers linked, takes with draws, replayed ops, markers hit, triangles */
 
+/* One HDM4 file in memory (`data`, kept by the mesh) -> `out`; 0 when it is malformed (nothing is kept then). */
+static int parse_hdm4(const char *path, uint32_t *data, long size, NativeMesh *out)
+{
+    const uint32_t *w = data;
+    size_t at = 8 + (size_t)w[3] * 16, k;
+    NativeMesh m;
+    memset(&m, 0, sizeof(m));
+    m.vertices = w[1];
+    m.index_count = w[2];
+    m.bones = w[3];
+    m.tex_w = w[4];
+    m.tex_h = w[5];
+    m.clip_count = w[6] < NATIVE_MAX_CLIPS ? w[6] : NATIVE_MAX_CLIPS;
+    m.stride = 13;
+    if (m.bones > NATIVE_MAX_BONES) {
+        fprintf(stderr, "memories-pc: native model: %s (HDM4) has too many bones\n", path);
+        return 0;
+    }
+    m.bone_table = w + 8;
+    m.words = w + at;
+    at += (size_t)m.vertices * 13;
+    m.indices = w + at;
+    at += m.index_count;
+    m.rgba = (const uint8_t *)(w + at);
+    at += (size_t)m.tex_w * m.tex_h;
+    if (w[7] & 1) { /* a normal map: u32 w, u32 h, RGBA */
+        m.normal_w = w[at];
+        m.normal_h = w[at + 1];
+        m.normal_rgba = (const uint8_t *)(w + at + 2);
+        at += 2 + (size_t)m.normal_w * m.normal_h;
+    }
+    if (w[7] & 2) { /* a metal (B) / roughness (G) map */
+        m.mr_w = w[at];
+        m.mr_h = w[at + 1];
+        m.mr_rgba = (const uint8_t *)(w + at + 2);
+        at += 2 + (size_t)m.mr_w * m.mr_h;
+    }
+    for (k = 0; k < m.clip_count; k++) {
+        const uint32_t *c = w + at;
+        if (at * 4 + 48 > (size_t)size) break;
+        memcpy(m.clips[k].name, c, 32);
+        m.clips[k].name[31] = 0;
+        m.clips[k].frames = c[8];
+        memcpy(&m.clips[k].fps, c + 9, 4);
+        m.clips[k].data = (const float *)(c + 12);
+        at += 12 + (size_t)c[8] * m.bones * 7;
+    }
+    if (at * 4 != (size_t)size) {
+        fprintf(stderr, "memories-pc: native model: %s (HDM4) has the wrong size\n", path);
+        return 0;
+    }
+    *out = m;
+    return 1;
+}
+
+/* The whole file, or NULL. */
+static uint32_t *read_whole(const char *path, long *size)
+{
+    FILE *file = fopen(path, "rb");
+    uint32_t *data;
+    if (!file) return NULL;
+    fseek(file, 0, SEEK_END);
+    *size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    data = *size >= 32 ? (uint32_t *)malloc((size_t)*size) : NULL;
+    if (data && fread(data, 1, (size_t)*size, file) != (size_t)*size) {
+        free(data);
+        data = NULL;
+    }
+    fclose(file);
+    return data;
+}
+
+/* The models the applied mods name (manifest "native_models": [{"model": 363, "file": "angel.hdm"}]); the first mod that has any also
+ * supplies the tuning settings (camera, light, normal map). */
+#define NATIVE_MAX_MODELS 8
+static struct { NativeMesh mesh; int model; } mod_models[NATIVE_MAX_MODELS];
+static int mod_model_count;
+static const char *tune_mod; /* the id of the first mod with native models */
+static int any_model;        /* a model is loaded: the arena camera is adjusted for big models */
+NativeTune NativeModel_Tune = {1000.0f, 0.5f, 1.0f, 0.2f, 1.0f, 1.8f, 1.0f, 1.0f};
+
+static void visit_native_models(const char *id, const char *directory, const JsonValue *manifest, void *context)
+{
+    const JsonValue *list = Json_Member(manifest, "native_models");
+    int i;
+    (void)context;
+    for (i = 0; i < Json_Count(list); i++) {
+        const JsonValue *entry = Json_At(list, i);
+        long model = Json_Number(Json_Member(entry, "model"), -1);
+        const char *file = Json_String(Json_Member(entry, "file"), "");
+        char path[1024];
+        long size = 0;
+        uint32_t *data;
+        if (model < 0 || !*file) {
+            Mods_Note(id, "native_models[%d] needs a \"model\" (the disc model id: card id - 1) and a \"file\"", i);
+            continue;
+        }
+        if (mod_model_count >= NATIVE_MAX_MODELS) {
+            Mods_Note(id, "native_models: at most %d models in all", NATIVE_MAX_MODELS);
+            return;
+        }
+        snprintf(path, sizeof(path), "%s/%s", directory, file);
+        data = read_whole(path, &size);
+        if (!data || memcmp(data, "HDM4", 4) != 0 || !parse_hdm4(path, data, size, &mod_models[mod_model_count].mesh)) {
+            Mods_Note(id, "native_models[%d]: %s is not a usable HDM4 model", i, file);
+            free(data);
+            continue;
+        }
+        mod_models[mod_model_count].model = (int)model;
+        mod_model_count++;
+        any_model = 1;
+        if (!tune_mod) tune_mod = id;
+        fprintf(stderr, "memories-pc: native model: %s for model %ld (mod %s)\n", path, model, id);
+    }
+}
+
+/* One tuning value: the environment (a float) over the mod's setting (an int, `unit` per 1.0) over the default. */
+static float tune_value(const char *env, const char *key, float unit, float fallback)
+{
+    const char *text = env ? getenv(env) : NULL;
+    if (text && *text) return (float)atof(text);
+    if (tune_mod && key) return (float)Mods_Setting(tune_mod, key, (int)(fallback * unit + 0.5f)) / unit;
+    return fallback;
+}
+
+static void load_tuning(void)
+{
+    NativeTune *t = &NativeModel_Tune;
+    t->camera_near = tune_value("MEMORIES_ARENA_CAMERA_NEAR", "camera_near", 1.0f, 1000.0f);
+    t->camera_keep = tune_value("MEMORIES_ARENA_CAMERA_KEEP", "camera_keep", 100.0f, 0.5f);
+    t->camera_scale = tune_value("MEMORIES_ARENA_CAMERA_SCALE", "camera_scale", 100.0f, 1.0f);
+    t->ambient = tune_value("MEMORIES_NATIVE_AMBIENT", "ambient", 100.0f, 0.2f);
+    t->light_gain = tune_value("MEMORIES_NATIVE_LIGHT_GAIN", "light_gain", 100.0f, 1.0f);
+    t->normal_strength = tune_value("MEMORIES_NATIVE_NORMAL_STRENGTH", "normal_strength", 100.0f, 1.8f);
+    t->highlight = tune_value("MEMORIES_NATIVE_SPEC", "highlight", 100.0f, 1.0f);
+    t->flip_green = tune_value("MEMORIES_NATIVE_NORMAL_FLIPY", NULL, 1.0f, 1.0f);
+    if (t->camera_near < 100.0f) t->camera_near = 1000.0f;
+    if (t->camera_keep < 0.2f || t->camera_keep > 1.0f) t->camera_keep = 0.5f;
+    if (t->camera_scale < 0.2f || t->camera_scale > 6.0f) t->camera_scale = 1.0f;
+}
+
 static void load(void)
 {
     const char *path = getenv("MEMORIES_NATIVE_MODEL");
@@ -35,6 +179,8 @@ static void load(void)
     uint32_t *data;
     loaded = 1;
     logged = getenv("MEMORIES_NATIVE_MODEL_LOG") != NULL;
+    Mods_VisitManifests(visit_native_models, NULL);
+    load_tuning();
     if (!path || !*path) return;
     file = fopen(path, "rb");
     if (!file) {
@@ -50,56 +196,15 @@ static void load(void)
         data = NULL;
     }
     if (data && size >= 32 && memcmp(data, "HDM4", 4) == 0) {
-        const uint32_t *w = data;
-        size_t at = 8 + (size_t)w[3] * 16, k;
-        memset(&mesh, 0, sizeof(mesh));
-        mesh.vertices = w[1];
-        mesh.index_count = w[2];
-        mesh.bones = w[3];
-        mesh.tex_w = w[4];
-        mesh.tex_h = w[5];
-        mesh.clip_count = w[6] < NATIVE_MAX_CLIPS ? w[6] : NATIVE_MAX_CLIPS;
-        mesh.stride = 13;
-        mesh.bone_table = w + 8;
-        mesh.words = w + at;
-        at += (size_t)mesh.vertices * 13;
-        mesh.indices = w + at;
-        at += mesh.index_count;
-        mesh.rgba = (const uint8_t *)(w + at);
-        at += (size_t)mesh.tex_w * mesh.tex_h;
-        if (w[7] & 1) { /* a normal map: u32 w, u32 h, RGBA */
-            mesh.normal_w = w[at];
-            mesh.normal_h = w[at + 1];
-            mesh.normal_rgba = (const uint8_t *)(w + at + 2);
-            at += 2 + (size_t)mesh.normal_w * mesh.normal_h;
-        }
-        if (w[7] & 2) { /* a metal (B) / roughness (G) map */
-            mesh.mr_w = w[at];
-            mesh.mr_h = w[at + 1];
-            mesh.mr_rgba = (const uint8_t *)(w + at + 2);
-            at += 2 + (size_t)mesh.mr_w * mesh.mr_h;
-        }
-        for (k = 0; k < mesh.clip_count; k++) {
-            const uint32_t *c = w + at;
-            if (at * 4 + 48 > (size_t)size) break;
-            memcpy(mesh.clips[k].name, c, 32);
-            mesh.clips[k].name[31] = 0;
-            mesh.clips[k].frames = c[8];
-            memcpy(&mesh.clips[k].fps, c + 9, 4);
-            mesh.clips[k].data = (const float *)(c + 12);
-            at += 12 + (size_t)c[8] * mesh.bones * 7;
-        }
-        if (mesh.bones > NATIVE_MAX_BONES || at * 4 != (size_t)size) {
-            fprintf(stderr, "memories-pc: native model: %s (HDM4) has the wrong size or too many bones\n", path);
-            memset(&mesh, 0, sizeof(mesh));
-            free(data);
-            fclose(file);
-            return;
-        }
         fclose(file);
-        mesh_model = id ? atoi(id) : 364;
-        fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
-                mesh.vertices, mesh.bones, mesh.clip_count);
+        if (parse_hdm4(path, data, size, &mesh)) {
+            mesh_model = id ? atoi(id) : 364;
+            any_model = 1;
+            fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
+                    mesh.vertices, mesh.bones, mesh.clip_count);
+        } else {
+            free(data);
+        }
         return;
     }
     if (!data || size < 20 ||
@@ -136,7 +241,11 @@ static void load(void)
 
 const NativeMesh *NativeModel_Mesh(int model)
 {
-    return (model == mesh_model || (mesh_model == -2 && model >= 0)) && mesh.words ? &mesh : NULL;
+    int i;
+    if ((model == mesh_model || (mesh_model == -2 && model >= 0)) && mesh.words) return &mesh;
+    for (i = 0; i < mod_model_count; i++)
+        if (mod_models[i].model == model) return &mod_models[i].mesh;
+    return NULL;
 }
 
 void NativeModel_BeginSlot(int model)
@@ -150,7 +259,7 @@ void NativeModel_BeginSlot(int model)
             last = model;
         }
     }
-    if ((model != mesh_model && !(mesh_model == -2 && model >= 0)) || !mesh.words || frame_count >= NATIVE_MAX_DRAWS) return;
+    if (!NativeModel_Mesh(model) || frame_count >= NATIVE_MAX_DRAWS) return;
     current = &frame[frame_count];
     memset(current, 0, sizeof(*current));
     current->model = model;
@@ -270,29 +379,20 @@ const NativeDraw *NativeModel_Taken(size_t *count)
 
 /* The arena camera's distance from its look-at point, remapped (model_scene_states.c). The scripted camera is framed for the small PS1
  * models: its close shots (about 460-650 units) are too close for big native models, its wide orbit (1800) is fine. So distances
- * under MEMORIES_ARENA_CAMERA_NEAR (default 1000) are pushed out: d' = NEAR - (NEAR - d) * KEEP (MEMORIES_ARENA_CAMERA_KEEP, 0.2..1,
- * default 0.5; 1 = unchanged), then everything is multiplied by MEMORIES_ARENA_CAMERA_SCALE (0.2..6, default 1). */
+ * under camera_near are pushed out: d' = near - (near - d) * keep, then everything is multiplied by camera_scale. */
 static float arena_camera_distance(float distance)
 {
-    static float near_distance = -1.0f, keep = 0.5f, scale = 1.0f;
-    if (near_distance < 0.0f) {
-        const char *n = getenv("MEMORIES_ARENA_CAMERA_NEAR"), *kp = getenv("MEMORIES_ARENA_CAMERA_KEEP"), *sc = getenv("MEMORIES_ARENA_CAMERA_SCALE");
-        near_distance = n && *n ? (float)atof(n) : 1000.0f;
-        keep = kp && *kp ? (float)atof(kp) : 0.5f;
-        scale = sc && *sc ? (float)atof(sc) : 1.0f;
-        if (keep < 0.2f || keep > 1.0f) keep = 0.5f;
-        if (scale < 0.2f || scale > 6.0f) scale = 1.0f;
-        if (near_distance < 100.0f) near_distance = 1000.0f;
-    }
-    if (distance < near_distance) distance = near_distance - (near_distance - distance) * keep;
-    return distance * scale;
+    const NativeTune *t = &NativeModel_Tune;
+    if (distance < t->camera_near) distance = t->camera_near - (t->camera_near - distance) * t->camera_keep;
+    return distance * t->camera_scale;
 }
 
-/* The factor the eye's offset (only while a native model is loaded) from the look-at point is multiplied by (1 = the game's own camera). */
+/* The factor the eye's offset from the look-at point is multiplied by (1 = the game's own camera), only while a native model is loaded. */
 float NativeModel_ArenaCameraFactor(float dx, float dy, float dz)
 {
+    float d;
     if (!loaded) load();
-    if (!mesh.words) return 1.0f; /* no native model: the game's own camera, as it was */
-    float d = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (!any_model) return 1.0f;
+    d = sqrtf(dx * dx + dy * dy + dz * dz);
     return d > 1.0f ? arena_camera_distance(d) / d : 1.0f;
 }

@@ -85,6 +85,14 @@ typedef struct NativeMesh {
     const uint32_t *joints; /* per part 16 words: i32 parent (-1 none), f32 J[3] the model's own joint, f32 tb[3] the disc's, f32 Rbi[9] the inverse of the disc's bind rotation */
 } NativeMesh;
 
+/* The look of big native models: environment (MEMORIES_ARENA_CAMERA_*, MEMORIES_NATIVE_*) over the mod's settings over these defaults
+ * (filled when the first slot is drawn, on the game thread; the GL pass only reads). */
+typedef struct NativeTune {
+    float camera_near, camera_keep, camera_scale; /* arena camera: close shots under `near` are pushed out, `keep` of the way in stays; overall scale */
+    float ambient, light_gain;                    /* added to the game's ambient light; the game's lights multiplied */
+    float normal_strength, highlight, flip_green; /* PBR-lite: normal map strength, specular highlight strength, flip the normal map's green (0/1) */
+} NativeTune;
+extern NativeTune NativeModel_Tune;
 extern unsigned NativeModel_Stats[8];
 /* 1 while the slot being sorted has a replacement mesh the GL pass will draw: the drivers then leave the model's
  * PS1 packets unlinked (they still run, so the packet cursor and the colour cache stay as they were). */

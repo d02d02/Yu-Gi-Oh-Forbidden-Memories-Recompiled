@@ -120,6 +120,7 @@ checked as well, when it starts.
 | 14 | the release after v0.3.0 | `tower`; a duelist's `tower_only`, or `unlock` `tower`; a menu item's action `tower` ([Tower mode](tower-mode.md)) |
 | 15 | the release after v0.3.0 | `card_types`: renamed retail types, new monster types and their per-type icons |
 | 16 | the release after v0.3.0 | mod-defined card attributes (`attributes`) |
+| 17 | the release after v0.3.0 | `native_models`: a monster's battle model replaced by a modern skinned model ([Native models](native-models.md)) |
 
 The FM Editor writes `min_api` on save as the lowest one of these that has
 everything the mod uses, never lowering one written higher, and its Mod
