@@ -326,7 +326,8 @@ void Memories_PresentDisplay(void)
     {
         /* MEMORIES_WINDOW_SHOT=<frame>: the window as shown at that frame,
          * as the screenshot key would save it (checking the window itself
-         * from a scripted run). */
+         * from a scripted run). "<first>-<last>" takes every frame from
+         * first to last (a clip: with MEMORIES_FPS=-1 each is shown). */
         const char *shot = getenv("MEMORIES_WINDOW_SHOT");
         const char *rescale = getenv("MEMORIES_SCALE_AT"); /* "<frame>:<scale>": the View menu's change, scripted */
         /* "<frame>:<mode>[,<frame>:<mode>...]": from that frame on, the next
@@ -337,7 +338,11 @@ void Memories_PresentDisplay(void)
         const char *mode_at = getenv("MEMORIES_MODE_AT");
         static int mode_step, mode_seen = -1;
         const char *dump_from = getenv("MEMORIES_DUMP_TEXTURES_FROM");
-        if (shot && frames_presented == atoi(shot)) Platform_Screenshot(1);
+        if (shot) {
+            const char *dash = strchr(shot, '-');
+            long first = atol(shot), last = dash ? atol(dash + 1) : first;
+            if ((long)frames_presented >= first && (long)frames_presented <= last) Platform_Screenshot(1);
+        }
         if (dump_from && frames_presented == (unsigned)atoi(dump_from)) TextureDump_Restart();
         if (mode_at) {
             extern unsigned char D_8009B26C; /* main_mode_state.h: the active mode */
