@@ -2944,12 +2944,12 @@ static void native_draw(unsigned id)
         gl_Uniform1i(gl_GetUniformLocation(program, "tex"), 0);
         gl_Uniform1i(gl_GetUniformLocation(program, "bones"), 1);
         if (program == nat.pbr_program) {
-            static float flip = -1.0f, strength = 0.6f, normal_strength = 1.0f;
+            static float flip = -1.0f, strength = 1.0f, normal_strength = 1.8f;
             if (flip < 0.0f) {
                 const char *f_ = getenv("MEMORIES_NATIVE_NORMAL_FLIPY"), *s_ = getenv("MEMORIES_NATIVE_SPEC"), *n_ = getenv("MEMORIES_NATIVE_NORMAL_STRENGTH");
                 flip = f_ && *f_ ? (float)atof(f_) : 1.0f; /* glTF: green = up in the image, our v runs down: B must be negated */
-                strength = s_ && *s_ ? (float)atof(s_) : 0.6f;
-                normal_strength = n_ && *n_ ? (float)atof(n_) : 1.0f;
+                strength = s_ && *s_ ? (float)atof(s_) : 1.0f;
+                normal_strength = n_ && *n_ ? (float)atof(n_) : 1.8f;
             }
             gl_Uniform1i(gl_GetUniformLocation(program, "nmap"), 2);
             gl_Uniform1i(gl_GetUniformLocation(program, "mrmap"), 3);
