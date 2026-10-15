@@ -1,5 +1,7 @@
 # Native models: a monster drawn from a modern model file
 
+How it works inside, how the models are made and tested, the traps and what is open: [native-models-dev.md](native-models-dev.md); tools: [`tools/hd-models/`](../tools/hd-models/README.md).
+
 A data mod can replace a monster's battle model with a modern one: a skinned, textured mesh with its own skeleton and animation clips,
 drawn by the OpenGL picture (Internal 2x or more) instead of the console's packets. The game's logic, sound, effects and save states are
 untouched: the original model keeps running out of sight, and the new one follows its position, its animation row and its timing.
