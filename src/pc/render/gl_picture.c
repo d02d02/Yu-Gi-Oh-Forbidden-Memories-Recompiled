@@ -1958,15 +1958,76 @@ static float native_clamp(float v, float lo, float hi)
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* A part-local point to view space, with the part's GTE matrices (view = R v / 4096 + TR). */
-static void native_view(const NativePart *part, const float *v, float out[3])
+/* A part-local point to view space, with the part's GTE matrices (view = R v / 4096 + TR). `tr` (float) replaces the part's
+ * translation when the model brings its own joints (native_retarget). */
+static void native_view(const NativePart *part, const float *tr, const float *v, float out[3])
 {
-    out[0] = ((float)part->rot[0] * v[0] + (float)part->rot[1] * v[1] + (float)part->rot[2] * v[2]) / 4096.0f +
-             (float)part->tr[0];
-    out[1] = ((float)part->rot[3] * v[0] + (float)part->rot[4] * v[1] + (float)part->rot[5] * v[2]) / 4096.0f +
-             (float)part->tr[1];
-    out[2] = ((float)part->rot[6] * v[0] + (float)part->rot[7] * v[1] + (float)part->rot[8] * v[2]) / 4096.0f +
-             (float)part->tr[2];
+    const float t0 = tr ? tr[0] : (float)part->tr[0], t1 = tr ? tr[1] : (float)part->tr[1], t2 = tr ? tr[2] : (float)part->tr[2];
+    out[0] = ((float)part->rot[0] * v[0] + (float)part->rot[1] * v[1] + (float)part->rot[2] * v[2]) / 4096.0f + t0;
+    out[1] = ((float)part->rot[3] * v[0] + (float)part->rot[4] * v[1] + (float)part->rot[5] * v[2]) / 4096.0f + t1;
+    out[2] = ((float)part->rot[6] * v[0] + (float)part->rot[7] * v[1] + (float)part->rot[8] * v[2]) / 4096.0f + t2;
+}
+
+/* RETARGET: the game poses its 25 parts for the disc model's proportions (each part's rotation R and the joint's posed
+ * position T). A model with its own skeleton (HDM3: joint J per part, its own offsets and bone lengths) keeps the game's
+ * ROTATIONS relative to the disc's bind pose, Rd = R * Rb^-1, and rebuilds the joint positions by forward kinematics:
+ *   Q[child] = Q[parent] + Rd[parent] * (J[child] - J[parent]) + delta,   delta = T[child] - (T[parent] + Rd[parent] * (tb[child] - tb[parent]))
+ * (delta keeps any translation the game animates on its own); a part without a drawn parent: Q = Rd * (J - tb) + T.
+ * With J = tb (the disc's own skeleton) Q = T exactly, so the picture is the old one. */
+static void native_retarget(const NativeDraw *d, const NativeMesh *mesh, float q[NATIVE_MAX_PARTS][3])
+{
+    float rd[NATIVE_MAX_PARTS][9];
+    unsigned char done[NATIVE_MAX_PARTS];
+    unsigned n = mesh->joint_parts < NATIVE_MAX_PARTS ? mesh->joint_parts : NATIVE_MAX_PARTS, i, pass, left;
+    memset(done, 0, sizeof(done));
+    for (i = 0; i < n; i++) {
+        const NativePart *p = &d->parts[i];
+        const float *rbi = (const float *)(mesh->joints + i * 16) + 7;
+        int r, c, k;
+        for (r = 0; r < 3; r++)
+            for (c = 0; c < 3; c++) {
+                float sum = 0.0f;
+                for (k = 0; k < 3; k++) sum += ((float)p->rot[r * 3 + k] / 4096.0f) * rbi[k * 3 + c];
+                rd[i][r * 3 + c] = sum;
+            }
+    }
+    for (pass = 0; pass < 16; pass++) {
+        left = 0;
+        for (i = 0; i < n; i++) {
+            const uint32_t *w = mesh->joints + i * 16;
+            const float *ji = (const float *)w + 1, *tbi = (const float *)w + 4;
+            int parent = (int)w[0];
+            const NativePart *p = &d->parts[i];
+            float *out = q[i];
+            if (done[i] || !p->used) continue;
+            if (parent >= 0 && (unsigned)parent < n && d->parts[parent].used) {
+                const uint32_t *wp = mesh->joints + (unsigned)parent * 16;
+                const float *jp = (const float *)wp + 1, *tbp = (const float *)wp + 4;
+                const NativePart *pp = &d->parts[parent];
+                const float *r = rd[parent];
+                float dj[3], dt[3], rj[3], rt[3];
+                int c;
+                if (!done[parent]) { left++; continue; }
+                for (c = 0; c < 3; c++) {
+                    dj[c] = ji[c] - jp[c];
+                    dt[c] = tbi[c] - tbp[c];
+                }
+                for (c = 0; c < 3; c++) {
+                    rj[c] = r[c * 3] * dj[0] + r[c * 3 + 1] * dj[1] + r[c * 3 + 2] * dj[2];
+                    rt[c] = r[c * 3] * dt[0] + r[c * 3 + 1] * dt[1] + r[c * 3 + 2] * dt[2];
+                    out[c] = q[parent][c] + rj[c] + ((float)p->tr[c] - ((float)pp->tr[c] + rt[c]));
+                }
+            } else {
+                const float *r = rd[i];
+                float dj[3];
+                int c;
+                for (c = 0; c < 3; c++) dj[c] = ji[c] - tbi[c];
+                for (c = 0; c < 3; c++) out[c] = r[c * 3] * dj[0] + r[c * 3 + 1] * dj[1] + r[c * 3 + 2] * dj[2] + (float)p->tr[c];
+            }
+            done[i] = 1;
+        }
+        if (!left) break;
+    }
 }
 
 /* The GTE's lighting (NCCS) of a part-local normal: the colour matrix times the light matrix times the normal, plus the
@@ -1995,7 +2056,8 @@ static void native_draw(unsigned id)
     const NativeMesh *mesh;
     uint32_t i;
     float min_x = 1e9f, min_y = 1e9f, max_x = -1e9f, max_y = -1e9f;
-    int x0, y0, x1, y1, lit;
+    int x0, y0, x1, y1, lit, retargeted;
+    float q[NATIVE_MAX_PARTS][3];
     NativeModel_Stats[5]++;
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
     mesh = NativeModel_Mesh(d->model);
@@ -2070,6 +2132,8 @@ static void native_draw(unsigned id)
         int k;
         for (k = 0; k < 9; k++) lit |= d->parts[i].used && d->parts[i].lcm[k] != 0;
     }
+    retargeted = mesh->joints != NULL;
+    if (retargeted) native_retarget(d, mesh, q);
     for (i = 0; i < mesh->vertices; i++) {
         const uint32_t *w = mesh->words + (size_t)i * mesh->stride;
         const float *f = (const float *)w;
@@ -2085,10 +2149,10 @@ static void native_draw(unsigned id)
             second = &d->parts[w[9] < NATIVE_MAX_PARTS ? w[9] : 0];
             if (!second->used || weight <= 0.0f) second = NULL;
         }
-        native_view(part, f, view);
+        native_view(part, retargeted ? q[part - d->parts] : NULL, f, view);
         if (second) {
             float other_position[3] = {((const float *)w)[11], ((const float *)w)[12], ((const float *)w)[13]};
-            native_view(second, other_position, other);
+            native_view(second, retargeted ? q[second - d->parts] : NULL, other_position, other);
             view[0] += (other[0] - view[0]) * weight;
             view[1] += (other[1] - view[1]) * weight;
             view[2] += (other[2] - view[2]) * weight;
