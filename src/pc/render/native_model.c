@@ -76,7 +76,7 @@ static void load(void)
 
 const NativeMesh *NativeModel_Mesh(int model)
 {
-    return model == mesh_model && mesh.words ? &mesh : NULL;
+    return (model == mesh_model || (mesh_model == -2 && model >= 0)) && mesh.words ? &mesh : NULL;
 }
 
 void NativeModel_BeginSlot(int model)
@@ -90,7 +90,7 @@ void NativeModel_BeginSlot(int model)
             last = model;
         }
     }
-    if (model != mesh_model || !mesh.words || frame_count >= NATIVE_MAX_DRAWS) return;
+    if ((model != mesh_model && !(mesh_model == -2 && model >= 0)) || !mesh.words || frame_count >= NATIVE_MAX_DRAWS) return;
     current = &frame[frame_count];
     memset(current, 0, sizeof(*current));
     current->model = model;
