@@ -1752,6 +1752,7 @@ static struct {
     GLuint program, comp_program, texture, color, fbo, depth, buffer;
     GLuint ms_fbo, ms_color, ms_depth; /* the multisampled target the model is drawn into, resolved into `fbo` */
     int samples;
+    int fresh; /* a new frame's draws came: the first native draw clears the depth, the others share it */
     GLint u_size, u_tex, c_size, c_tex;
     int w, h, failed;
     const NativeMesh *textured; /* the mesh `texture` holds */
@@ -2223,7 +2224,15 @@ static void native_draw(unsigned id)
     glScissor(x0, y0, x1 - x0, y1 - y0);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glDepthMask(GL_TRUE);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    /* One depth buffer for all the frame's native models: only the colour is cleared per model (inside its box),
+     * so a model that is behind another one in the overlap loses the depth test there. */
+    if (nat.fresh || getenv("MEMORIES_NATIVE_DEPTH_PER_MODEL")) { /* the variable = the old behaviour, for A/B */
+        glDisable(GL_SCISSOR_TEST);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_SCISSOR_TEST);
+        nat.fresh = 0;
+    }
+    glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     gl_UseProgram(nat.program);
@@ -3162,6 +3171,7 @@ int GlPicture_Replay(void)
             used = 2 + n * sizeof(NativeDraw) / sizeof(uint32_t);
             if (at + used > count) { at = count; break; }
             NativeModel_Stats[4]++;
+            nat.fresh = 1;
             for (k = 0; k < n; k++) {
                 const NativeDraw *d = (const NativeDraw *)(op + 2) + k;
                 native_ring[(unsigned)d->id % NATIVE_RING] = *d;
