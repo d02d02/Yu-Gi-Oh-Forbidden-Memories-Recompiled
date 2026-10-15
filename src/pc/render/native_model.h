@@ -30,6 +30,24 @@ typedef struct NativePart {
     int16_t lcm[9]; /* the GTE light colour matrix (rows: colour channels, columns: lights), 1.3.12 */
 } NativePart;
 
+/* What the game says about the slot, read at the end of its draw (the director's inputs: the disc's animation
+ * state, the body centre, the root pose). Plain numbers: the GL pass replays them without game memory. */
+typedef struct NativeSlotInfo {
+    int32_t slot;                    /* 0 = attacker's, 1 = defender's, 2 = other */
+    int32_t anim_index, anim_frame, anim_length, anim_speed; /* disc anim row, clock (12.4), row length, speed */
+    int32_t row_prev, state;         /* field_E0F, field_E0E */
+    int32_t scale[4];                /* field_DB0 */
+    int16_t centre[4];               /* field_DD0 */
+    uint16_t extents[4];             /* field_DC8 */
+    uint8_t tint[8];                 /* field_DC0 */
+    int16_t root_rot[9];             /* field_D1C->workm: the body root, local-to-world */
+    int32_t root_tr[3];
+    int16_t ws_rot[9];               /* GsWSMATRIX: world-to-screen */
+    int32_t ws_tr[3];
+    int32_t flat_lights[12];         /* field_D70: 3 entries of (3 x s32 direction, colour) */
+    int32_t ambient[3];              /* field_DA0 */
+} NativeSlotInfo;
+
 typedef struct NativeDraw {
     int32_t id;     /* running number; its low 8 bits are in the marker (the replay keeps the last 16) */
     int32_t model;  /* the slot's model id */
@@ -38,6 +56,7 @@ typedef struct NativeDraw {
     int32_t bk[3];  /* GTE background (ambient) colour, 1.0 = 0x1000 */
     uint32_t tint;  /* the polygons' base colour the slot is drawn with (0x80 = neutral), r in the low byte */
     NativePart parts[NATIVE_MAX_PARTS];
+    NativeSlotInfo info;
 } NativeDraw;
 
 typedef struct NativeMesh {
@@ -60,6 +79,8 @@ void NativeModel_BeginSlot(int model);
 void NativeModel_Part(int part);
 /* Closes the draw; returns its id + 1 (0: nothing to draw). */
 int NativeModel_EndSlot(void);
+/* Before EndSlot: the slot's own state (NULL-safe: nothing is being captured). */
+void NativeModel_SlotInfo(const NativeSlotInfo *info);
 /* Links the marker of the draw EndSlot returned into the slot's ordering table `ot` (a GsOT), at the nearest entry. */
 void NativeModel_Link(uint32_t *ot, int draw);
 

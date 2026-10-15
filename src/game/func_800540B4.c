@@ -62,6 +62,8 @@
 #include "../game/func_800540B4.h"
 #ifdef MEMORIES_PC
 #include "pc/render/native_model.h"
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
 #endif
 
 #define B(p, o) (*((u8 *)(p) + (o)))
@@ -375,6 +377,39 @@ void func_800540B4(s32 index)
         }
     }
 #ifdef MEMORIES_PC
+    {
+        extern MATRIX D_800FE148; /* GsWSMATRIX */
+        NativeSlotInfo info;
+        int k;
+        memset(&info, 0, sizeof(info));
+        info.slot = index;
+        info.anim_index = slot->field_BF5;
+        info.anim_frame = slot->field_E06;
+        info.anim_length = slot->field_750[slot->field_BF5].max;
+        info.anim_speed = slot->field_E0D;
+        info.row_prev = slot->field_E0F;
+        info.state = slot->field_E0E;
+        for (k = 0; k < 4; k++) {
+            info.scale[k] = ((s32 *)&slot->field_DB0)[k];
+            info.centre[k] = slot->field_DD0[k];
+            info.extents[k] = slot->field_DC8[k];
+        }
+        for (k = 0; k < 8; k++) info.tint[k] = slot->field_DC0[k];
+        for (k = 0; k < 12; k++) info.flat_lights[k] = ((s32 *)slot->field_D70)[k];
+        for (k = 0; k < 3; k++) info.ambient[k] = slot->field_DA0[k];
+        if (slot->field_D1C != 0) {
+            for (k = 0; k < 9; k++) info.root_rot[k] = (int16_t)slot->field_D1C->workm.m[k / 3][k % 3];
+            for (k = 0; k < 3; k++) info.root_tr[k] = slot->field_D1C->workm.t[k];
+        }
+        for (k = 0; k < 9; k++) info.ws_rot[k] = (int16_t)D_800FE148.m[k / 3][k % 3];
+        for (k = 0; k < 3; k++) info.ws_tr[k] = D_800FE148.t[k];
+        NativeModel_SlotInfo(&info);
+        LOG(LOG_MODEL, "evt draw f=%u slot=%d model=%d row=%d prev=%d state=%d frame=%d len=%d spd=%d scale=%d root_t=%d,%d,%d centre=%d,%d,%d ws_t=%d,%d,%d tint=%d,%d,%d",
+            Memories_PresentedFrames(), (int)index, (int)slot->field_DF8, info.anim_index, info.row_prev, info.state,
+            info.anim_frame, info.anim_length, info.anim_speed, info.scale[0], info.root_tr[0], info.root_tr[1],
+            info.root_tr[2], info.centre[0], info.centre[1], info.centre[2], info.ws_tr[0], info.ws_tr[1], info.ws_tr[2],
+            info.tint[0], info.tint[1], info.tint[2]);
+    }
     NativeModel_Link((u32 *)ot, NativeModel_EndSlot());
 #endif
 

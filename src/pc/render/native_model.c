@@ -136,6 +136,11 @@ void NativeModel_Part(int part)
     current->h = (int32_t)(Memories_GteReadControl(26) & 0xffff);
 }
 
+void NativeModel_SlotInfo(const NativeSlotInfo *info)
+{
+    if (current && info) current->info = *info;
+}
+
 int NativeModel_EndSlot(void)
 {
     int draw;
