@@ -67,6 +67,18 @@ static void load(void)
         at += mesh.index_count;
         mesh.rgba = (const uint8_t *)(w + at);
         at += (size_t)mesh.tex_w * mesh.tex_h;
+        if (w[7] & 1) { /* a normal map: u32 w, u32 h, RGBA */
+            mesh.normal_w = w[at];
+            mesh.normal_h = w[at + 1];
+            mesh.normal_rgba = (const uint8_t *)(w + at + 2);
+            at += 2 + (size_t)mesh.normal_w * mesh.normal_h;
+        }
+        if (w[7] & 2) { /* a metal (B) / roughness (G) map */
+            mesh.mr_w = w[at];
+            mesh.mr_h = w[at + 1];
+            mesh.mr_rgba = (const uint8_t *)(w + at + 2);
+            at += 2 + (size_t)mesh.mr_w * mesh.mr_h;
+        }
         for (k = 0; k < mesh.clip_count; k++) {
             const uint32_t *c = w + at;
             if (at * 4 + 48 > (size_t)size) break;
