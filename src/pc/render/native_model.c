@@ -16,6 +16,8 @@ static NativeDraw *current;
 static int32_t next_id;
 
 static int loaded; /* 1 once the environment was read */
+/* MEMORIES_NATIVE_MODEL_ID=-2 is a TEST switch: the mesh is drawn in every duel slot (two native models for depth tests).
+ * Only the model the mesh was made for is posed right; the others get garbage joints. */
 static int mesh_model = -1;
 static NativeMesh mesh;
 static int logged;
