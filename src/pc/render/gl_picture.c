@@ -2252,6 +2252,17 @@ static float native_director(const NativeDraw *d, const NativeMesh *mesh, const 
     }
     phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
     phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
+    if (d->info.anim_index == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
+        /* Piecewise time warp keyed to the game's events (disc frames of row 3: contact window opens at 29, closes at 61, second
+         * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30). */
+        static const float disc[6] = {0.0f, 25.0f, 30.0f, 61.0f, 95.0f, 150.0f};
+        static const float clip[6] = {0.0f, 8.0f, 11.0f, 22.0f, 30.0f, 46.0f};
+        float frame = (float)d->info.anim_frame / 16.0f;
+        int k;
+        if (frame >= disc[5]) return clip[5] / c->fps;
+        for (k = 0; k < 5 && frame >= disc[k + 1]; k++) continue;
+        return (clip[k] + (clip[k + 1] - clip[k]) * (frame - disc[k]) / (disc[k + 1] - disc[k])) / c->fps;
+    }
     return phase * (float)(c->frames - 1) / c->fps;
 }
 
