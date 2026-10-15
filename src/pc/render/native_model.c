@@ -44,7 +44,52 @@ static void load(void)
     size = ftell(file);
     fseek(file, 0, SEEK_SET);
     data = (uint32_t *)malloc((size_t)size);
-    if (!data || fread(data, 1, (size_t)size, file) != (size_t)size || size < 20 ||
+    if (data && fread(data, 1, (size_t)size, file) != (size_t)size) {
+        free(data);
+        data = NULL;
+    }
+    if (data && size >= 32 && memcmp(data, "HDM4", 4) == 0) {
+        const uint32_t *w = data;
+        size_t at = 8 + (size_t)w[3] * 16, k;
+        memset(&mesh, 0, sizeof(mesh));
+        mesh.vertices = w[1];
+        mesh.index_count = w[2];
+        mesh.bones = w[3];
+        mesh.tex_w = w[4];
+        mesh.tex_h = w[5];
+        mesh.clip_count = w[6] < NATIVE_MAX_CLIPS ? w[6] : NATIVE_MAX_CLIPS;
+        mesh.stride = 13;
+        mesh.bone_table = w + 8;
+        mesh.words = w + at;
+        at += (size_t)mesh.vertices * 13;
+        mesh.indices = w + at;
+        at += mesh.index_count;
+        mesh.rgba = (const uint8_t *)(w + at);
+        at += (size_t)mesh.tex_w * mesh.tex_h;
+        for (k = 0; k < mesh.clip_count; k++) {
+            const uint32_t *c = w + at;
+            if (at * 4 + 48 > (size_t)size) break;
+            memcpy(mesh.clips[k].name, c, 32);
+            mesh.clips[k].name[31] = 0;
+            mesh.clips[k].frames = c[8];
+            memcpy(&mesh.clips[k].fps, c + 9, 4);
+            mesh.clips[k].data = (const float *)(c + 12);
+            at += 12 + (size_t)c[8] * mesh.bones * 7;
+        }
+        if (mesh.bones > NATIVE_MAX_BONES || at * 4 != (size_t)size) {
+            fprintf(stderr, "memories-pc: native model: %s (HDM4) has the wrong size or too many bones\n", path);
+            memset(&mesh, 0, sizeof(mesh));
+            free(data);
+            fclose(file);
+            return;
+        }
+        fclose(file);
+        mesh_model = id ? atoi(id) : 364;
+        fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
+                mesh.vertices, mesh.bones, mesh.clip_count);
+        return;
+    }
+    if (!data || size < 20 ||
         (memcmp(data, "HDM1", 4) != 0 && memcmp(data, "HDM2", 4) != 0 && memcmp(data, "HDM3", 4) != 0)) {
         fprintf(stderr, "memories-pc: native model: %s is not a model.hdm\n", path);
         free(data);
