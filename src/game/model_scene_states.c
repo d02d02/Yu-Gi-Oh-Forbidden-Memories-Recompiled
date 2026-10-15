@@ -53,11 +53,32 @@ s32 Model_IsCreditsPresentationComplete(void)
     return D_8009AF9A == -2;
 }
 
+/* The camera the arena frame is drawn with: the game's own view, or (MEMORIES_PC: NativeModel_ArenaCameraFactor, env MEMORIES_ARENA_CAMERA_*) the
+ * eye moved along its line of sight. Applied to BOTH GsSetRefView2 calls of Model_UpdateScene, so the stage drawn between them and the models
+ * drawn after them share one camera. The game's own view (D_800F56F0) is never modified: its scripted moves read and write it. */
+static void Model_SetArenaView(GsRVIEW2 *view)
+{
+#ifdef MEMORIES_PC
+    extern float NativeModel_ArenaCameraFactor(float dx, float dy, float dz);
+    float dx = (float)(view->vpx - view->vrx), dy = (float)(view->vpy - view->vry), dz = (float)(view->vpz - view->vrz);
+    float k = NativeModel_ArenaCameraFactor(dx, dy, dz);
+    if (k > 1.0001f || k < 0.9999f) {
+        GsRVIEW2 wide = *view;
+        wide.vpx = wide.vrx + (s32)(dx * k);
+        wide.vpy = wide.vry + (s32)(dy * k);
+        wide.vpz = wide.vrz + (s32)(dz * k);
+        GsSetRefView2(&wide);
+        return;
+    }
+#endif
+    GsSetRefView2(view);
+}
+
 void Model_UpdateScene(void)
 {
     u8 *state = (u8 *)&D_800F56F0;
 
-    GsSetRefView2((GsRVIEW2 *)state);
+    Model_SetArenaView((GsRVIEW2 *)state);
     if (D_8009AF94 == 15) {
         func_8004EB00();
     }
@@ -67,24 +88,7 @@ void Model_UpdateScene(void)
     if (D_8009AF94 == 20) {
         func_800507D0();
     }
-#ifdef MEMORIES_PC
-    { /* MEMORIES_ARENA_CAMERA_SCALE=<k>: the arena camera k times as far from its look-at point (the scripted camera is framed for the small PS1 models;
-       big native models want more room). The game's own view (D_800F56F0) is untouched: only the matrix the frame is drawn with changes. */
-        extern float NativeModel_ArenaCameraScale(void);
-        float k = NativeModel_ArenaCameraScale();
-        if (k != 1.0f) {
-            GsRVIEW2 wide = *(GsRVIEW2 *)state;
-            wide.vpx = wide.vrx + (s32)((float)(wide.vpx - wide.vrx) * k);
-            wide.vpy = wide.vry + (s32)((float)(wide.vpy - wide.vry) * k);
-            wide.vpz = wide.vrz + (s32)((float)(wide.vpz - wide.vrz) * k);
-            GsSetRefView2(&wide);
-        } else {
-            GsSetRefView2((GsRVIEW2 *)state);
-        }
-    }
-#else
-    GsSetRefView2((GsRVIEW2 *)state);
-#endif
+    Model_SetArenaView((GsRVIEW2 *)state);
     func_800540B4(0);
     func_800540B4(1);
     func_800540B4(2);
