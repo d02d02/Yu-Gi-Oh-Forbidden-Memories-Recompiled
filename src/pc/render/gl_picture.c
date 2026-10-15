@@ -2562,16 +2562,9 @@ static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const 
         k[8] = (float)d->bk[0] / 4096.0f;
         k[9] = (float)d->bk[1] / 4096.0f;
         k[10] = (float)d->bk[2] / 4096.0f;
-        { /* HDM4 light tuning (the game's lights are dim for a detailed model): ambient lift (texel 3 .x) and light gain (.y) */
-            static float amb = -1.0f, gain = 1.0f;
-            if (amb < 0.0f) {
-                const char *a_ = getenv("MEMORIES_NATIVE_AMBIENT"), *g_ = getenv("MEMORIES_NATIVE_LIGHT_GAIN");
-                amb = a_ && *a_ ? (float)atof(a_) : 0.2f;
-                gain = g_ && *g_ ? (float)atof(g_) : 1.0f;
-            }
-            k[12] = amb;
-            k[13] = gain;
-        }
+        /* HDM4 light tuning (the game's lights are dim for a detailed model): ambient lift (texel 3 .x) and light gain (.y) */
+        k[12] = NativeModel_Tune.ambient;
+        k[13] = NativeModel_Tune.light_gain;
         for (p = 0; p < NATIVE_MAX_PARTS && !lp; p++)
             if (d->parts[p].used) lp = &d->parts[p];
         if (lp && lit) { /* d_i = unit(R_ls) x (light matrix row i), view space */
@@ -2946,16 +2939,11 @@ static void native_draw(unsigned id)
         gl_Uniform1i(gl_GetUniformLocation(program, "tex"), 0);
         gl_Uniform1i(gl_GetUniformLocation(program, "bones"), 1);
         if (program == nat.pbr_program) {
-            static float flip = -1.0f, strength = 1.0f, normal_strength = 1.8f;
-            if (flip < 0.0f) {
-                const char *f_ = getenv("MEMORIES_NATIVE_NORMAL_FLIPY"), *s_ = getenv("MEMORIES_NATIVE_SPEC"), *n_ = getenv("MEMORIES_NATIVE_NORMAL_STRENGTH");
-                flip = f_ && *f_ ? (float)atof(f_) : 1.0f; /* glTF: green = up in the image, our v runs down: B must be negated */
-                strength = s_ && *s_ ? (float)atof(s_) : 1.0f;
-                normal_strength = n_ && *n_ ? (float)atof(n_) : 1.8f;
-            }
+            /* flip_green defaults to 1: glTF's green is up in the image, our v runs down, so B must be negated */
             gl_Uniform1i(gl_GetUniformLocation(program, "nmap"), 2);
             gl_Uniform1i(gl_GetUniformLocation(program, "mrmap"), 3);
-            gl_Uniform3f(gl_GetUniformLocation(program, "pbr"), flip, strength, normal_strength);
+            gl_Uniform3f(gl_GetUniformLocation(program, "pbr"), NativeModel_Tune.flip_green, NativeModel_Tune.highlight,
+                         NativeModel_Tune.normal_strength);
             gl_ActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, nat.normal_tex);
             gl_ActiveTexture(GL_TEXTURE3);

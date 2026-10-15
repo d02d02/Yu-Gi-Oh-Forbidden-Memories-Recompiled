@@ -1,6 +1,8 @@
 #ifndef MEMORIES_MOD_TYPES_H
 #define MEMORIES_MOD_TYPES_H
-#define MEMORIES_MOD_API 18
+#define MEMORIES_MOD_API 19
+/* API 19: "native_models" names HDM4 model files that replace a monster's battle model (src/pc/render/native_model.c,
+ * notes/native-models.md); no host entry. */
 /* API 15: card_types names the existing type ids and declares monster ids
  * 24-255, with optional per-custom-type icons. It has no host entry: cards
  * and gameplay tables resolve its names. */
