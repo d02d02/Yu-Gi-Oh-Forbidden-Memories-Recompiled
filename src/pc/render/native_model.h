@@ -45,6 +45,8 @@ typedef struct NativeMesh {
     uint32_t stride; /* words per vertex: 9 (HDM1) or 17 (HDM2: the same, then part B, weight B, pos B[3], normal B[3]) */
     const uint32_t *words; /* per vertex 9 words: f32 pos[3], f32 normal[3], f32 uv[2], u32 part */
     const uint8_t *rgba;   /* tex_w x tex_h */
+    uint32_t joint_parts;  /* HDM3: entries in the joint table (0 = none: the game's own part translations are used) */
+    const uint32_t *joints; /* per part 16 words: i32 parent (-1 none), f32 J[3] the model's own joint, f32 tb[3] the disc's, f32 Rbi[9] the inverse of the disc's bind rotation */
 } NativeMesh;
 
 extern unsigned NativeModel_Stats[8];

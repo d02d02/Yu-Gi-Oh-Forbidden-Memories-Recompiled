@@ -43,7 +43,7 @@ static void load(void)
     fseek(file, 0, SEEK_SET);
     data = (uint32_t *)malloc((size_t)size);
     if (!data || fread(data, 1, (size_t)size, file) != (size_t)size || size < 20 ||
-        (memcmp(data, "HDM1", 4) != 0 && memcmp(data, "HDM2", 4) != 0)) {
+        (memcmp(data, "HDM1", 4) != 0 && memcmp(data, "HDM2", 4) != 0 && memcmp(data, "HDM3", 4) != 0)) {
         fprintf(stderr, "memories-pc: native model: %s is not a model.hdm\n", path);
         free(data);
         fclose(file);
@@ -54,14 +54,21 @@ static void load(void)
     mesh.parts = data[2];
     mesh.tex_w = data[3];
     mesh.tex_h = data[4];
-    mesh.stride = memcmp(data, "HDM2", 4) == 0 ? 17 : 9;
-    if ((size_t)size != 20 + (size_t)mesh.vertices * mesh.stride * 4 + (size_t)mesh.tex_w * mesh.tex_h * 4) {
+    mesh.stride = memcmp(data, "HDM1", 4) == 0 ? 9 : 17;
+    mesh.joint_parts = 0;
+    mesh.joints = NULL;
+    if (memcmp(data, "HDM3", 4) == 0) { /* a joint table of `parts` entries (16 words) sits between the header and the vertices */
+        mesh.joint_parts = mesh.parts;
+        mesh.joints = data + 5;
+    }
+    if ((size_t)size != 20 + (size_t)mesh.joint_parts * 64 + (size_t)mesh.vertices * mesh.stride * 4 +
+                            (size_t)mesh.tex_w * mesh.tex_h * 4) {
         fprintf(stderr, "memories-pc: native model: %s has the wrong size\n", path);
         free(data);
         return;
     }
-    mesh.words = data + 5;
-    mesh.rgba = (const uint8_t *)(data + 5) + (size_t)mesh.vertices * mesh.stride * 4;
+    mesh.words = data + 5 + (size_t)mesh.joint_parts * 16;
+    mesh.rgba = (const uint8_t *)mesh.words + (size_t)mesh.vertices * mesh.stride * 4;
     mesh_model = id ? atoi(id) : 364;
     fprintf(stderr, "memories-pc: native model: %s for model %d (%u vertices, %u parts)\n", path, mesh_model,
             mesh.vertices, mesh.parts);
