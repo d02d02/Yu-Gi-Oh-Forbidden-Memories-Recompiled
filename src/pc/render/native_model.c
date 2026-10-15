@@ -1,6 +1,7 @@
 /* Native model pass: the capture side (see native_model.h). */
 #include "pc/render/native_model.h"
 #include "pc/compat/gte.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -255,14 +256,31 @@ const NativeDraw *NativeModel_Taken(size_t *count)
     return taken;
 }
 
-/* MEMORIES_ARENA_CAMERA_SCALE=<k> (0.2..6, default 1): the arena camera k times as far from its look-at point (model_scene_states.c). */
-float NativeModel_ArenaCameraScale(void)
+/* The arena camera's distance from its look-at point, remapped (model_scene_states.c). The scripted camera is framed for the small PS1
+ * models: its close shots (about 460-650 units) are too close for big native models, its wide orbit (1800) is fine. So distances
+ * under MEMORIES_ARENA_CAMERA_NEAR (default 1000) are pushed out: d' = NEAR - (NEAR - d) * KEEP (MEMORIES_ARENA_CAMERA_KEEP, 0.2..1,
+ * default 0.5; 1 = unchanged), then everything is multiplied by MEMORIES_ARENA_CAMERA_SCALE (0.2..6, default 1). */
+static float arena_camera_distance(float distance)
 {
-    static float k = -1.0f;
-    if (k < 0.0f) {
-        const char *e = getenv("MEMORIES_ARENA_CAMERA_SCALE");
-        k = e && *e ? (float)atof(e) : 1.0f;
-        if (k < 0.2f || k > 6.0f) k = 1.0f;
+    static float near_distance = -1.0f, keep = 0.5f, scale = 1.0f;
+    if (near_distance < 0.0f) {
+        const char *n = getenv("MEMORIES_ARENA_CAMERA_NEAR"), *kp = getenv("MEMORIES_ARENA_CAMERA_KEEP"), *sc = getenv("MEMORIES_ARENA_CAMERA_SCALE");
+        near_distance = n && *n ? (float)atof(n) : 1000.0f;
+        keep = kp && *kp ? (float)atof(kp) : 0.5f;
+        scale = sc && *sc ? (float)atof(sc) : 1.0f;
+        if (keep < 0.2f || keep > 1.0f) keep = 0.5f;
+        if (scale < 0.2f || scale > 6.0f) scale = 1.0f;
+        if (near_distance < 100.0f) near_distance = 1000.0f;
     }
-    return k;
+    if (distance < near_distance) distance = near_distance - (near_distance - distance) * keep;
+    return distance * scale;
+}
+
+/* The factor the eye's offset (only while a native model is loaded) from the look-at point is multiplied by (1 = the game's own camera). */
+float NativeModel_ArenaCameraFactor(float dx, float dy, float dz)
+{
+    if (!loaded) load();
+    if (!mesh.words) return 1.0f; /* no native model: the game's own camera, as it was */
+    float d = sqrtf(dx * dx + dy * dy + dz * dz);
+    return d > 1.0f ? arena_camera_distance(d) / d : 1.0f;
 }
