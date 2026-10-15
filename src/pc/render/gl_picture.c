@@ -2116,6 +2116,7 @@ static int native_gpu_ready(const NativeMesh *mesh)
  * rows 0-127 bones (texels 0-2 = matrix rows, .w = translation), row 128 = (screen offset x, y, H, scale), (tint rgb, lit),
  * (ambient rgb); row 129 = the three light directions in view space; row 130 = the light colour matrix rows. */
 #define NATIVE_SKIN_ROWS (NATIVE_MAX_BONES + 3)
+#define NATIVE_FADE 6 /* game frames of cross-fade when the disc animation row changes (0.2 s at 30 fps) */
 #ifndef GL_ELEMENT_ARRAY_BUFFER
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #endif
@@ -2282,6 +2283,7 @@ static void native_mul34(const float *a, const float *b, float *out)
 static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, float *rows, int lit)
 {
     float world[NATIVE_MAX_BONES][12];
+    float lq[NATIVE_MAX_BONES][7]; /* local pose per bone: t[3], q[4] */
     unsigned char done[NATIVE_MAX_BONES];
     float rv[12];
     unsigned b, pass;
@@ -2311,6 +2313,59 @@ static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const 
                     d->ofx >> 16, d->h);
         }
     }
+    /* The clip's local pose (linear between the baked frames, rotation nlerp), then a short cross-fade when the game's
+     * animation row changes (the new row's clip starts elsewhere than the old one ended): the last pose drawn for this slot
+     * is blended into the new one over NATIVE_FADE draws (game frames). */
+    for (b = 0; b < mesh->bones; b++) {
+        float *o = lq[b];
+        o[0] = o[1] = o[2] = o[3] = o[4] = o[5] = 0.0f;
+        o[6] = 1.0f;
+        if (clip && clip->frames) {
+            float f = t * clip->fps, k, len;
+            unsigned i0, i1;
+            const float *a, *bb;
+            if (f < 0.0f) f = 0.0f;
+            i0 = (unsigned)f;
+            if (i0 >= clip->frames - 1) { i0 = clip->frames - 1; i1 = i0; k = 0.0f; }
+            else { i1 = i0 + 1; k = f - (float)i0; }
+            a = clip->data + ((size_t)i0 * mesh->bones + b) * 7;
+            bb = clip->data + ((size_t)i1 * mesh->bones + b) * 7;
+            for (r = 0; r < 3; r++) o[r] = a[r] + (bb[r] - a[r]) * k;
+            for (r = 0; r < 4; r++) o[3 + r] = a[3 + r] + (bb[3 + r] - a[3 + r]) * k;
+            len = sqrtf(o[3] * o[3] + o[4] * o[4] + o[5] * o[5] + o[6] * o[6]);
+            if (len < 1e-8f) { o[3] = o[4] = o[5] = 0.0f; o[6] = 1.0f; }
+            else for (r = 3; r < 7; r++) o[r] /= len;
+        }
+    }
+    {
+        static struct { int row, valid, fade, id; float last[NATIVE_MAX_BONES][7]; float from[NATIVE_MAX_BONES][7]; } mem[3];
+        int s = in->slot >= 0 && in->slot < 3 ? in->slot : 2;
+        if (mem[s].id != d->id + 1) { /* once per draw (the same draw can be replayed) */
+            if (mem[s].valid && mem[s].row != in->anim_index) {
+                memcpy(mem[s].from, mem[s].last, sizeof(mem[s].from));
+                mem[s].fade = NATIVE_FADE;
+            }
+            mem[s].row = in->anim_index;
+            mem[s].valid = 1;
+            mem[s].id = d->id + 1;
+            if (mem[s].fade > 0) {
+                float w = (float)(NATIVE_FADE - mem[s].fade + 1) / (float)(NATIVE_FADE + 1);
+                for (b = 0; b < mesh->bones; b++) {
+                    const float *fr = mem[s].from[b];
+                    float *o = lq[b], dot = fr[3] * o[3] + fr[4] * o[4] + fr[5] * o[5] + fr[6] * o[6], len;
+                    for (r = 0; r < 3; r++) o[r] = fr[r] + (o[r] - fr[r]) * w;
+                    for (r = 3; r < 7; r++) o[r] = fr[r] * (dot < 0.0f ? -1.0f : 1.0f) * (1.0f - w) + o[r] * w;
+                    len = sqrtf(o[3] * o[3] + o[4] * o[4] + o[5] * o[5] + o[6] * o[6]);
+                    for (r = 3; r < 7; r++) o[r] /= len;
+                }
+                mem[s].fade--;
+            }
+            memcpy(mem[s].last, lq, (size_t)mesh->bones * sizeof(lq[0]));
+        } else if (mem[s].fade >= 0) {
+            /* a replay of the same draw: the blended pose was stored in `last` */
+            memcpy(lq, mem[s].last, (size_t)mesh->bones * sizeof(lq[0]));
+        }
+    }
     memset(done, 0, sizeof(done));
     for (pass = 0; pass < NATIVE_MAX_BONES; pass++) {
         unsigned left = 0;
@@ -2322,26 +2377,15 @@ static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const 
             if (parent >= 0 && !done[parent]) { left++; continue; }
             memset(loc, 0, sizeof(loc));
             loc[0] = loc[5] = loc[10] = 1.0f;
-            if (clip && clip->frames) { /* the clip's local pose, linear between the baked frames (rotation nlerp) */
-                float f = t * clip->fps, k, q[4], len, x, y, z, w;
-                unsigned i0, i1;
-                const float *a, *bb;
-                if (f < 0.0f) f = 0.0f;
-                i0 = (unsigned)f;
-                if (i0 >= clip->frames - 1) { i0 = clip->frames - 1; i1 = i0; k = 0.0f; }
-                else { i1 = i0 + 1; k = f - (float)i0; }
-                a = clip->data + ((size_t)i0 * mesh->bones + b) * 7;
-                bb = clip->data + ((size_t)i1 * mesh->bones + b) * 7;
-                for (r = 0; r < 4; r++) q[r] = a[3 + r] + (bb[3 + r] - a[3 + r]) * k;
-                len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-                if (len < 1e-8f) { q[0] = q[1] = q[2] = 0.0f; q[3] = 1.0f; len = 1.0f; }
-                x = q[0] / len; y = q[1] / len; z = q[2] / len; w = q[3] / len;
+            {   /* the (cross-faded) local pose of bone b: rotation as a unit quaternion, translation */
+                const float *lp = lq[b];
+                float x = lp[3], y = lp[4], z = lp[5], w = lp[6];
                 loc[0] = 1 - 2 * (y * y + z * z); loc[1] = 2 * (x * y - z * w); loc[2] = 2 * (x * z + y * w);
                 loc[4] = 2 * (x * y + z * w); loc[5] = 1 - 2 * (x * x + z * z); loc[6] = 2 * (y * z - x * w);
                 loc[8] = 2 * (x * z - y * w); loc[9] = 2 * (y * z + x * w); loc[10] = 1 - 2 * (x * x + y * y);
-                loc[3] = a[0] + (bb[0] - a[0]) * k;
-                loc[7] = a[1] + (bb[1] - a[1]) * k;
-                loc[11] = a[2] + (bb[2] - a[2]) * k;
+                loc[3] = lp[0];
+                loc[7] = lp[1];
+                loc[11] = lp[2];
             }
             if (parent >= 0) native_mul34(world[parent], loc, world[b]);
             else memcpy(world[b], loc, sizeof(loc));
