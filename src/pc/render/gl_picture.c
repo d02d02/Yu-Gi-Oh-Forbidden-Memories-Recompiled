@@ -2153,7 +2153,8 @@ static const char *native_skin_vertex_source =
     "    if (k1.w > 0.5) {\n"
     "        n = normalize(n);\n"
     "        vec3 ir = max(vec3(dot(texel(0, 129).xyz, n), dot(texel(1, 129).xyz, n), dot(texel(2, 129).xyz, n)), 0.0);\n"
-    "        vec3 l = texel(2, 128).xyz + vec3(dot(texel(0, 130).xyz, ir), dot(texel(1, 130).xyz, ir), dot(texel(2, 130).xyz, ir));\n"
+    "        vec4 k3 = texel(3, 128);\n"
+    "        vec3 l = texel(2, 128).xyz + k3.x + k3.y * vec3(dot(texel(0, 130).xyz, ir), dot(texel(1, 130).xyz, ir), dot(texel(2, 130).xyz, ir));\n"
     "        shade = clamp(l * k1.xyz, 0.0, 255.0 / 128.0);\n"
     "    }\n"
     "    rgb = shade;\n"
@@ -2417,6 +2418,16 @@ static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const 
         k[8] = (float)d->bk[0] / 4096.0f;
         k[9] = (float)d->bk[1] / 4096.0f;
         k[10] = (float)d->bk[2] / 4096.0f;
+        { /* HDM4 light tuning (the game's lights are dim for a detailed model): ambient lift (texel 3 .x) and light gain (.y) */
+            static float amb = -1.0f, gain = 1.0f;
+            if (amb < 0.0f) {
+                const char *a_ = getenv("MEMORIES_NATIVE_AMBIENT"), *g_ = getenv("MEMORIES_NATIVE_LIGHT_GAIN");
+                amb = a_ && *a_ ? (float)atof(a_) : 0.2f;
+                gain = g_ && *g_ ? (float)atof(g_) : 1.0f;
+            }
+            k[12] = amb;
+            k[13] = gain;
+        }
         for (p = 0; p < NATIVE_MAX_PARTS && !lp; p++)
             if (d->parts[p].used) lp = &d->parts[p];
         if (lp && lit) { /* d_i = unit(R_ls) x (light matrix row i), view space */
@@ -2794,7 +2805,23 @@ static void native_draw(unsigned id)
         gl_VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(6 * sizeof(float)));
         gl_VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(8 * sizeof(float)));
         gl_VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(12 * sizeof(float)));
-        glDrawElements(GL_TRIANGLES, (GLsizei)mesh->index_count, GL_UNSIGNED_INT, (const void *)0);
+        {   /* MEMORIES_NATIVE_TIME=1: GPU time of the skinned draw (glFinish before and after), averaged over 120 draws */
+            static int timing = -1;
+            static Uint64 total, draws;
+            Uint64 t0 = 0;
+            if (timing < 0) timing = getenv("MEMORIES_NATIVE_TIME") != NULL;
+            if (timing) { glFinish(); t0 = SDL_GetTicksNS(); }
+            glDrawElements(GL_TRIANGLES, (GLsizei)mesh->index_count, GL_UNSIGNED_INT, (const void *)0);
+            if (timing) {
+                glFinish();
+                total += SDL_GetTicksNS() - t0;
+                if (++draws % 120 == 0) {
+                    fprintf(stderr, "memories-pc: native model: skinned draw %.2f ms avg over 120 draws (%u triangles, %dx%d)\n",
+                            (double)total / 120.0 / 1e6, (unsigned)(mesh->index_count / 3), nat.w, nat.h);
+                    total = 0;
+                }
+            }
+        }
         for (k = 1; k < 5; k++) gl_DisableVertexAttribArray((GLuint)k);
         gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer); /* the composite below fills it */
