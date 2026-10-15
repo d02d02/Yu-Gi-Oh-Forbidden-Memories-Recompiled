@@ -48,12 +48,27 @@
 #include "fade.h"
 #include "sound_pending_entries.h"
 #include "../unmatched.h"
+#ifdef MEMORIES_PC
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
+#endif
 
 void func_8004EB00(void)
 {
     s32 (*G32 handlers[4])(s32, s32); /* copied whole from D_800114E8: guest-width slots */
     SVECTOR offset;
     s32 n;
+#ifdef MEMORIES_PC
+    static s32 evt_phase = 0x7FFF;
+
+    if (evt_phase != (s32)D_8009AF9A) {
+        evt_phase = (s32)D_8009AF9A;
+        LOG(LOG_MODEL, "evt phase f=%u phase=%d step=%d s0=%d,%d,%d s1=%d,%d,%d", Memories_PresentedFrames(),
+            evt_phase, (int)Model_GetFrameStep(), (int)D_800F2C40[0].field_DD0[0], (int)D_800F2C40[0].field_DD0[1],
+            (int)D_800F2C40[0].field_DD0[2], (int)D_800F2C40[1].field_DD0[0], (int)D_800F2C40[1].field_DD0[1],
+            (int)D_800F2C40[1].field_DD0[2]);
+    }
+#endif
 
     *(ModelSlotS32Quad *)handlers = *(ModelSlotS32Quad *)D_800114E8;
     n = 1;

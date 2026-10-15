@@ -3,6 +3,12 @@
 #include "model.h"
 #include "model_slot_state_updates.h"
 #include "model_control_slot_animation.h"
+#ifdef MEMORIES_PC
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
+#include "model_graphics_state.h"
+#include "func_80058E1C.h"
+#endif
 
 /* Starts, restores or stops one model slot's part animation.
  *
@@ -38,6 +44,11 @@ void Model_ControlSlotAnimation(s32 index, s32 anim, s32 flag) {
     if (m->field_E1F == 0) {
         return;
     }
+#ifdef MEMORIES_PC
+    LOG(LOG_MODEL, "evt row f=%u slot=%d model=%d row=%d flag=%d prev=%d state=%d clock=%d step=%d phase=%d",
+        Memories_PresentedFrames(), (int)index, (int)m->field_DF8, (int)anim, (int)flag, (int)m->field_E0F,
+        (int)m->field_E0E, (int)m->field_E06, (int)Model_GetFrameStep(), (int)D_8009AF9A);
+#endif
     switch (anim) {
     case -1:
         m->field_E10 = 0;
