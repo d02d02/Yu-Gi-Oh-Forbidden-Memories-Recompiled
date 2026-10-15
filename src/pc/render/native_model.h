@@ -59,12 +59,27 @@ typedef struct NativeDraw {
     NativeSlotInfo info;
 } NativeDraw;
 
+/* HDM4: a clip = local translation + rotation (disc space) of every bone, baked at `fps`. */
+#define NATIVE_MAX_CLIPS 16
+#define NATIVE_MAX_BONES 128
+typedef struct NativeClip {
+    char name[32];
+    uint32_t frames;
+    float fps;
+    const float *data; /* frames x bones x 7: t[3], q[4] (xyzw) */
+} NativeClip;
+
 typedef struct NativeMesh {
     uint32_t vertices, parts, tex_w, tex_h;
     uint32_t stride; /* words per vertex: 9 (HDM1) or 17 (HDM2: the same, then part B, weight B, pos B[3], normal B[3]) */
     const uint32_t *words; /* per vertex 9 words: f32 pos[3], f32 normal[3], f32 uv[2], u32 part */
     const uint8_t *rgba;   /* tex_w x tex_h */
     uint32_t joint_parts;  /* HDM3: entries in the joint table (0 = none: the game's own part translations are used) */
+    /* HDM4 (the model's OWN skeleton and clips; `words` = vertices of 13 words: f32 pos[3], normal[3], uv[2], u32 4 x u8 joints, f32 weights[4]) */
+    uint32_t bones, index_count, clip_count;
+    const uint32_t *bone_table; /* per bone 16 words: i32 parent, f32 ibm[12] (3x4 row major) */
+    const uint32_t *indices;
+    NativeClip clips[NATIVE_MAX_CLIPS];
     const uint32_t *joints; /* per part 16 words: i32 parent (-1 none), f32 J[3] the model's own joint, f32 tb[3] the disc's, f32 Rbi[9] the inverse of the disc's bind rotation */
 } NativeMesh;
 

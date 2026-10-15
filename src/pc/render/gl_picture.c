@@ -28,6 +28,7 @@
 #include "gl_picture.h"
 #include "soft_gpu.h"
 #include "texture_pack.h"
+#include <math.h>
 #include "native_model.h"
 #include "pc/cards/card_layout.h"
 #include "pc/text/hd_text.h"
@@ -1754,6 +1755,11 @@ static struct {
     const NativeMesh *gpu_mesh; /* the mesh `gpu_vbo` holds */
     GLint g_size, g_tex, g_bones;
     int gpu_failed;
+    GLuint skin_program, skin_vbo, skin_ebo, skin_tex; /* HDM4: the model's own skeleton (4-weight vertex-shader skinning) */
+    const NativeMesh *skin_mesh;
+    GLint s_size, s_tex, s_bones;
+    int skin_failed;
+    float *skin_rows;
     float *bones;
     int fresh; /* a new frame's draws came: the first native draw clears the depth, the others share it */
     GLint u_size, u_tex, c_size, c_tex;
@@ -1874,6 +1880,11 @@ static void native_free(void)
     if (nat.gpu_program) gl_DeleteProgram(nat.gpu_program);
     if (nat.gpu_vbo) gl_DeleteBuffers(1, &nat.gpu_vbo);
     if (nat.bones_tex) glDeleteTextures(1, &nat.bones_tex);
+    if (nat.skin_program) gl_DeleteProgram(nat.skin_program);
+    if (nat.skin_vbo) gl_DeleteBuffers(1, &nat.skin_vbo);
+    if (nat.skin_ebo) gl_DeleteBuffers(1, &nat.skin_ebo);
+    if (nat.skin_tex) glDeleteTextures(1, &nat.skin_tex);
+    free(nat.skin_rows);
     free(nat.bones);
     free(nat.vertices);
     memset(&nat, 0, sizeof(nat));
@@ -2095,6 +2106,280 @@ static int native_gpu_ready(const NativeMesh *mesh)
     return 1;
 }
 
+
+/* --- HDM4: the model's own skeleton and clips -------------------------------------------------------------------
+ * The game gives the root pose (NativeSlotInfo: body root + world-to-screen), the disc animation state and the lights; the
+ * model plays its own clip. Per draw the CPU samples the clip, does the forward kinematics and uploads, per bone, the 3x4
+ * matrix (view <- model space) = root view matrix x bone world x inverse bind. Texture `skin_tex` is 4 x 131 RGBA32F:
+ * rows 0-127 bones (texels 0-2 = matrix rows, .w = translation), row 128 = (screen offset x, y, H, scale), (tint rgb, lit),
+ * (ambient rgb); row 129 = the three light directions in view space; row 130 = the light colour matrix rows. */
+#define NATIVE_SKIN_ROWS (NATIVE_MAX_BONES + 3)
+#ifndef GL_ELEMENT_ARRAY_BUFFER
+#define GL_ELEMENT_ARRAY_BUFFER 0x8893
+#endif
+static const char *native_skin_vertex_source =
+#ifdef __APPLE__
+    "#version 150\n"
+#else
+    "#version 130\n"
+#endif
+    "uniform vec2 picture_size;\n"
+    "uniform sampler2D bones;\n"
+    "in vec3 apos;\n"
+    "in vec3 anorm;\n"
+    "in vec2 auv;\n"
+    "in vec4 ajoint;\n"
+    "in vec4 aweight;\n"
+    "out vec2 uv;\n"
+    "out vec3 rgb;\n"
+    "vec4 texel(int x, int y) { return texelFetch(bones, ivec2(x, y), 0); }\n"
+    "void main() {\n"
+    "    vec3 view = vec3(0.0), n = vec3(0.0);\n"
+    "    for (int k = 0; k < 4; k++) {\n"
+    "        float w = aweight[k];\n"
+    "        if (w <= 0.0) continue;\n"
+    "        int j = int(ajoint[k] + 0.5);\n"
+    "        vec4 r0 = texel(0, j), r1 = texel(1, j), r2 = texel(2, j);\n"
+    "        view += w * vec3(dot(r0.xyz, apos) + r0.w, dot(r1.xyz, apos) + r1.w, dot(r2.xyz, apos) + r2.w);\n"
+    "        n += w * vec3(dot(r0.xyz, anorm), dot(r1.xyz, anorm), dot(r2.xyz, anorm));\n"
+    "    }\n"
+    "    uv = auv;\n"
+    "    if (view.z < 16.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); rgb = vec3(0.0); return; }\n"
+    "    vec4 k0 = texel(0, 128), k1 = texel(1, 128);\n"
+    "    vec3 shade = k1.xyz;\n"
+    "    if (k1.w > 0.5) {\n"
+    "        n = normalize(n);\n"
+    "        vec3 ir = max(vec3(dot(texel(0, 129).xyz, n), dot(texel(1, 129).xyz, n), dot(texel(2, 129).xyz, n)), 0.0);\n"
+    "        vec3 l = texel(2, 128).xyz + vec3(dot(texel(0, 130).xyz, ir), dot(texel(1, 130).xyz, ir), dot(texel(2, 130).xyz, ir));\n"
+    "        shade = clamp(l * k1.xyz, 0.0, 255.0 / 128.0);\n"
+    "    }\n"
+    "    rgb = shade;\n"
+    "    vec2 px = vec2(k0.x + k0.z * view.x / view.z, k0.y + k0.z * view.y / view.z) * k0.w;\n"
+    "    float depth = (view.z - 16.0) / (200000.0 - 16.0) * 2.0 - 1.0;\n"
+    "    vec2 ndc = px / picture_size * 2.0 - 1.0;\n"
+    "    gl_Position = vec4(ndc * view.z, depth * view.z, view.z);\n"
+    "}\n";
+
+static int native_skin_ready(const NativeMesh *mesh)
+{
+    if (nat.skin_failed) return 0;
+    if (!nat.skin_program) {
+        GLuint vs = compile(GL_VERTEX_SHADER, native_skin_vertex_source, NULL), fs, made;
+        GLint ok = 0;
+        static const char *names[5] = {"apos", "anorm", "auv", "ajoint", "aweight"};
+        int k;
+        if (!vs) { nat.skin_failed = 1; return 0; }
+        fs = compile(GL_FRAGMENT_SHADER, native_fragment_source, NULL);
+        if (!fs) { gl_DeleteShader(vs); nat.skin_failed = 1; return 0; }
+        made = gl_CreateProgram();
+        gl_AttachShader(made, vs);
+        gl_AttachShader(made, fs);
+        for (k = 0; k < 5; k++) gl_BindAttribLocation(made, (GLuint)k, names[k]);
+        gl_LinkProgram(made);
+        gl_DeleteShader(vs);
+        gl_DeleteShader(fs);
+        gl_GetProgramiv(made, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[2048];
+            gl_GetProgramInfoLog(made, sizeof(log), NULL, log);
+            fprintf(stderr, "memories-pc: native model: skin program: %s\n", log);
+            gl_DeleteProgram(made);
+            nat.skin_failed = 1;
+            return 0;
+        }
+        nat.skin_program = made;
+        nat.s_size = gl_GetUniformLocation(made, "picture_size");
+        nat.s_tex = gl_GetUniformLocation(made, "tex");
+        nat.s_bones = gl_GetUniformLocation(made, "bones");
+        nat.skin_rows = (float *)malloc((size_t)4 * NATIVE_SKIN_ROWS * 4 * sizeof(float));
+        if (!nat.skin_rows) { nat.skin_failed = 1; return 0; }
+        glGenTextures(1, &nat.skin_tex);
+        glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, NATIVE_SKIN_ROWS, 0, GL_RGBA, GL_FLOAT, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        gl_GenBuffers(1, &nat.skin_vbo);
+        gl_GenBuffers(1, &nat.skin_ebo);
+    }
+    if (nat.skin_mesh != mesh) {
+        float *v = (float *)malloc((size_t)mesh->vertices * 16 * sizeof(float));
+        uint32_t i;
+        if (!v) return 0;
+        for (i = 0; i < mesh->vertices; i++) {
+            const uint32_t *w = mesh->words + (size_t)i * 13;
+            float *o = v + (size_t)i * 16;
+            int k;
+            memcpy(o, w, 8 * sizeof(float)); /* position, normal, uv */
+            for (k = 0; k < 4; k++) {
+                o[8 + k] = (float)((w[8] >> (8 * k)) & 255u);
+                memcpy(o + 12 + k, w + 9 + k, sizeof(float));
+            }
+        }
+        gl_BindBuffer(GL_ARRAY_BUFFER, nat.skin_vbo);
+        gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->vertices * 16 * sizeof(float)), v, GL_STATIC_DRAW);
+        gl_BindBuffer(GL_ARRAY_BUFFER, 0);
+        free(v);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, nat.skin_ebo);
+        gl_BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->index_count * sizeof(uint32_t)), mesh->indices, GL_STATIC_DRAW);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        nat.skin_mesh = mesh;
+    }
+    return 1;
+}
+
+/* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
+ * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length. */
+static float native_director(const NativeDraw *d, const NativeMesh *mesh, const NativeClip **clip_out)
+{
+    static const char *by_row[8] = {"Sword_Idle", "Sword_Idle", "Idle_Loop", "Sword_Attack", "Sword_Idle", "Hit_Chest", "Death01", "Sword_Idle"};
+    const char *forced = getenv("MEMORIES_NATIVE_CLIP");
+    const char *want = forced && *forced ? forced : by_row[(unsigned)d->info.anim_index < 8u ? d->info.anim_index : 0];
+    const NativeClip *c = NULL;
+    unsigned i;
+    float phase, t;
+    for (i = 0; i < mesh->clip_count; i++)
+        if (strcmp(mesh->clips[i].name, want) == 0) c = &mesh->clips[i];
+    if (!c && mesh->clip_count) c = &mesh->clips[0];
+    *clip_out = c;
+    if (!c || c->frames < 1) return 0.0f;
+    if (forced && *forced) {
+        float length = (float)c->frames / c->fps;
+        t = (float)d->id / 30.0f;
+        return t - (float)(int)(t / length) * length;
+    }
+    phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
+    phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
+    return phase * (float)(c->frames - 1) / c->fps;
+}
+
+/* 3x4 (row major, implied last row 0 0 0 1) product: out = a * b. */
+static void native_mul34(const float *a, const float *b, float *out)
+{
+    int r, c;
+    for (r = 0; r < 3; r++) {
+        for (c = 0; c < 3; c++) out[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] + a[r * 4 + 2] * b[8 + c];
+        out[r * 4 + 3] = a[r * 4] * b[3] + a[r * 4 + 1] * b[7] + a[r * 4 + 2] * b[11] + a[r * 4 + 3];
+    }
+}
+
+/* The clip at time t (seconds): per bone the local matrix, forward kinematics, then rows = root view x world x inverse bind. */
+static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, float *rows, int lit)
+{
+    float world[NATIVE_MAX_BONES][12];
+    unsigned char done[NATIVE_MAX_BONES];
+    float rv[12];
+    unsigned b, pass;
+    int r, c;
+    const NativeSlotInfo *in = &d->info;
+    { /* the root's view matrix: ws * root, translation ws * root_t + ws_t (GTE: v' = R v / 4096 + TR) */
+        float ws[9], rr[9];
+        for (r = 0; r < 9; r++) {
+            ws[r] = (float)in->ws_rot[r] / 4096.0f;
+            rr[r] = (float)in->root_rot[r] / 4096.0f;
+        }
+        for (r = 0; r < 3; r++) {
+            for (c = 0; c < 3; c++) rv[r * 4 + c] = ws[r * 3] * rr[c] + ws[r * 3 + 1] * rr[3 + c] + ws[r * 3 + 2] * rr[6 + c];
+            rv[r * 4 + 3] = (ws[r * 3] * (float)in->root_tr[0] + ws[r * 3 + 1] * (float)in->root_tr[1] +
+                             ws[r * 3 + 2] * (float)in->root_tr[2]) + (float)in->ws_tr[r];
+        }
+    }
+    if (getenv("MEMORIES_NATIVE_SKIN_LOG")) {
+        static unsigned n;
+        if (n++ % 20 == 0) {
+            const NativePart *p1 = &d->parts[1];
+            fprintf(stderr, "skin: row=%d root_rot=%d,%d,%d/%d,%d,%d/%d,%d,%d root_tr=%d,%d,%d scale=%d ws_tr=%d,%d,%d | rv_t=%.0f,%.0f,%.0f | part1 used=%d tr=%d,%d,%d rot=%d,%d,%d/%d,%d,%d/%d,%d,%d ofx=%d h=%d\n",
+                    in->anim_index, in->root_rot[0], in->root_rot[1], in->root_rot[2], in->root_rot[3], in->root_rot[4], in->root_rot[5],
+                    in->root_rot[6], in->root_rot[7], in->root_rot[8], in->root_tr[0], in->root_tr[1], in->root_tr[2], in->scale[0],
+                    in->ws_tr[0], in->ws_tr[1], in->ws_tr[2], rv[3], rv[7], rv[11], p1->used, p1->tr[0], p1->tr[1], p1->tr[2],
+                    p1->rot[0], p1->rot[1], p1->rot[2], p1->rot[3], p1->rot[4], p1->rot[5], p1->rot[6], p1->rot[7], p1->rot[8],
+                    d->ofx >> 16, d->h);
+        }
+    }
+    memset(done, 0, sizeof(done));
+    for (pass = 0; pass < NATIVE_MAX_BONES; pass++) {
+        unsigned left = 0;
+        for (b = 0; b < mesh->bones; b++) {
+            const uint32_t *bt = mesh->bone_table + (size_t)b * 16;
+            int parent = (int)bt[0];
+            float loc[12];
+            if (done[b]) continue;
+            if (parent >= 0 && !done[parent]) { left++; continue; }
+            memset(loc, 0, sizeof(loc));
+            loc[0] = loc[5] = loc[10] = 1.0f;
+            if (clip && clip->frames) { /* the clip's local pose, linear between the baked frames (rotation nlerp) */
+                float f = t * clip->fps, k, q[4], len, x, y, z, w;
+                unsigned i0, i1;
+                const float *a, *bb;
+                if (f < 0.0f) f = 0.0f;
+                i0 = (unsigned)f;
+                if (i0 >= clip->frames - 1) { i0 = clip->frames - 1; i1 = i0; k = 0.0f; }
+                else { i1 = i0 + 1; k = f - (float)i0; }
+                a = clip->data + ((size_t)i0 * mesh->bones + b) * 7;
+                bb = clip->data + ((size_t)i1 * mesh->bones + b) * 7;
+                for (r = 0; r < 4; r++) q[r] = a[3 + r] + (bb[3 + r] - a[3 + r]) * k;
+                len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+                if (len < 1e-8f) { q[0] = q[1] = q[2] = 0.0f; q[3] = 1.0f; len = 1.0f; }
+                x = q[0] / len; y = q[1] / len; z = q[2] / len; w = q[3] / len;
+                loc[0] = 1 - 2 * (y * y + z * z); loc[1] = 2 * (x * y - z * w); loc[2] = 2 * (x * z + y * w);
+                loc[4] = 2 * (x * y + z * w); loc[5] = 1 - 2 * (x * x + z * z); loc[6] = 2 * (y * z - x * w);
+                loc[8] = 2 * (x * z - y * w); loc[9] = 2 * (y * z + x * w); loc[10] = 1 - 2 * (x * x + y * y);
+                loc[3] = a[0] + (bb[0] - a[0]) * k;
+                loc[7] = a[1] + (bb[1] - a[1]) * k;
+                loc[11] = a[2] + (bb[2] - a[2]) * k;
+            }
+            if (parent >= 0) native_mul34(world[parent], loc, world[b]);
+            else memcpy(world[b], loc, sizeof(loc));
+            done[b] = 1;
+        }
+        if (!left) break;
+    }
+    memset(rows, 0, (size_t)4 * NATIVE_SKIN_ROWS * 4 * sizeof(float));
+    for (b = 0; b < mesh->bones; b++) {
+        float m[12], v[12];
+        const float *ibm = (const float *)(mesh->bone_table + (size_t)b * 16) + 1;
+        native_mul34(world[b], ibm, m);
+        native_mul34(rv, m, v);
+        for (r = 0; r < 3; r++)
+            for (c = 0; c < 4; c++) rows[((size_t)b * 4 + (size_t)r) * 4 + (size_t)c] = v[r * 4 + c];
+    }
+    { /* the draw: row 128 (texels 0-2), the light directions: row 129, the light colour matrix: row 130 */
+        float *k = rows + (size_t)NATIVE_MAX_BONES * 4 * 4;
+        const NativePart *lp = NULL;
+        unsigned p;
+        k[0] = (float)d->ofx / 65536.0f + (float)state.offset_x;
+        k[1] = (float)d->ofy / 65536.0f + (float)state.offset_y;
+        k[2] = (float)d->h;
+        k[3] = (float)scale;
+        k[4] = (float)(d->tint & 0xff) / 128.0f;
+        k[5] = (float)((d->tint >> 8) & 0xff) / 128.0f;
+        k[6] = (float)((d->tint >> 16) & 0xff) / 128.0f;
+        k[7] = (float)lit;
+        k[8] = (float)d->bk[0] / 4096.0f;
+        k[9] = (float)d->bk[1] / 4096.0f;
+        k[10] = (float)d->bk[2] / 4096.0f;
+        for (p = 0; p < NATIVE_MAX_PARTS && !lp; p++)
+            if (d->parts[p].used) lp = &d->parts[p];
+        if (lp && lit) { /* d_i = unit(R_ls) x (light matrix row i), view space */
+            float ru[9], sc[3];
+            float *dirs = rows + (size_t)(NATIVE_MAX_BONES + 1) * 4 * 4, *cols = rows + (size_t)(NATIVE_MAX_BONES + 2) * 4 * 4;
+            for (c = 0; c < 3; c++)
+                sc[c] = sqrtf((float)lp->rot[c] * lp->rot[c] + (float)lp->rot[3 + c] * lp->rot[3 + c] + (float)lp->rot[6 + c] * lp->rot[6 + c]);
+            for (r = 0; r < 3; r++)
+                for (c = 0; c < 3; c++) ru[r * 3 + c] = sc[c] > 0.0f ? (float)lp->rot[r * 3 + c] / sc[c] : 0.0f;
+            for (r = 0; r < 3; r++) { /* light r: texel r of row 129; colour row r of row 130 */
+                for (c = 0; c < 3; c++) {
+                    dirs[r * 4 + c] = (ru[c * 3] * (float)lp->llm[r * 3] + ru[c * 3 + 1] * (float)lp->llm[r * 3 + 1] +
+                                       ru[c * 3 + 2] * (float)lp->llm[r * 3 + 2]) / 4096.0f;
+                    cols[r * 4 + c] = (float)lp->lcm[r * 3 + c] / 4096.0f;
+                }
+            }
+        }
+    }
+}
+
 static float native_clamp(float v, float lo, float hi)
 {
     return v < lo ? lo : v > hi ? hi : v;
@@ -2198,7 +2483,7 @@ static void native_draw(unsigned id)
     const NativeMesh *mesh;
     uint32_t i;
     float min_x = 1e9f, min_y = 1e9f, max_x = -1e9f, max_y = -1e9f;
-    int x0, y0, x1, y1, lit, retargeted, use_gpu;
+    int x0, y0, x1, y1, lit, retargeted, use_gpu, skinned;
     float q[NATIVE_MAX_PARTS][3];
     NativeModel_Stats[5]++;
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
@@ -2276,7 +2561,20 @@ static void native_draw(unsigned id)
     }
     retargeted = mesh->joints != NULL;
     if (retargeted) native_retarget(d, mesh, q);
-    use_gpu = !getenv("MEMORIES_NATIVE_CPU") && native_gpu_ready(mesh);
+    skinned = mesh->bones != 0;
+    use_gpu = !skinned && !getenv("MEMORIES_NATIVE_CPU") && native_gpu_ready(mesh);
+    if (skinned) { /* HDM4: the model's own clip, posed on the CPU (forward kinematics), skinned on the GPU */
+        const NativeClip *clip = NULL;
+        float t;
+        if (!native_skin_ready(mesh)) return;
+        t = native_director(d, mesh, &clip);
+        native_skin_pose(d, mesh, clip, t, nat.skin_rows, lit);
+        gl_ActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, NATIVE_SKIN_ROWS, GL_RGBA, GL_FLOAT, nat.skin_rows);
+        gl_ActiveTexture(GL_TEXTURE0);
+        NativeModel_Stats[7]++;
+    }
     if (use_gpu) {
         float *b = nat.bones;
         unsigned pidx;
@@ -2316,7 +2614,7 @@ static void native_draw(unsigned id)
         gl_ActiveTexture(GL_TEXTURE0);
         NativeModel_Stats[7]++;
     }
-    if (use_gpu) { /* the box: the whole clip rectangle (the pose is on the GPU) */
+    if (use_gpu || skinned) { /* the box: the whole clip rectangle (the pose is on the GPU) */
         min_x = 0.0f;
         min_y = 0.0f;
         max_x = (float)nat.w;
@@ -2421,7 +2719,29 @@ static void native_draw(unsigned id)
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-    if (use_gpu) {
+    if (skinned) {
+        int k;
+        gl_UseProgram(nat.skin_program);
+        gl_Uniform2f(nat.s_size, (float)nat.w, (float)nat.h);
+        gl_Uniform1i(nat.s_tex, 0);
+        gl_Uniform1i(nat.s_bones, 1);
+        gl_ActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
+        gl_ActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, nat.texture);
+        gl_BindBuffer(GL_ARRAY_BUFFER, nat.skin_vbo);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, nat.skin_ebo);
+        for (k = 0; k < 5; k++) gl_EnableVertexAttribArray((GLuint)k);
+        gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)0);
+        gl_VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(3 * sizeof(float)));
+        gl_VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(6 * sizeof(float)));
+        gl_VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(8 * sizeof(float)));
+        gl_VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(12 * sizeof(float)));
+        glDrawElements(GL_TRIANGLES, (GLsizei)mesh->index_count, GL_UNSIGNED_INT, (const void *)0);
+        for (k = 1; k < 5; k++) gl_DisableVertexAttribArray((GLuint)k);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer); /* the composite below fills it */
+    } else if (use_gpu) {
         int k;
         gl_UseProgram(nat.gpu_program);
         gl_Uniform2f(nat.g_size, (float)nat.w, (float)nat.h);
