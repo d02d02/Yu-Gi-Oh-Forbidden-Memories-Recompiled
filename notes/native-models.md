@@ -73,7 +73,7 @@ What `native_convert.py` writes, every member but `model` optional; files are na
 | `model` | the HDM4 file: mesh, skeleton, clips |
 | `textures` | PNG files drawn over the file's own: `base` (colour, alpha below half is cut), `normal` (normal map, green up as glTF), `metal_roughness` (glTF's: roughness in green, metal in blue). Swap a PNG and restart: no conversion. Above 2048 a side (`MEMORIES_NATIVE_TEXTURE_MAX`) a texture is halved until it fits |
 | `clips` | the clip each act plays (acts below); an act left out plays the default name, else the first clip |
-| `strike` | the attack clip's frames where its blows land (at most 4), for the attack's timing |
+| `strike` | the attack clip's frames where its blows land (at most 4): where the game knows when the blow lands (3D Monsters on the field), the attack clip is time-warped so the first one lands then |
 | `scale` | percent, about the soles (110 = a tenth taller, feet where they were) |
 | `look` | the model's light and camera (below), in percent (`camera_near` in game units, `flip_green` 0 or 1) |
 | `name`, `author`, `license`, `source`, `converter` | for people; the game does not read them |
@@ -95,7 +95,8 @@ sounds and effects never change):
 | `win` | the winner's pose (row 7) |
 | `guard` | guarding (row 8) |
 
-A change of act cross-fades over 6 frames. The converter guesses the clips by name and puts the idle where it finds nothing: check them.
+A change of act cross-fades over 6 frames. An act with no clip (in `clips`, nor of the default name) plays another's: guard and destroyed the
+hit's, the others the idle's. The converter guesses the clips by name and puts the idle where it finds nothing: check them.
 
 ### Look
 
@@ -151,6 +152,12 @@ A code mod that draws a slot itself (`func_800540B4`) says what the draw is just
 (`src/pc/render/native_model.h`; bind it with `host->symbol` so the mod still loads on a game without it): the context (field, big card,
 or measuring), its own key for the monster, the card, a fade and the disc frame its blow lands at. A native model then keeps its own
 animation per monster, fades with it, and sorts at its depth. The card it names picks the model, as the battle's cards do in the arena.
+
+3D Monsters does this: each monster it draws on the field or on the attack cards keeps its own pose (two native monsters never mix),
+fades with the summon and the destruction, and in its attack the clip's first strike frame lands half way through the attack row,
+where the mod has the defender react. With the attacker's effects on (`effects`) the effects decide when the blow lands, which is not
+known ahead, so the attack clip then runs evenly over the row. A card a card mod added shows the native model of the card whose disc
+model it borrows.
 
 ## Testing
 

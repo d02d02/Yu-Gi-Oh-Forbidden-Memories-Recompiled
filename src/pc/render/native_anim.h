@@ -25,11 +25,13 @@ typedef struct NativeAnimFrame {
     int log;                  /* MEMORIES_NATIVE_SKIN_LOG: a pose line every 20 draws */
 } NativeAnimFrame;
 
-/* The clip an act plays: the package's choice (NativeMesh.act_clip), else the default name, else the first clip; NULL
- * when the mesh has none. */
+/* The clip an act plays: the package's choice (NativeMesh.act_clip), else the default name; an act with neither plays
+ * the hit's (guard, destroyed) or the idle's (the others), else the first clip; NULL when the mesh has none. */
 const NativeClip *NativeAnim_ActClip(const NativeMesh *mesh, NativeAct act);
-/* The clip draw `d` plays (`*clip_out`, NULL when the mesh has none) and the time in it, in seconds. `forced`: a clip
- * name played on a free clock whatever the game does (MEMORIES_NATIVE_CLIP), or NULL / "". */
+/* The clip draw `d` plays (`*clip_out`, NULL when the mesh has none) and the time in it, in seconds: over the row's
+ * length, the attack time-warped so the package's first strike frame lands on the draw's contact frame when both are
+ * known (else Black Luster Soldier's measured warp for its row 3). `forced`: a clip name played on a free clock whatever
+ * the game does (MEMORIES_NATIVE_CLIP), or NULL / "". */
 float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out);
 /* The rows (4 x NATIVE_SKIN_ROWS x 4 floats) for draw `d` at time `t` of `clip`. */
 void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, const NativeAnimFrame *frame,

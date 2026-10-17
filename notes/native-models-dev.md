@@ -85,6 +85,15 @@ placed from the original's root, and plays its own clip chosen from the game's a
 time-warped piecewise so the clip's strike lands on the game's contact frames: disc frames {0,25,30,61,95,150} -> clip frames {0,8,11,22,30,46} (the game's contact window opens at
 disc frame 29, closes at 61, second contact at 95; the clip's hand-speed peak is at frame 11). Sounds, effects and camera cuts are keyed to the disc frames, so a clip may not change the
 row's length; it can only be warped inside it. Row changes cross-fade the local pose over `NATIVE_FADE` (6) game frames (state per slot, in `NativeAnim_Rows`).
+**Data-driven (phase D/E).** `NativeAnim_ActClip`: the package's clip for the act, else the default name above, else the act's fallback
+(guard, destroyed -> hit; the others -> idle), else clip 0. The attack with a known contact frame (`info.contact_frame` > 0, from a code
+mod's instance) and package strike frames is warped piecewise through (0, 0), (contact, strike[0]), (row end, clip end) and wins over the
+measured BLS table; the arena's own draws carry -1 (their contact frames are E2/E3's measurement), so they keep the table.
+3D Monsters (`mods/3d-monsters/field_models.c`, `native_say`): every `func_800540B4(0)` it makes is named first: FIELD (tag 0, and the
+fighters' `side + FIELD_TAG` entries) or BIG_CARD (tags 1, 2), key = its cache entry, card = the model's card (`Cards_ModelId`), its fade,
+contact = half the attack row (`blow_frame`, where `attack_side` makes the defender react; -1 while the attacker's control module
+decides); `sort_aside` (the fit and the battle pose measure the packets) is MEASURE. Bound with `host->symbol`, so the mod still loads
+on a build without the pass.
 `MEMORIES_NATIVE_CLIP=<name>` plays one clip on a free clock (ignores the game).
 
 ## 6. Skinning and shading details
