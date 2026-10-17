@@ -13,6 +13,21 @@
 #define NATIVE_SKIN_ROWS (NATIVE_MAX_BONES + 3)
 #define NATIVE_FADE 6 /* game frames of cross-fade when the disc animation row changes (0.2 s at 30 fps) */
 
+/* What a slot is doing, from its disc row: the rows the arena plays (func_8004EB00, model_control.c) and 3D Monsters
+ * plays on the field. 0 and 1 idle (1: back from a hit), 2 enter, the attack row field_DFE + 3 (3, or 4 with the second
+ * guardian star), 5 hit and standing, 6 destroyed, 7 the winner's pose, 8 guard. */
+typedef enum NativeAct {
+    NATIVE_ACT_IDLE,
+    NATIVE_ACT_ENTER,
+    NATIVE_ACT_ATTACK,
+    NATIVE_ACT_HIT,
+    NATIVE_ACT_DESTROYED,
+    NATIVE_ACT_WIN,
+    NATIVE_ACT_GUARD,
+    NATIVE_ACT_COUNT
+} NativeAct;
+NativeAct NativeAnim_Act(int row, int attack_row);
+
 /* What the picture adds to a draw's own state. */
 typedef struct NativeAnimFrame {
     float offset_x, offset_y; /* the drawing offset the GPU adds to every vertex */

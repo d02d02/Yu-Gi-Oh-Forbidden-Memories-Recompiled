@@ -90,6 +90,7 @@ static void set_draw(int id, int slot, int row, int attack_row, int frame, int l
     draw.h = 1000;
     draw.tint = 0x808080u;
     draw.info.slot = slot;
+    draw.info.key = slot;
     draw.info.anim_index = row;
     draw.info.attack_row = attack_row;
     draw.info.anim_frame = frame;
@@ -120,6 +121,19 @@ static float rows[4 * NATIVE_SKIN_ROWS * 4];
 static const float *bone_row(unsigned bone, unsigned row)
 {
     return rows + ((size_t)bone * 4 + row) * 4;
+}
+
+static void pose_mesh(int id, int key, int row, const NativeMesh *with)
+{
+    NativeAnimFrame frame;
+    const NativeClip *clip = NULL;
+    float t;
+    memset(&frame, 0, sizeof(frame));
+    frame.scale = 2;
+    set_draw(id, 0, row, 3, 0, 10);
+    draw.info.key = key;
+    t = NativeAnim_Choose(&draw, with, NULL, &clip);
+    NativeAnim_Rows(&draw, with, clip, t, &frame, rows);
 }
 
 static void pose(int id, int slot, int row)
@@ -203,6 +217,39 @@ int main(void)
     }
     CHECK(near(bone_row(0, 0)[0], 0.0f) && near(bone_row(0, 1)[0], 1.0f)); /* x goes to y: a quarter turn */
     CHECK(near(bone_row(1, 2)[3], 1000.0f) && near(bone_row(1, 0)[3], 0.0f)); /* the child turns with it, in place */
+
+    /* The acts of the rows. */
+    CHECK(NativeAnim_Act(0, 3) == NATIVE_ACT_IDLE && NativeAnim_Act(1, 3) == NATIVE_ACT_IDLE);
+    CHECK(NativeAnim_Act(2, 3) == NATIVE_ACT_ENTER && NativeAnim_Act(3, 3) == NATIVE_ACT_ATTACK);
+    CHECK(NativeAnim_Act(4, 3) == NATIVE_ACT_IDLE && NativeAnim_Act(4, 4) == NATIVE_ACT_ATTACK && NativeAnim_Act(3, 4) == NATIVE_ACT_IDLE);
+    CHECK(NativeAnim_Act(5, 3) == NATIVE_ACT_HIT && NativeAnim_Act(6, 3) == NATIVE_ACT_DESTROYED);
+    CHECK(NativeAnim_Act(7, 3) == NATIVE_ACT_WIN && NativeAnim_Act(8, 3) == NATIVE_ACT_GUARD && NativeAnim_Act(9, 3) == NATIVE_ACT_IDLE);
+    CHECK(NativeAnim_Act(3, 0) == NATIVE_ACT_ATTACK); /* no attack row captured: row 3 */
+
+    /* Two monsters drawn by turns in different rows (one idle, one hit: two field monsters through slot 0) keep their
+     * own poses: neither fades into the other's. */
+    {
+        int id = 100, k;
+        for (k = 0; k < 2 * (NATIVE_FADE + 2); k++, id++) pose_mesh(id, k & 1 ? 0x10002 : 0x10001, k & 1 ? 5 : 0, &mesh);
+        CHECK(near(bone_row(0, 0)[0], 0.0f) && near(bone_row(0, 1)[0], 1.0f)); /* the hit one, fully turned */
+        pose_mesh(id++, 0x10001, 0, &mesh);
+        CHECK(near(bone_row(0, 0)[0], 1.0f) && near(bone_row(0, 1)[0], 0.0f)); /* the idle one, not turned at all */
+    }
+    /* A key whose mesh changed starts afresh: no fade from the other skeleton's pose. */
+    {
+        static NativeMesh other;
+        other = mesh;
+        pose_mesh(200, 0x20001, 5, &mesh);
+        pose_mesh(201, 0x20001, 5, &mesh); /* settled on the hit pose ... */
+        pose_mesh(202, 0x20001, 0, &other); /* ... then idle with another mesh: idle at once */
+        CHECK(near(bone_row(0, 0)[0], 1.0f) && near(bone_row(0, 1)[0], 0.0f));
+    }
+    /* More monsters than the memory holds: the oldest gives its place, and every draw still poses. */
+    {
+        int k;
+        for (k = 0; k < 40; k++) pose_mesh(300 + k, 0x30000 + k, 0, &mesh);
+        CHECK(near(bone_row(0, 0)[0], 1.0f));
+    }
 
     if (failures) {
         fprintf(stderr, "native_anim_test: %d failed\n", failures);

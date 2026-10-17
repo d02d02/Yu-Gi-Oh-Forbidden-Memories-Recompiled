@@ -51,6 +51,7 @@ This file is the action plan the agent follows, and its status board; `history.m
 |---|---|---|---|---|
 | M1 | `milestone/native-m1` (0191bde7) | 1-7 | awaiting | |
 | M2 | `milestone/native-m2` (5cfc2168) | 1-3 | awaiting | |
+| M3 | `milestone/native-m3` | 1-5 | awaiting | |
 
 ## Rules for every change
 
@@ -159,6 +160,18 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 | M6 | F | `-Attack 2`: angel vs disc monster, angel vs angel, guard, destroyed, summon/withdraw fades | Depth right, no pose mixing, strike on the reaction, fades |
 | M7 | G | One `shots.json` in arena and field | Shots play, game timing unchanged in the arena |
 
+## M3 checklist (copy into `test-results/m3.md`)
+
+Build `milestone/native-m3`; the M1 and M2 items hold on it too.
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | Arena attack with the angel (`play-bls.ps1 -Attack 0`) | as in M1, except that where the arena's effects pass in front of the angel they can now be drawn over it (the model sorts at its own depth); the ground shadow stays under it (a shadow over its feet = report) |
+| 2 | The same with `MEMORIES_TRACE=model`; send the log | `evt native ... context=0 key=0 card=364` for BLS and `key=1 card=<the defender>`; at the blow an `evt row slot=1 row=6` (or 5 / 8) with `other_row=3 other_clock=<n>` |
+| 3 | Field attack (`play-bls.ps1 -Attack 2`) with the angel | the angel stands on its card at the card's depth, no longer over every card and monster. Not yet right (phase F): two native monsters mix their poses, no fades, strike timing |
+| 4 | The Library's model view of Black Luster Soldier, if you reach it | say what shows (the angel or the disc model): it decides H1 |
+| 5 | 1x/2x and widescreen as in M1 | as in M1 |
+
 ## Status
 
 | Phase | State |
@@ -166,5 +179,6 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 | M0 setup (branch, plan, build check) | done: game build (12 stubs) + 3D Monsters build pass here; ctest 146/149: `pc_utf8_paths` and `pc_fm_editor_compat` fail because of this branch (A6, A7), `pc_user_dir` fails only because the container runs as root (its chmod test cannot deny root) |
 | A | done (A1-A7), awaiting M1 on the laptop; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
 | B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), awaiting M2; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
-| C | next |
-| D-H | planned |
+| C | done (C1-C7), awaiting M3; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_capture` new (instances, suppression, marker entry, camera) and `pc_native_anim` extended (acts, per-monster memory), only `pc_user_dir` fails (root container) |
+| D | next |
+| E-H | planned |

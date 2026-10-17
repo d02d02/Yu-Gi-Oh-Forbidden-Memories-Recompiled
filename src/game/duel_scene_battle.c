@@ -1,5 +1,6 @@
 #ifdef MEMORIES_PC
 #include "pc/mods/mods.h"
+#include "pc/render/native_model.h"
 #endif
 /*
  * Duel scene-state 9: the battle. It presents the attacker and the defender,
@@ -591,6 +592,10 @@ void DuelScene_UpdateBattle(void)
             models[1].field_02 = 0;
             models[1].field_04 = 0;
             models[1].field_06 = (D_8009B178[1] >> 0xB) & 1;
+#ifdef MEMORIES_PC
+            /* The cards the arena's two slots show, for the native model pass (a custom card's own model). */
+            NativeModel_SetBattleCards((s16)H(left, 0xC), right->card_id);
+#endif
             result = func_8001EFD4(pair[0], pair[1]);
             if (result == -1) {
                 D_8009B208 = pair[0]->field_6A;

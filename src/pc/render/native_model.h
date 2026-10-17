@@ -16,10 +16,31 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NATIVE_MAX_DRAWS 8
+#define NATIVE_MAX_DRAWS 16 /* a frame's native draws: ten monsters on the field and two on the attack's big cards fit */
 #define NATIVE_MAX_PARTS 64
 #define NATIVE_MARKER 0x00A5C000u /* | draw id & 0xFF: GP0 command 0, ignored by every GPU */
-#define NATIVE_RING 16
+#define NATIVE_RING 32      /* the draws the replay keeps: two frames' worth */
+
+/* Where a slot is drawn (NativeInstance.context). */
+enum {
+    NATIVE_CONTEXT_ARENA = 0, /* the game's own: the arena battle (and the Library's model view) */
+    NATIVE_CONTEXT_FIELD,     /* a code mod's monster on the duel field (3D Monsters) */
+    NATIVE_CONTEXT_BIG_CARD,  /* a code mod's monster on the battle presentation's big cards */
+    NATIVE_CONTEXT_MEASURE,   /* a code mod measuring the disc model's packets: nothing is captured or left out */
+    NATIVE_CONTEXT_COUNT
+};
+
+/* What a code mod says about the slot it is about to draw with func_800540B4 (NativeModel_SetInstance). It applies
+ * to that one draw. `size` is sizeof(NativeInstance) in the caller's build: a field past it is taken as 0, so a mod
+ * built against this layout keeps working when fields are added at the end. */
+typedef struct NativeInstance {
+    int32_t size;
+    int32_t context;       /* NATIVE_CONTEXT_* */
+    int32_t key;           /* the caller's own name for the monster (a zone, a side, 0 to 65535): its animation state goes with it */
+    int32_t card;          /* the card shown (0: unknown) */
+    int32_t fade;          /* 0 opaque .. 255 gone, as SOFT_GPU_FADE */
+    int32_t contact_frame; /* the disc frame of the attack row where its blow lands, -1 unknown */
+} NativeInstance;
 
 typedef struct NativePart {
     int16_t rot[9]; /* the GTE rotation matrix, row by row, 1.3.12 fixed point */
@@ -46,6 +67,12 @@ typedef struct NativeSlotInfo {
     int32_t flat_lights[12];         /* field_D70: 3 entries of (3 x s32 direction, colour) */
     int32_t ambient[3];              /* field_DA0 */
     int32_t attack_row;              /* field_DFE + 3: the row this card attacks with (4 with its second guardian star) */
+    /* Filled by the capture (NativeModel_SlotInfo), not by the slot draw: */
+    int32_t context;                 /* NATIVE_CONTEXT_* */
+    int32_t key;                     /* the animation state's owner: the slot in the arena, context << 16 | the mod's key else */
+    int32_t card;                    /* the card shown (0: unknown) */
+    int32_t fade;                    /* 0 opaque .. 255 gone */
+    int32_t contact_frame;           /* see NativeInstance, -1 unknown */
 } NativeSlotInfo;
 
 typedef struct NativeDraw {
@@ -97,6 +124,13 @@ extern unsigned NativeModel_Stats[8];
 extern volatile int NativeModel_Suppress;
 /* Set by the GL pass: it can draw native models now (a picture of 2x or more, programs made). */
 extern volatile int NativeModel_GlReady;
+/* While NativeModel_Suppress: the nearest ordering-table entry the slot's packets would have gone into (the drivers
+ * keep the least index; ~0u: none yet). NativeModel_Link puts the marker there, so the model sorts at its own depth. */
+extern unsigned NativeModel_Nearest;
+/* A code mod, before func_800540B4: what the next slot draw is (NULL: the game's own, the default). Used once. */
+void NativeModel_SetInstance(const NativeInstance *instance);
+/* The battle code, as the arena starts: the cards of its slots 0 and 1 (0, 0 when it ends). */
+void NativeModel_SetBattleCards(int card0, int card1);
 /* The slot draw (game side). model < 0: not a duel model. */
 void NativeModel_BeginSlot(int model);
 void NativeModel_Part(int part);

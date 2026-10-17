@@ -17,17 +17,26 @@ placed from the original's root, and plays its own clip chosen from the game's a
 
 1. **Capture (game thread).** `Model_UpdateScene` -> `func_800540B4(slot)` (src/game/func_800540B4.c) draws one slot. Under `#ifdef MEMORIES_PC` it
    calls `NativeModel_BeginSlot(model)`, `NativeModel_Part(part)` per part (reads the GTE matrices the game just set), `NativeModel_SlotInfo(&info)`,
-   then `NativeModel_Link(ot, NativeModel_EndSlot())` which links a one-word marker packet (GP0 command 0, a no-op for every GPU) at the nearest OT
-   entry. While the GL pass can draw (`NativeModel_GlReady`) the slot's own PS1 packets are built but not linked (`NativeModel_Suppress`).
-   Code: `src/pc/render/native_model.c/.h`.
+   then `NativeModel_Link(ot, NativeModel_EndSlot())` which links a one-word marker packet (GP0 command 0, a no-op for every GPU) at the
+   nearest OT entry the slot's own packets would have taken (`NativeModel_Nearest`, kept by the polygon and outline drivers), so the model
+   sorts at its depth among the rest of the table. While the pass will draw it (`NativeModel_GlReady` and a software GPU scale of 2 or more)
+   the slot's own PS1 packets are built but not linked (`NativeModel_Suppress`). Code: `src/pc/render/native_model.c/.h`.
+   **Instances.** A draw is the game's own (context ARENA, key = the slot, the card from `NativeModel_SetBattleCards`, which the battle's
+   step 5 calls) unless a code mod named it just before with `NativeModel_SetInstance` (used for that one draw): context FIELD or BIG_CARD,
+   its own key (the key becomes `context << 16 | key`, so a mod's monsters never share the arena's animation state), the card, a fade
+   (0..255, applied to the composite) and the disc frame its blow lands at. Context MEASURE captures nothing and leaves the packets in (3D
+   Monsters measuring its models). `NativeInstance.size` lets a mod built against a smaller struct keep working. Test: `pc_native_capture`.
+   **Event log** (`MEMORIES_TRACE=model`): `evt native` per captured draw (model, context, key, card, row, clock, fade, contact, entry),
+   `evt row` per row a slot is told (with the other slot's row and clock: a reaction row 5/6/8 told while the other plays its attack row is
+   its blow landing, at that clock), `evt phase` per arena phase, `evt draw` per slot draw (the pose's inputs).
 2. **Replay (render thread).** `DrawOTag` -> `NativeModel_Take` -> the SoftGpu recorder carries the frame's `NativeDraw`s (OP_NATIVE) -> `gl_picture.c`
    `native_draw(id)` runs when the marker comes by in the ordered primitive stream. The GL pass cannot read game memory: everything the director needs
    is copied into `NativeDraw`/`NativeSlotInfo` (disc animation row/clock/length/speed, body root matrix `field_D1C->workm`, world-to-screen matrix
    `D_800FE148` (NOT `GsWSMATRIX`: not a pinned symbol), scale, tint, lights).
 3. **Draw.** `native_draw` -> for an HDM4 mesh (`mesh->bones != 0`): `NativeAnim_Choose` (native_anim.c) picks clip + time, `NativeAnim_Rows` samples/cross-fades/forward-kinematics
    on the CPU and uploads one small float texture, the vertex shader skins and projects, the fragment shader lights. The model is drawn into a private
-   multisampled framebuffer (4x MSAA, one shared depth buffer per frame) and composited over the picture at the marker (so it is always over PS1
-   opponents/effects sorted behind it; only native-vs-native depth is right).
+   multisampled framebuffer (4x MSAA, one shared depth buffer per frame) and composited over the picture at the marker, at the model's nearest
+   depth: what the table sorts nearer is drawn over it, what it sorts farther under it (only native-vs-native depth is per pixel).
 
 ## 3. Model formats (the loader accepts all; only HDM4 is the current path)
 

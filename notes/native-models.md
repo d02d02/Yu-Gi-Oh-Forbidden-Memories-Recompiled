@@ -53,6 +53,13 @@ monster is the disc's own model, as without the mod.
 * The model stands at the body root's position and facing; the clip is in place (its root motion is stripped when the file is made).
 * Lighting is the game's own three lights; with a normal map and a metal/roughness map in the file the surface is lit per pixel.
 
+## Code mods that draw monsters (3D Monsters)
+
+A code mod that draws a slot itself (`func_800540B4`) says what the draw is just before, with
+`NativeModel_SetInstance` (`src/pc/render/native_model.h`; bind it with `host->symbol` so the mod still loads on a game
+without it): the context (field, big card, or measuring), its own key for the monster, the card, a fade and the disc frame
+its blow lands at. A native model then keeps its own animation per monster, fades with it, and sorts at its depth.
+
 ## Testing
 
 `MEMORIES_NATIVE_MODEL=<file.hdm>` with `MEMORIES_NATIVE_MODEL_ID=<model>` (default 363, Black Luster Soldier) loads one model

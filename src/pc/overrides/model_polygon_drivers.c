@@ -274,9 +274,13 @@ static u32 *draw(u32 *scratch, const Driver *kind)
             if (kind->window) {
                 *out++ = 0xe2000000u;
             }
-            if (!NativeModel_Suppress) { /* a model the native pass draws: the packet is made but never linked */
+            if (!NativeModel_Suppress) {
                 packet[0] = (*entry & 0x00ffffffu) | ((u32)packet_words << 24);
                 *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
+            } else if ((unsigned)(entry - entries) < NativeModel_Nearest) {
+                /* A model the native pass draws: the packet is made but never linked; the nearest entry it would
+                 * have taken is where the model's marker goes (NativeModel_Link). */
+                NativeModel_Nearest = (unsigned)(entry - entries);
             }
             packet += packet_words + 1;
             /* The translucent second pass: flat template color, its CLUT, blend mode 2. */
@@ -469,8 +473,12 @@ static u32 *outline(u32 *scratch, int quad, int gouraud, int window, int shared)
         *out++ = 0x55555555u;
         words = (unsigned)(out - packet) - 1;
         entry = entries + (Memories_GteReadData(7) >> shift);
-        packet[0] = (*entry & 0x00ffffffu) | ((u32)words << 24);
-        *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
+        if (!NativeModel_Suppress) {
+            packet[0] = (*entry & 0x00ffffffu) | ((u32)words << 24);
+            *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
+        } else if ((unsigned)(entry - entries) < NativeModel_Nearest) { /* as the polygons' (draw, above) */
+            NativeModel_Nearest = (unsigned)(entry - entries);
+        }
         packet = out;
     }
     D_800FE240 = (u32)(uintptr_t)packet;
