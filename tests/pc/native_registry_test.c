@@ -204,11 +204,32 @@ static int noted(const char *text)
     return strstr(notes, text) != NULL;
 }
 
-int main(void)
+/* `--load PATH`: the game's loader on one model (tools/hd-models/tests: a converted package read back), one line. */
+static int load_one(const char *path)
+{
+    const NativeMesh *mesh;
+    set_env("MEMORIES_NATIVE_MODEL", path);
+    set_env("MEMORIES_NATIVE_MODEL_ID", "363");
+    mesh = NativeRegistry_Mesh(NativeRegistry_Find(363, 0));
+    if (!mesh) {
+        fprintf(stderr, "native_registry_test: %s was not loaded\n", path);
+        return 1;
+    }
+    printf("loaded vertices=%u bones=%u clips=%u texture=%ux%u normal=%ux%u attack=%u idle=%u strikes=%u", mesh->vertices,
+           mesh->bones, mesh->clip_count, mesh->tex_w, mesh->tex_h, mesh->normal_w, mesh->normal_h,
+           (unsigned)mesh->act_clip[NATIVE_ACT_ATTACK], (unsigned)mesh->act_clip[NATIVE_ACT_IDLE], (unsigned)mesh->strike_count);
+    if (mesh->strike_count) printf(" strike0=%u", (unsigned)mesh->strike[0]);
+    printf(" ground=%.1f\n", (double)mesh->ground);
+    return 0;
+}
+
+int main(int argc, char **argv)
 {
     static const char *const clips[] = {"Idle", "Swing", "Fall"};
     const NativeMesh *mesh;
     int id;
+
+    if (argc == 3 && !strcmp(argv[1], "--load")) return load_one(argv[2]);
 
     assert(scratch_dir(root, sizeof(root), "memories-native"));
     set_env("MEMORIES_NATIVE_MODEL", NULL);

@@ -1050,6 +1050,15 @@ if(Python3_Interpreter_FOUND)
         add_test(NAME pc_replay_check
             COMMAND "${Python3_EXECUTABLE}" tests/pc/replay_check_test.py
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        # The native model tools (tools/hd-models: convert without the disc, check, make a mod) on a rigged glb the
+        # test makes, read back by the game's loader; the conversion is skipped without numpy and Pillow.
+        add_test(NAME pc_native_tools
+            COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s tools/hd-models/tests -p "test_native_tools.py"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        if(TARGET memories_native_registry_test)
+            set_tests_properties(pc_native_tools PROPERTIES
+                ENVIRONMENT "MEMORIES_NATIVE_LOADER=$<TARGET_FILE:memories_native_registry_test>")
+        endif()
         # Native units that name files reach compat/fs.h (notes/pc-build.md).
         add_test(NAME pc_utf8_paths
             COMMAND "${Python3_EXECUTABLE}" tools/pc/check_utf8_paths.py
