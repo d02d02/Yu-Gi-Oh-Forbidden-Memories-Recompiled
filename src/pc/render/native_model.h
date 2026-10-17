@@ -1,19 +1,18 @@
 #ifndef MEMORIES_PC_NATIVE_MODEL_H
 #define MEMORIES_PC_NATIVE_MODEL_H
-/* Native model pass (experiment, off unless MEMORIES_NATIVE_MODEL names a file).
+/* Native model pass: a monster whose model has an HDM4 replacement (native_models in a mod's manifest,
+ * notes/native-models.md) is drawn by the OpenGL picture from that model instead of from the game's PS1 packets. The
+ * game's logic, animation, packet buffer and save states are untouched:
  *
- * A monster whose model has a replacement mesh is drawn by the OpenGL picture from that mesh instead of
- * from the game's PS1 packets. The game's logic, animation, packet buffer and save states are untouched:
+ *   func_800540B4 (the slot draw) calls BeginSlot / Part / SlotInfo / EndSlot while it sorts the slot. Part reads the
+ *   part's GTE matrices (the lights come from them), SlotInfo the slot's animation row, clock and body root, EndSlot
+ *   closes the draw and NativeModel_Link puts a one-word marker packet (GP0 command 0, a no-op for every GPU) into the
+ *   ordering table, so the model is drawn where the slot sorts, in the order of the frame.
+ *   DrawOTag takes the frame's draws (NativeModel_Take), the replay gets them with the frame (SoftGpu recorder
+ *   `native`), and gl_picture.c draws the model when its marker comes by: its own clip (native_anim.c), skinned on the
+ *   GPU, with a depth buffer of its own, laid over the picture.
  *
- *   func_800540B4 (the slot draw) calls BeginSlot / Part / EndSlot while it sorts the slot. Part reads the
- *   part's GTE matrices (the game has just set them with GsSetLsMatrix), EndSlot closes the draw and
- *   NativeModel_Link puts a one-word marker packet (GP0 command 0, a no-op for every GPU) into the
- *   ordering table, so the mesh is drawn where the model sorts, in the order of the frame.
- *   DrawOTag takes the frame's draws (NativeModel_Take), the replay gets them with the frame
- *   (SoftGpu recorder `native`), and gl_picture.c draws the mesh when its marker comes by.
- *
- * The mesh file is what tools/hd-models/hmd_export.py writes (model.hdm): vertices in the parts' local
- * space, one triangle per three vertices, so the same GTE matrices pose it. */
+ * The file is HDM4 (native_format.h), which tools/hd-models/rigged_to_hdm4.py writes from a rigged glTF. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -71,19 +70,17 @@ typedef struct NativeClip {
 } NativeClip;
 
 typedef struct NativeMesh {
-    uint32_t vertices, parts, tex_w, tex_h;
-    uint32_t stride; /* words per vertex: 9 (HDM1) or 17 (HDM2: the same, then part B, weight B, pos B[3], normal B[3]) */
-    const uint32_t *words; /* per vertex 9 words: f32 pos[3], f32 normal[3], f32 uv[2], u32 part */
+    uint32_t vertices, tex_w, tex_h;
+    uint32_t stride;       /* words per vertex: 13 */
+    const uint32_t *words; /* per vertex: f32 pos[3], normal[3], uv[2], u32 joints (4 x u8), f32 weights[4] */
     const uint8_t *rgba;   /* tex_w x tex_h */
-    uint32_t joint_parts;  /* HDM3: entries in the joint table (0 = none: the game's own part translations are used) */
-    /* HDM4 (the model's OWN skeleton and clips; `words` = vertices of 13 words: f32 pos[3], normal[3], uv[2], u32 4 x u8 joints, f32 weights[4]) */
+    /* the model's OWN skeleton and clips */
     uint32_t bones, index_count, clip_count;
     uint32_t normal_w, normal_h, mr_w, mr_h; /* HDM4 PBR-lite maps (0 = none): normal map, metal (B) / roughness (G) */
     const uint8_t *normal_rgba, *mr_rgba;
     const uint32_t *bone_table; /* per bone 16 words: i32 parent, f32 ibm[12] (3x4 row major) */
     const uint32_t *indices;
     NativeClip clips[NATIVE_MAX_CLIPS];
-    const uint32_t *joints; /* per part 16 words: i32 parent (-1 none), f32 J[3] the model's own joint, f32 tb[3] the disc's, f32 Rbi[9] the inverse of the disc's bind rotation */
 } NativeMesh;
 
 /* The look of big native models: environment (MEMORIES_ARENA_CAMERA_*, MEMORIES_NATIVE_*) over the mod's settings over these defaults

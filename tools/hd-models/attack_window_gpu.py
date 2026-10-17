@@ -24,7 +24,7 @@ ap.add_argument("--exe", default=str(HACK / "shared/tools/hd-models/_exe/memorie
 a = ap.parse_args()
 out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 0, "mod.2d-monsters": 0, "mod.camera-pin": 1}
-env = {"MEMORIES_FPS": "-1", **({"MEMORIES_NATIVE_CPU": "1"} if __import__("os").environ.get("AB_CPU") else {})}   # every game frame is shown: a shot lands on exactly the frame asked for (else it waits for the next throttled present, a few frames later and different per run)
+env = {"MEMORIES_FPS": "-1"}   # every game frame is shown: a shot lands on exactly the frame asked for (else it waits for the next throttled present, a few frames later and different per run)
 if a.native:
     env.update(MEMORIES_NATIVE_MODEL=str(Path(a.native).resolve()), MEMORIES_NATIVE_MODEL_ID="363", MEMORIES_NATIVE_MODEL_LOG="1")
 env.update(dict(e.split("=", 1) for e in a.env))

@@ -41,6 +41,9 @@ int NativeFormat_ParseHdm4(const uint32_t *w, size_t bytes, NativeMesh *out, cha
     uint64_t words, at = HEADER_WORDS, k;
     uint32_t b, flags, map;
     if (!w || bytes < HEADER_WORDS * 4u || bytes % 4u) return fail(why, why_size, "too short, or not whole 4-byte words");
+    if (!memcmp(w, "HDM1", 4) || !memcmp(w, "HDM2", 4) || !memcmp(w, "HDM3", 4))
+        return fail(why, why_size, "an HDM1-3 file: those part-posed formats are no longer drawn (tools/hd-models/rigged_to_hdm4.py "
+                                   "makes an HDM4)");
     if (memcmp(w, "HDM4", 4) != 0) return fail(why, why_size, "not an HDM4 file");
     words = (uint64_t)bytes / 4u;
     memset(&m, 0, sizeof(m));

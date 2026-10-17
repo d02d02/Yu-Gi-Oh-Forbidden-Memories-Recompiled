@@ -25,8 +25,8 @@ static int loaded; /* 1 once the environment was read */
 /* MEMORIES_NATIVE_MODEL without MEMORIES_NATIVE_MODEL_ID: Black Luster Soldier's model (a disc model id is the card id
  * minus one: card 364, model 363). */
 #define NATIVE_TEST_MODEL 363
-/* MEMORIES_NATIVE_MODEL_ID=-2 is a TEST switch: the mesh is drawn in every duel slot (two native models for depth tests).
- * Only the model the mesh was made for is posed right; the others get garbage joints. */
+/* MEMORIES_NATIVE_MODEL_ID=-2 is a TEST switch: the mesh is drawn in every duel slot (two native models for depth tests;
+ * the model plays its own clips from the slot's root, so it stands right in any slot, sized for the model it was made for). */
 static int mesh_model = -1;
 static NativeMesh mesh;
 static int logged;
@@ -134,69 +134,23 @@ static void load(void)
 {
     const char *path = getenv("MEMORIES_NATIVE_MODEL");
     const char *id = getenv("MEMORIES_NATIVE_MODEL_ID");
-    FILE *file;
-    long size;
+    char why[200] = "it cannot be read";
+    long size = 0;
     uint32_t *data;
     loaded = 1;
     logged = getenv("MEMORIES_NATIVE_MODEL_LOG") != NULL;
     Mods_VisitManifests(visit_native_models, NULL);
     load_tuning();
     if (!path || !*path) return;
-    file = fopen(path, "rb");
-    if (!file) {
-        fprintf(stderr, "memories-pc: native model: cannot open %s\n", path);
-        return;
-    }
-    fseek(file, 0, SEEK_END);
-    size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    data = (uint32_t *)malloc((size_t)size);
-    if (data && fread(data, 1, (size_t)size, file) != (size_t)size) {
-        free(data);
-        data = NULL;
-    }
-    if (data && size >= 32 && memcmp(data, "HDM4", 4) == 0) {
-        char why[200];
-        fclose(file);
-        if (parse_hdm4(path, data, size, &mesh, why, sizeof(why))) {
-            mesh_model = id ? atoi(id) : NATIVE_TEST_MODEL;
-            fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
-                    mesh.vertices, mesh.bones, mesh.clip_count);
-        } else {
-            free(data);
-        }
-        return;
-    }
-    if (!data || size < 20 ||
-        (memcmp(data, "HDM1", 4) != 0 && memcmp(data, "HDM2", 4) != 0 && memcmp(data, "HDM3", 4) != 0)) {
-        fprintf(stderr, "memories-pc: native model: %s is not a model.hdm\n", path);
-        free(data);
-        fclose(file);
-        return;
-    }
-    fclose(file);
-    mesh.vertices = data[1];
-    mesh.parts = data[2];
-    mesh.tex_w = data[3];
-    mesh.tex_h = data[4];
-    mesh.stride = memcmp(data, "HDM1", 4) == 0 ? 9 : 17;
-    mesh.joint_parts = 0;
-    mesh.joints = NULL;
-    if (memcmp(data, "HDM3", 4) == 0) { /* a joint table of `parts` entries (16 words) sits between the header and the vertices */
-        mesh.joint_parts = mesh.parts;
-        mesh.joints = data + 5;
-    }
-    if ((size_t)size != 20 + (size_t)mesh.joint_parts * 64 + (size_t)mesh.vertices * mesh.stride * 4 +
-                            (size_t)mesh.tex_w * mesh.tex_h * 4) {
-        fprintf(stderr, "memories-pc: native model: %s has the wrong size\n", path);
+    data = read_whole(path, &size);
+    if (!data || !parse_hdm4(path, data, size, &mesh, why, sizeof(why))) {
+        if (!data) fprintf(stderr, "memories-pc: native model: %s: %s\n", path, why);
         free(data);
         return;
     }
-    mesh.words = data + 5 + (size_t)mesh.joint_parts * 16;
-    mesh.rgba = (const uint8_t *)mesh.words + (size_t)mesh.vertices * mesh.stride * 4;
     mesh_model = id ? atoi(id) : NATIVE_TEST_MODEL;
-    fprintf(stderr, "memories-pc: native model: %s for model %d (%u vertices, %u parts)\n", path, mesh_model,
-            mesh.vertices, mesh.parts);
+    fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
+            mesh.vertices, mesh.bones, mesh.clip_count);
 }
 
 const NativeMesh *NativeModel_Mesh(int model)

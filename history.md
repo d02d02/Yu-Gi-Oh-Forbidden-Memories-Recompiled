@@ -19,3 +19,14 @@
   - A6: `native_model.c` goes through `pc/compat/fs.h` (`pc_utf8_paths`).
   - A7: FM Editor knows API 17 and `native_models` (`pc_fm_editor_compat`); modding.md lists the key.
   - The converter refuses more than 16 clips (the game's limit) instead of writing a file the game refuses.
+* Phase B (factoring):
+  - B3: `src/pc/render/native_anim.c`: the director (`NativeAnim_Choose`) and the pose (`NativeAnim_Rows`: clip sampling,
+    cross-fade, forward kinematics, the skinning rows) moved out of `gl_picture.c` unchanged but for their inputs
+    (`NativeAnimFrame`: picture offset, scale, lit, tuning); test `pc_native_anim` (rows -> clips incl. the second guardian
+    star, Black Luster Soldier's warp, a forced clip, forward kinematics, row 128, the cross-fade and a replayed draw).
+  - B4: HDM1-3 removed (the part-posed CPU and GPU paths, the retarget, their shaders, buffers and switch
+    `MEMORIES_NATIVE_CPU`, the legacy loader): about 730 lines; such a file is refused with a note naming HDM4.
+  - B6: widescreen: the model was laid into the 4:3 picture only, so with widescreen on (shown from the wider target)
+    neither it nor the disc model showed; it is now copied into the wide target's centre (`wide_mirror`). A part past the
+    4:3 edges does not reach the margins.
+  - B1 kept the GL code in `gl_picture.c` (its loader, GLES shader conversion and targets are that file's own).

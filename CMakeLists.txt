@@ -883,6 +883,15 @@ if(BUILD_TESTING)
         target_compile_options(memories_native_format_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()
     add_test(NAME pc_native_format COMMAND memories_native_format_test)
+    # The native model's animation without OpenGL (src/pc/render/native_anim.h): the clip a disc row plays,
+    # the attack's time warp, the forward kinematics into the skinning rows and the cross-fade on a row change.
+    add_executable(memories_native_anim_test tests/pc/native_anim_test.c src/pc/render/native_anim.c)
+    target_include_directories(memories_native_anim_test PRIVATE src)
+    if(NOT MSVC)
+        target_compile_options(memories_native_anim_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        target_link_libraries(memories_native_anim_test PRIVATE m)
+    endif()
+    add_test(NAME pc_native_anim COMMAND memories_native_anim_test)
     # Runs after every test (the fixture at the end of this file) and removes
     # the scratch folders a test could not: killed, or holding a file open.
     add_executable(memories_scratch_sweep_test tests/pc/scratch_sweep_test.c)

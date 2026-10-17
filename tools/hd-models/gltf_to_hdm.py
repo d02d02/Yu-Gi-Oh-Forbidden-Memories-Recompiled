@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A skinned glTF model of your own -> a model.hdm the game's native model pass draws.
+"""A skinned glTF model of your own -> a model.hdm of kind HDM2 (the game no longer draws HDM1-3: rigged_to_hdm4.py
+makes the HDM4 it draws; this file stays for its glTF reader, which rigged_to_hdm4.py imports).
 
     gltf_to_hdm.py MODEL.gltf|.glb OUT.hdm --card 364 [--disc DISC.bin]
 

@@ -6,7 +6,7 @@ Python needs numpy + pillow (+ imageio-ffmpeg for videos); run with `python -I`.
 | Tool | What it does |
 |---|---|
 | `rigged_to_hdm4.py MODEL.glb OUT.hdm --card 364 --clips-from CLIPS.glb` | a rigged glTF -> an HDM4 file (own skeleton + clips + optional normal/metal-roughness maps). The converter. Needs the disc image (`--disc`, default `game/ygofm-orig-usa.bin` of the main checkout) for the disc skeleton it fits to |
-| `gltf_to_hdm.py`, `hmd_export.py`, `vendor/` | helpers the converter imports (glTF reader, disc model reader); `hmd_export.py CARD OUT` also exports a disc monster's model to glTF |
+| `gltf_to_hdm.py`, `hmd_export.py`, `vendor/` | helpers the converter imports (glTF reader, disc model reader; `gltf_to_hdm.py`'s own HDM2 output is no longer drawn by the game); `hmd_export.py CARD OUT` also exports a disc monster's model to glTF |
 | `blender/angel_on_mannequin_weights.py` + `common.py` | Blender: dress the mannequin's rig with another mesh (weight transfer, rigid props, wing bones, bridge-face cut) |
 | `blender/angel_swords_and_islands.py` | Blender: reassemble/carry the swords, drop floating pieces |
 | `blender/export_rigged_glb.py` | Blender: export the skinned glb the converter reads |

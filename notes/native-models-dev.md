@@ -24,15 +24,16 @@ placed from the original's root, and plays its own clip chosen from the game's a
    `native_draw(id)` runs when the marker comes by in the ordered primitive stream. The GL pass cannot read game memory: everything the director needs
    is copied into `NativeDraw`/`NativeSlotInfo` (disc animation row/clock/length/speed, body root matrix `field_D1C->workm`, world-to-screen matrix
    `D_800FE148` (NOT `GsWSMATRIX`: not a pinned symbol), scale, tint, lights).
-3. **Draw.** `native_draw` -> for an HDM4 mesh (`mesh->bones != 0`): `native_director` picks clip + time, `native_skin_pose` samples/cross-fades/forward-kinematics
+3. **Draw.** `native_draw` -> for an HDM4 mesh (`mesh->bones != 0`): `NativeAnim_Choose` (native_anim.c) picks clip + time, `NativeAnim_Rows` samples/cross-fades/forward-kinematics
    on the CPU and uploads one small float texture, the vertex shader skins and projects, the fragment shader lights. The model is drawn into a private
    multisampled framebuffer (4x MSAA, one shared depth buffer per frame) and composited over the picture at the marker (so it is always over PS1
    opponents/effects sorted behind it; only native-vs-native depth is right).
 
 ## 3. Model formats (the loader accepts all; only HDM4 is the current path)
 
-* HDM1/2: the disc model's own parts re-meshed (per-part vertices, game rotations pose it); HDM3: + a joint table (own joint positions, game rotations
-  retargeted by forward kinematics in `native_retarget`); both are CPU/GPU "part posed" paths kept as the reference (`MEMORIES_NATIVE_CPU=1`).
+* HDM1/2 (the disc model's own parts re-meshed, posed by the game's rotations) and HDM3 (+ a joint table, the game's rotations retargeted) were
+  the first, "part posed" paths. They were removed on `feat/native-models-plug-and-play` (the decision below: the model's own skeleton); such a
+  file is refused with a note that says so. `hmd_export.py` (a disc model to glTF) and the glTF reader in `gltf_to_hdm.py` stay as helpers.
 * **HDM4 (own skeleton + clips)**, little endian, 4-byte words:
   `"HDM4", nverts, nindices, nbones, tex_w, tex_h, nclips, flags` (flags bit0 normal map, bit1 metal(B)/roughness(G) map);
   bones: `nbones x 16 words` = `i32 parent, f32 ibm[12] (3x4 row major, disc-space model -> bone), 3 pad`;
@@ -55,11 +56,11 @@ placed from the original's root, and plays its own clip chosen from the game's a
 
 ## 5. Director (disc state -> clip)
 
-`native_director` (gl_picture.c): disc row (`info.anim_index`) -> clip name: rows 0,1,4,7 `Sword_Idle`, 2 `Idle_Loop`, 3 `Sword_Attack`, 5 `Hit_Chest`, 6 `Death01`
+`NativeAnim_Choose` (native_anim.c, unit test `pc_native_anim`): disc row (`info.anim_index`) -> clip name: the attack row `field_DFE + 3` (`info.attack_row`: 3, or 4 with the second guardian star) `Sword_Attack`, the other of 3/4 and rows 0,1,7 `Sword_Idle`, 2 `Idle_Loop`, 5 `Hit_Chest`, 6 `Death01`
 (Quaternius Universal Animation Library names; another asset needs its own table). Phase = `anim_frame` (12.4 fixed point clock) / (16 x row length). The attack row is
 time-warped piecewise so the clip's strike lands on the game's contact frames: disc frames {0,25,30,61,95,150} -> clip frames {0,8,11,22,30,46} (the game's contact window opens at
 disc frame 29, closes at 61, second contact at 95; the clip's hand-speed peak is at frame 11). Sounds, effects and camera cuts are keyed to the disc frames, so a clip may not change the
-row's length; it can only be warped inside it. Row changes cross-fade the local pose over `NATIVE_FADE` (6) game frames (state per slot, in `native_skin_pose`).
+row's length; it can only be warped inside it. Row changes cross-fade the local pose over `NATIVE_FADE` (6) game frames (state per slot, in `NativeAnim_Rows`).
 `MEMORIES_NATIVE_CLIP=<name>` plays one clip on a free clock (ignores the game).
 
 ## 6. Skinning and shading details
@@ -113,9 +114,15 @@ Debug aids: `blender/debug_island_colours.py` (colour the mesh islands by role),
 ## 10. Decisions and why
 
 * Own skeleton + clips (Option A) over retargeting the game's rotations onto a foreign skeleton: the retarget needed per-model fitting and kept producing artefacts (limb lengths, sword/wing rules); a clean rig with its own clips needs none.
-* Vertex-shader skinning with matrices in a texture (CPU only samples clips): GLES/GL3 guarantee few uniforms; the CPU path is kept for HDM1-3.
+* Vertex-shader skinning with matrices in a texture (CPU only samples clips): GLES/GL3 guarantee few uniforms.
 * Do not skip the original model's draw: logic/camera/sound/effects read its joints and centre (`field_DD0`, `field_DC8`); only its packets are not linked.
 * Camera changes are applied to a copy of the view, never to the game's state.
+
+## 10b. Widescreen
+
+A full-screen drawing area is shown, with widescreen on, from a target a margin wider on each side whose centre is the picture
+(soft_gpu.c). The model is laid into the picture and then copied into that centre (`wide_mirror`, as a transfer into the area is); it
+is drawn at the picture's size, so a part of it past the 4:3 edges does not reach the margins.
 
 ## 11. Open items
 

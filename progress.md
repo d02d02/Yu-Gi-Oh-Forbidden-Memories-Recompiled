@@ -63,11 +63,11 @@ This file is the action plan the agent follows, and its status board; `history.m
 
 | ID | Change |
 |---|---|
-| B1 | The pass leaves `gl_picture.c`: `src/pc/render/native_gl.c` (programs, MSAA target, shared depth, composite). `gl_picture.c` keeps `OP_NATIVE`, the marker and one call `NativeGl_Draw(draw, &context)` (picture target, offsets, clip, scale, flush) |
-| B2 | `native_model.c` split: `native_capture.c` (BeginSlot/Part/Info/EndSlot/Link), `native_format.c` (load + validate, no GL, unit-tested), `native_registry.c` (manifests -> models, tuning, lazy load) |
+| B1 | Revised: the GL code stays in `gl_picture.c` (its OpenGL functions, shader conversion for GLES, picture targets and replay state are that file's own; moving them out means exporting its loader). Everything that is not GL leaves it instead (B3), so the native section there is GL-only |
+| B2 | `native_format.c` done in A3; the registry split goes with its rewrite in D (D2/D3) |
 | B3 | `native_anim.c` (pure C): director + clip sampling + cross-fade + forward kinematics -> bone rows. Unit tests: sampling, FK, quaternion blend, warp |
 | B4 | Remove HDM1-3 (part-posed CPU/GPU paths, retarget, their shaders) |
-| B5 | Debug switches under `MEMORIES_TRACE=native` + `MEMORIES_NATIVE_DEBUG=<flags>`; player-facing tuning becomes settings (package `look`, one global "Native models" option) |
+| B5 | Switches read once (A5), `MEMORIES_NATIVE_CPU` gone with B4; the trace channel goes with the event log (C7), tuning settings with the package `look` (D) |
 | B6 | Widescreen: check whether the arena/field draw into the widescreen target; if so composite there too |
 
 ### C. Instance + event layer (shared by both objectives) -> M3
@@ -148,5 +148,6 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 |---|---|
 | M0 setup (branch, plan, build check) | done: game build (12 stubs) + 3D Monsters build pass here; ctest 146/149: `pc_utf8_paths` and `pc_fm_editor_compat` fail because of this branch (A6, A7), `pc_user_dir` fails only because the container runs as root (its chmod test cannot deny root) |
 | A | done (A1-A7), awaiting M1 on the laptop; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
-| B | next |
-| C-H | planned |
+| B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), awaiting M2; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
+| C | next |
+| D-H | planned |
