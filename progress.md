@@ -148,7 +148,7 @@ This file is the action plan the agent follows, and its status board; `history.m
 
 H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-specific Blender scripts to
 `tools/hd-models/examples/`, no workspace path assumptions. H3 FM Editor (`tools/pc/fm_editor`): the final
-`native_models` shape (D2) and a package picker. H4 `history.md` and the developer notes updated per phase.
+`native_models` shape (D2; done: `native_models.py`, the port's entry checks in the editor's validation) and a package picker (open). H4 `history.md` and the developer notes updated per phase.
 
 ## Milestones for laptop tests
 
@@ -217,4 +217,5 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
 | D | done (D1, D3, D4 revised; D2, D5-D9), awaiting M4; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_registry` and `pc_native_tools` new (a rigged glb made by the test, converted without the disc, checked, made into a mod, read back by the game's loader), `pc_native_capture` / `pc_native_anim` updated, only `pc_user_dir` fails (root container); registry and capture tests under ASan/UBSan 32+64-bit |
 | E | E1 done, E4 done for the field, in M5; E2/E3 (the arena's contact frames) wait for the measurement on the laptop (M3's event log shows them for BLS) |
 | F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
-| G-H | planned |
+| G | planned (waits for M1's camera results: shots build on the arena camera) |
+| H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 and H3's picker open |
