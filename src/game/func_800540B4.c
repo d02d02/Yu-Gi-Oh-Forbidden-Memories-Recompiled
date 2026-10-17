@@ -389,6 +389,7 @@ void func_800540B4(s32 index)
         info.anim_speed = slot->field_E0D;
         info.row_prev = slot->field_E0F;
         info.state = slot->field_E0E;
+        info.attack_row = slot->field_DFE + 3;
         for (k = 0; k < 4; k++) {
             info.scale[k] = ((s32 *)&slot->field_DB0)[k];
             info.centre[k] = slot->field_DD0[k];

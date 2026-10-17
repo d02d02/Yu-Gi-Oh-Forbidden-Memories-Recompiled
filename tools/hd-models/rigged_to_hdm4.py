@@ -186,6 +186,7 @@ def main():
     if DERIVED: print("derived bones (follow the arm x%.2f):" % a.wing_follow, [d[0] for d in DERIVED])
     anims = {an["name"]: an for an in cdoc.get("animations", [])}
     want = list(anims) if a.clips == "all" else [c for c in a.clips.split(",") if c]
+    if len(want) > 16: sys.exit(f"{len(want)} clips: the game takes at most 16 (pick them with --clips)")
     for c in want:
         if c not in anims: sys.exit(f"no clip {c}; has {sorted(anims)}")
     clip_blobs = []

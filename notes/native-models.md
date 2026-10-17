@@ -42,7 +42,9 @@ Declared like any mod setting (`settings`); a value in the environment wins for 
 | `normal_strength` (`MEMORIES_NATIVE_NORMAL_STRENGTH`) | 180 (%) | how strongly the model's normal map shows |
 | `highlight` (`MEMORIES_NATIVE_SPEC`) | 100 (%) | the strength of the metal/gloss highlight |
 
-The camera is only changed while a native model is loaded; without one the game's camera is exactly the console's.
+The camera is only changed in a battle one of whose two monsters is drawn natively; every other battle, the credits and a
+picture below Internal 2x keep exactly the console's camera. Below 2x (or when the OpenGL picture cannot draw the model) the
+monster is the disc's own model, as without the mod.
 
 ## How the model is chosen and played
 
@@ -53,5 +55,6 @@ The camera is only changed while a native model is loaded; without one the game'
 
 ## Testing
 
-`MEMORIES_NATIVE_MODEL=<file.hdm>` with `MEMORIES_NATIVE_MODEL_ID=<model>` loads one model without a mod (a test switch). `MEMORIES_NATIVE_TIME=1`
+`MEMORIES_NATIVE_MODEL=<file.hdm>` with `MEMORIES_NATIVE_MODEL_ID=<model>` (default 363, Black Luster Soldier) loads one model
+without a mod (a test switch). A file the game refuses says why on the console and, for a mod, beside the mod in the Mods window. `MEMORIES_NATIVE_TIME=1`
 logs the GPU time of the model's draw. Saved states are tied to the exact build: after a rebuild make a new one.

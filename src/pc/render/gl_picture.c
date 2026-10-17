@@ -1898,11 +1898,46 @@ static void native_free(void)
     NativeModel_GlReady = 0;
 }
 
-/* The programs and the target, made once (and again when the picture's scale changes). */
+/* The pass's names lost with the context (GlPicture_Lost): nothing to delete, everything to make again. */
+static void native_forget(void)
+{
+    free(nat.skin_rows);
+    free(nat.bones);
+    free(nat.vertices);
+    memset(&nat, 0, sizeof(nat));
+    NativeModel_GlReady = 0;
+}
+
+/* The pass's switches (notes/native-models.md, "Testing"), read once. */
+static struct {
+    int read;
+    char clip[32]; /* MEMORIES_NATIVE_CLIP: this clip on a free clock, the game ignored ("" = off) */
+    int skin_log, cpu, depth_per_model, no_pbr;
+} nat_env;
+
+static void native_env(void)
+{
+    const char *clip;
+    if (nat_env.read) return;
+    nat_env.read = 1;
+    clip = getenv("MEMORIES_NATIVE_CLIP");
+    if (clip) snprintf(nat_env.clip, sizeof(nat_env.clip), "%s", clip);
+    nat_env.skin_log = getenv("MEMORIES_NATIVE_SKIN_LOG") != NULL;
+    nat_env.cpu = getenv("MEMORIES_NATIVE_CPU") != NULL;
+    nat_env.depth_per_model = getenv("MEMORIES_NATIVE_DEPTH_PER_MODEL") != NULL;
+    nat_env.no_pbr = getenv("MEMORIES_NATIVE_NOPBR") != NULL;
+}
+
+/* The programs and the target, made once (and again when the picture's scale changes). NativeModel_GlReady says
+ * whether the pass draws: the game leaves a model's own packets out only then (below 2x, or with the skinning
+ * program refused, the disc model is drawn). */
 static int native_ready(void)
 {
     int w = SOFT_GPU_WIDTH * scale, h = SOFT_GPU_HEIGHT * scale;
-    if (nat.failed || scale < 2) return 0;
+    if (nat.failed || scale < 2) {
+        NativeModel_GlReady = 0;
+        return 0;
+    }
     if (!nat.program) {
         nat.program = native_link(native_vertex_source, native_fragment_source, "position", "texcoord", "shade");
         nat.comp_program = native_link(native_comp_vertex_source, native_comp_fragment_source, "position", NULL, NULL);
@@ -1977,7 +2012,7 @@ static int native_ready(void)
             }
         }
     }
-    NativeModel_GlReady = 1;
+    NativeModel_GlReady = !nat.skin_failed;
     return 1;
 }
 
@@ -2377,12 +2412,17 @@ static int native_skin_ready(const NativeMesh *mesh)
 }
 
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
- * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length. */
+ * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
+ * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star. */
 static float native_director(const NativeDraw *d, const NativeMesh *mesh, const NativeClip **clip_out)
 {
     static const char *by_row[8] = {"Sword_Idle", "Sword_Idle", "Idle_Loop", "Sword_Attack", "Sword_Idle", "Hit_Chest", "Death01", "Sword_Idle"};
-    const char *forced = getenv("MEMORIES_NATIVE_CLIP");
-    const char *want = forced && *forced ? forced : by_row[(unsigned)d->info.anim_index < 8u ? d->info.anim_index : 0];
+    const char *forced = nat_env.clip;
+    int row = d->info.anim_index, attack = d->info.attack_row == 4 ? 4 : 3;
+    const char *want = forced && *forced ? forced
+                     : row == attack ? "Sword_Attack"
+                     : row == 3 || row == 4 ? "Sword_Idle" /* the other guardian star's attack: not this card's */
+                     : by_row[(unsigned)row < 8u ? row : 0];
     const NativeClip *c = NULL;
     unsigned i;
     float phase, t;
@@ -2398,9 +2438,10 @@ static float native_director(const NativeDraw *d, const NativeMesh *mesh, const 
     }
     phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
     phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
-    if (d->info.anim_index == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
+    if (row == 3 && attack == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
         /* Piecewise time warp keyed to the game's events (disc frames of row 3: contact window opens at 29, closes at 61, second
-         * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30). */
+         * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30).
+         * Measured on Black Luster Soldier's row 3 only: row 4 has no measurement yet, so its clip runs evenly over the row. */
         static const float disc[6] = {0.0f, 25.0f, 30.0f, 61.0f, 95.0f, 150.0f};
         static const float clip[6] = {0.0f, 8.0f, 11.0f, 22.0f, 30.0f, 46.0f};
         float frame = (float)d->info.anim_frame / 16.0f;
@@ -2444,7 +2485,7 @@ static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const 
                              ws[r * 3 + 2] * (float)in->root_tr[2]) + (float)in->ws_tr[r];
         }
     }
-    if (getenv("MEMORIES_NATIVE_SKIN_LOG")) {
+    if (nat_env.skin_log) {
         static unsigned n;
         if (n++ % 20 == 0) {
             const NativePart *p1 = &d->parts[1];
@@ -2689,6 +2730,7 @@ static void native_draw(unsigned id)
     int x0, y0, x1, y1, lit, retargeted, use_gpu, skinned;
     float q[NATIVE_MAX_PARTS][3];
     NativeModel_Stats[5]++;
+    native_env();
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
     mesh = NativeModel_Mesh(d->model);
     if (!mesh || !native_ready()) return;
@@ -2771,11 +2813,14 @@ static void native_draw(unsigned id)
     retargeted = mesh->joints != NULL;
     if (retargeted) native_retarget(d, mesh, q);
     skinned = mesh->bones != 0;
-    use_gpu = !skinned && !getenv("MEMORIES_NATIVE_CPU") && native_gpu_ready(mesh);
+    use_gpu = !skinned && !nat_env.cpu && native_gpu_ready(mesh);
     if (skinned) { /* HDM4: the model's own clip, posed on the CPU (forward kinematics), skinned on the GPU */
         const NativeClip *clip = NULL;
         float t;
-        if (!native_skin_ready(mesh)) return;
+        if (!native_skin_ready(mesh)) {
+            NativeModel_GlReady = 0; /* the disc model is drawn from the next frame on */
+            return;
+        }
         t = native_director(d, mesh, &clip);
         native_skin_pose(d, mesh, clip, t, nat.skin_rows, lit);
         gl_ActiveTexture(GL_TEXTURE1);
@@ -2919,7 +2964,7 @@ static void native_draw(unsigned id)
     glDepthMask(GL_TRUE);
     /* One depth buffer for all the frame's native models: only the colour is cleared per model (inside its box),
      * so a model that is behind another one in the overlap loses the depth test there. */
-    if (nat.fresh || getenv("MEMORIES_NATIVE_DEPTH_PER_MODEL")) { /* the variable = the old behaviour, for A/B */
+    if (nat.fresh || nat_env.depth_per_model) { /* the variable = the old behaviour, for A/B */
         glDisable(GL_SCISSOR_TEST);
         glClear(GL_DEPTH_BUFFER_BIT);
         glEnable(GL_SCISSOR_TEST);
@@ -2931,7 +2976,7 @@ static void native_draw(unsigned id)
     if (skinned) {
         int k;
         GLuint program = nat.skin_program;
-        if (nat.pbr_mesh == mesh && !getenv("MEMORIES_NATIVE_NOPBR") && native_pbr_program()) program = nat.pbr_program;
+        if (nat.pbr_mesh == mesh && !nat_env.no_pbr && native_pbr_program()) program = nat.pbr_program;
         gl_UseProgram(program);
         gl_Uniform2f(gl_GetUniformLocation(program, "picture_size"), (float)nat.w, (float)nat.h);
         gl_Uniform1i(gl_GetUniformLocation(program, "tex"), 0);
@@ -3759,6 +3804,7 @@ static void resync(int wanted, const uint32_t words[6])
     if (wanted < 2) {
         wide_free();
         scale = 0;
+        NativeModel_GlReady = 0; /* no native models below 2x: the game draws the disc ones again */
         gp0(words, 6);
         return;
     }
@@ -4222,6 +4268,7 @@ static void delete_names(void)
 static void forget_names(void)
 {
     int bank;
+    native_forget();
     on = 0;
     program = buffer = vertex_array = 0;
     vram_texture = vram_scratch = vram_fbo = vram_scratch_fbo = 0;

@@ -79,7 +79,7 @@ The arena camera is a `GsRVIEW2` (`D_800F56F0`: eye `vpx..vpz`, look-at `vrx..vr
 Measured (BLS vs model 191): the opening orbit 1800 units out, every close shot of the attack 460-660: framed for 1198-triangle models, too tight for big ones.
 `Model_SetArenaView` (src/game/model_scene_states.c) replaces BOTH `GsSetRefView2` calls in `Model_UpdateScene` with a view copy whose eye is moved along its line of sight
 (`d' = near - (near - d) * keep`, then `* scale`); the game's own `D_800F56F0` is never modified (its scripted moves read and write it). **Both calls must use it**: the stage is drawn
-between them, and changing only the second one shrank the models against a fixed arena. Only active while a native model is loaded. The same hook is where a custom camera shot
+between them, and changing only the second one shrank the models against a fixed arena. Only active in a battle (scene mode 15) one of whose two slots the native pass draws (`NativeModel_WillDraw`). The same hook is where a custom camera shot
 (for example at the coup de grace) would go: key it to the defender's row/clock.
 
 ## 8. The asset pipeline (an AI-made angel on the Quaternius mannequin's clips, as it was done)
