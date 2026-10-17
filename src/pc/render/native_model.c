@@ -1,5 +1,8 @@
 /* Native model pass: the capture side (see native_model.h). */
 #include "pc/render/native_model.h"
+#include "pc/render/native_format.h"
+#include "pc/render/soft_gpu.h"
+#include "pc/compat/fs.h"
 #include "pc/compat/gte.h"
 #include "pc/mods/json.h"
 #include "pc/mods/mods.h"
@@ -19,6 +22,9 @@ static NativeDraw *current;
 static int32_t next_id;
 
 static int loaded; /* 1 once the environment was read */
+/* MEMORIES_NATIVE_MODEL without MEMORIES_NATIVE_MODEL_ID: Black Luster Soldier's model (a disc model id is the card id
+ * minus one: card 364, model 363). */
+#define NATIVE_TEST_MODEL 363
 /* MEMORIES_NATIVE_MODEL_ID=-2 is a TEST switch: the mesh is drawn in every duel slot (two native models for depth tests).
  * Only the model the mesh was made for is posed right; the others get garbage joints. */
 static int mesh_model = -1;
@@ -28,58 +34,14 @@ volatile int NativeModel_Suppress;
 volatile int NativeModel_GlReady;
 unsigned NativeModel_Stats[8]; /* parts captured, draws closed, markers linked, takes with draws, replayed ops, markers hit, triangles */
 
-/* One HDM4 file in memory (`data`, kept by the mesh) -> `out`; 0 when it is malformed (nothing is kept then). */
-static int parse_hdm4(const char *path, uint32_t *data, long size, NativeMesh *out)
+/* One HDM4 file in memory (`data`, kept by the mesh) -> `out`; 0 when it is malformed (nothing is kept then, and
+ * `why` says what: native_format.c checks the file whole before anything reads it). */
+static int parse_hdm4(const char *path, const uint32_t *data, long size, NativeMesh *out, char *why, size_t why_size)
 {
-    const uint32_t *w = data;
-    size_t at = 8 + (size_t)w[3] * 16, k;
-    NativeMesh m;
-    memset(&m, 0, sizeof(m));
-    m.vertices = w[1];
-    m.index_count = w[2];
-    m.bones = w[3];
-    m.tex_w = w[4];
-    m.tex_h = w[5];
-    m.clip_count = w[6] < NATIVE_MAX_CLIPS ? w[6] : NATIVE_MAX_CLIPS;
-    m.stride = 13;
-    if (m.bones > NATIVE_MAX_BONES) {
-        fprintf(stderr, "memories-pc: native model: %s (HDM4) has too many bones\n", path);
+    if (size < 0 || !NativeFormat_ParseHdm4(data, (size_t)size, out, why, why_size)) {
+        fprintf(stderr, "memories-pc: native model: %s: %s\n", path, why);
         return 0;
     }
-    m.bone_table = w + 8;
-    m.words = w + at;
-    at += (size_t)m.vertices * 13;
-    m.indices = w + at;
-    at += m.index_count;
-    m.rgba = (const uint8_t *)(w + at);
-    at += (size_t)m.tex_w * m.tex_h;
-    if (w[7] & 1) { /* a normal map: u32 w, u32 h, RGBA */
-        m.normal_w = w[at];
-        m.normal_h = w[at + 1];
-        m.normal_rgba = (const uint8_t *)(w + at + 2);
-        at += 2 + (size_t)m.normal_w * m.normal_h;
-    }
-    if (w[7] & 2) { /* a metal (B) / roughness (G) map */
-        m.mr_w = w[at];
-        m.mr_h = w[at + 1];
-        m.mr_rgba = (const uint8_t *)(w + at + 2);
-        at += 2 + (size_t)m.mr_w * m.mr_h;
-    }
-    for (k = 0; k < m.clip_count; k++) {
-        const uint32_t *c = w + at;
-        if (at * 4 + 48 > (size_t)size) break;
-        memcpy(m.clips[k].name, c, 32);
-        m.clips[k].name[31] = 0;
-        m.clips[k].frames = c[8];
-        memcpy(&m.clips[k].fps, c + 9, 4);
-        m.clips[k].data = (const float *)(c + 12);
-        at += 12 + (size_t)c[8] * m.bones * 7;
-    }
-    if (at * 4 != (size_t)size) {
-        fprintf(stderr, "memories-pc: native model: %s (HDM4) has the wrong size\n", path);
-        return 0;
-    }
-    *out = m;
     return 1;
 }
 
@@ -107,7 +69,6 @@ static uint32_t *read_whole(const char *path, long *size)
 static struct { NativeMesh mesh; int model; } mod_models[NATIVE_MAX_MODELS];
 static int mod_model_count;
 static const char *tune_mod; /* the id of the first mod with native models */
-static int any_model;        /* a model is loaded: the arena camera is adjusted for big models */
 NativeTune NativeModel_Tune = {1000.0f, 0.5f, 1.0f, 0.2f, 1.0f, 1.8f, 1.0f, 1.0f};
 
 static void visit_native_models(const char *id, const char *directory, const JsonValue *manifest, void *context)
@@ -119,7 +80,7 @@ static void visit_native_models(const char *id, const char *directory, const Jso
         const JsonValue *entry = Json_At(list, i);
         long model = Json_Number(Json_Member(entry, "model"), -1);
         const char *file = Json_String(Json_Member(entry, "file"), "");
-        char path[1024];
+        char path[1024], why[200] = "it cannot be read";
         long size = 0;
         uint32_t *data;
         if (model < 0 || !*file) {
@@ -132,14 +93,13 @@ static void visit_native_models(const char *id, const char *directory, const Jso
         }
         snprintf(path, sizeof(path), "%s/%s", directory, file);
         data = read_whole(path, &size);
-        if (!data || memcmp(data, "HDM4", 4) != 0 || !parse_hdm4(path, data, size, &mod_models[mod_model_count].mesh)) {
-            Mods_Note(id, "native_models[%d]: %s is not a usable HDM4 model", i, file);
+        if (!data || !parse_hdm4(path, data, size, &mod_models[mod_model_count].mesh, why, sizeof(why))) {
+            Mods_Note(id, "native_models[%d]: %s is not a usable HDM4 model: %s", i, file, why);
             free(data);
             continue;
         }
         mod_models[mod_model_count].model = (int)model;
         mod_model_count++;
-        any_model = 1;
         if (!tune_mod) tune_mod = id;
         fprintf(stderr, "memories-pc: native model: %s for model %ld (mod %s)\n", path, model, id);
     }
@@ -196,10 +156,10 @@ static void load(void)
         data = NULL;
     }
     if (data && size >= 32 && memcmp(data, "HDM4", 4) == 0) {
+        char why[200];
         fclose(file);
-        if (parse_hdm4(path, data, size, &mesh)) {
-            mesh_model = id ? atoi(id) : 364;
-            any_model = 1;
+        if (parse_hdm4(path, data, size, &mesh, why, sizeof(why))) {
+            mesh_model = id ? atoi(id) : NATIVE_TEST_MODEL;
             fprintf(stderr, "memories-pc: native model: %s (HDM4) for model %d (%u vertices, %u bones, %u clips)\n", path, mesh_model,
                     mesh.vertices, mesh.bones, mesh.clip_count);
         } else {
@@ -234,7 +194,7 @@ static void load(void)
     }
     mesh.words = data + 5 + (size_t)mesh.joint_parts * 16;
     mesh.rgba = (const uint8_t *)mesh.words + (size_t)mesh.vertices * mesh.stride * 4;
-    mesh_model = id ? atoi(id) : 364;
+    mesh_model = id ? atoi(id) : NATIVE_TEST_MODEL;
     fprintf(stderr, "memories-pc: native model: %s for model %d (%u vertices, %u parts)\n", path, mesh_model,
             mesh.vertices, mesh.parts);
 }
@@ -264,7 +224,15 @@ void NativeModel_BeginSlot(int model)
     memset(current, 0, sizeof(*current));
     current->model = model;
     current->tint = D_8009AFB4 & 0x00ffffffu; /* the Gouraud triangle template: its colour is what the lighting scales */
-    NativeModel_Suppress = NativeModel_GlReady;
+    /* The model's own packets are left out only when the pass will draw it: the GL pass is ready and the picture is
+     * recorded for it (2x or more). Otherwise the disc model is drawn, as without a native model. */
+    NativeModel_Suppress = NativeModel_GlReady && SoftGpu_Scale() > 1;
+}
+
+int NativeModel_WillDraw(int model)
+{
+    if (!loaded) load();
+    return model >= 0 && NativeModel_GlReady && SoftGpu_Scale() > 1 && NativeModel_Mesh(model) != NULL;
 }
 
 void NativeModel_Part(int part)
@@ -387,12 +355,12 @@ static float arena_camera_distance(float distance)
     return distance * t->camera_scale;
 }
 
-/* The factor the eye's offset from the look-at point is multiplied by (1 = the game's own camera), only while a native model is loaded. */
-float NativeModel_ArenaCameraFactor(float dx, float dy, float dz)
+/* The factor the eye's offset from the look-at point is multiplied by (1 = the game's own camera): only in a battle one of
+ * whose two monsters the native pass draws, so every other battle, the credits and a 1x picture keep the game's camera. */
+float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz)
 {
     float d;
-    if (!loaded) load();
-    if (!any_model) return 1.0f;
+    if (!NativeModel_WillDraw(model0) && !NativeModel_WillDraw(model1)) return 1.0f;
     d = sqrtf(dx * dx + dy * dy + dz * dz);
     return d > 1.0f ? arena_camera_distance(d) / d : 1.0f;
 }

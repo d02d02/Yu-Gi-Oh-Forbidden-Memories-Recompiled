@@ -147,5 +147,6 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 | Phase | State |
 |---|---|
 | M0 setup (branch, plan, build check) | done: game build (12 stubs) + 3D Monsters build pass here; ctest 146/149: `pc_utf8_paths` and `pc_fm_editor_compat` fail because of this branch (A6, A7), `pc_user_dir` fails only because the container runs as root (its chmod test cannot deny root) |
-| A | next |
-| B-H | planned |
+| A | done (A1-A7), awaiting M1 on the laptop; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
+| B | next |
+| C-H | planned |

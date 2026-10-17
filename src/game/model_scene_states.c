@@ -54,21 +54,26 @@ s32 Model_IsCreditsPresentationComplete(void)
 }
 
 /* The camera the arena frame is drawn with: the game's own view, or (MEMORIES_PC: NativeModel_ArenaCameraFactor, env MEMORIES_ARENA_CAMERA_*) the
- * eye moved along its line of sight. Applied to BOTH GsSetRefView2 calls of Model_UpdateScene, so the stage drawn between them and the models
- * drawn after them share one camera. The game's own view (D_800F56F0) is never modified: its scripted moves read and write it. */
+ * eye moved along its line of sight, in a battle (scene mode 15; not the credits' 20 or Exodia's 19) one of whose monsters is drawn
+ * natively. Applied to BOTH GsSetRefView2 calls of Model_UpdateScene, so the stage drawn between them and the models drawn after
+ * them share one camera. The game's own view (D_800F56F0) is never modified: its scripted moves read and write it. */
 static void Model_SetArenaView(GsRVIEW2 *view)
 {
 #ifdef MEMORIES_PC
-    extern float NativeModel_ArenaCameraFactor(float dx, float dy, float dz);
-    float dx = (float)(view->vpx - view->vrx), dy = (float)(view->vpy - view->vry), dz = (float)(view->vpz - view->vrz);
-    float k = NativeModel_ArenaCameraFactor(dx, dy, dz);
-    if (k > 1.0001f || k < 0.9999f) {
-        GsRVIEW2 wide = *view;
-        wide.vpx = wide.vrx + (s32)(dx * k);
-        wide.vpy = wide.vry + (s32)(dy * k);
-        wide.vpz = wide.vrz + (s32)(dz * k);
-        GsSetRefView2(&wide);
-        return;
+    extern float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);
+    if (D_8009AF94 == 15) {
+        s32 model0 = D_800F2C40[0].field_E1F ? (s32)D_800F2C40[0].field_DF8 : -1;
+        s32 model1 = D_800F2C40[1].field_E1F ? (s32)D_800F2C40[1].field_DF8 : -1;
+        float dx = (float)(view->vpx - view->vrx), dy = (float)(view->vpy - view->vry), dz = (float)(view->vpz - view->vrz);
+        float k = NativeModel_ArenaCameraFactor(model0, model1, dx, dy, dz);
+        if (k > 1.0001f || k < 0.9999f) {
+            GsRVIEW2 wide = *view;
+            wide.vpx = wide.vrx + (s32)(dx * k);
+            wide.vpy = wide.vry + (s32)(dy * k);
+            wide.vpz = wide.vrz + (s32)(dz * k);
+            GsSetRefView2(&wide);
+            return;
+        }
     }
 #endif
     GsSetRefView2(view);

@@ -46,6 +46,7 @@ typedef struct NativeSlotInfo {
     int32_t ws_tr[3];
     int32_t flat_lights[12];         /* field_D70: 3 entries of (3 x s32 direction, colour) */
     int32_t ambient[3];              /* field_DA0 */
+    int32_t attack_row;              /* field_DFE + 3: the row this card attacks with (4 with its second guardian star) */
 } NativeSlotInfo;
 
 typedef struct NativeDraw {
@@ -115,4 +116,9 @@ const NativeDraw *NativeModel_Taken(size_t *count);
 
 /* The mesh for a model id (the replay), or NULL. */
 const NativeMesh *NativeModel_Mesh(int model);
+/* 1 when a slot drawing `model` now is drawn by the native pass (a mesh, the pass ready, a picture of 2x or more). */
+int NativeModel_WillDraw(int model);
+/* The arena camera's eye-to-look-at factor for a frame whose battle slots draw model0 and model1 (-1: none): 1 (the
+ * game's camera) unless one of them is drawn natively. */
+float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);
 #endif

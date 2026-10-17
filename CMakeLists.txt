@@ -940,6 +940,14 @@ if(BUILD_TESTING)
         target_compile_options(memories_log_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()
     add_test(NAME pc_log COMMAND memories_log_test)
+    # The native model file's checks (src/pc/render/native_format.h): a model from a mod is refused with a
+    # reason, never read past its end.
+    add_executable(memories_native_format_test tests/pc/native_format_test.c src/pc/render/native_format.c)
+    target_include_directories(memories_native_format_test PRIVATE src)
+    if(NOT MSVC)
+        target_compile_options(memories_native_format_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    add_test(NAME pc_native_format COMMAND memories_native_format_test)
     # Runs after every test (the fixture at the end of this file) and removes
     # the scratch folders a test could not: killed, or holding a file open.
     add_executable(memories_scratch_sweep_test tests/pc/scratch_sweep_test.c)
