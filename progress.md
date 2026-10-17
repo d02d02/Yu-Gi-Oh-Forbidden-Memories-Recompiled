@@ -56,6 +56,8 @@ This file is the action plan the agent follows, and its status board; `history.m
 | A3 | HDM4 parser: 64-bit size arithmetic, every offset checked before it is read, parent < bone and acyclic, joint ids < bones, indices < vertices, clip sizes; malformed = note + disc model | `native_model.c` (+ unit test) |
 | A4 | Capture `field_DFE`; the attack is row `field_DFE + 3` (guardian star 2 plays row 4) | `func_800540B4.c`, `native_model.h`, director |
 | A5 | Test switch: `MEMORIES_NATIVE_MODEL` without `_ID` = model 363, not 364; every `getenv` read once | `native_model.c`, `gl_picture.c` |
+| A6 | `pc_utf8_paths` fails on this branch: `native_model.c` opens files and reads the environment without `pc/compat/fs.h` (mod folders with accents break on Windows) | `native_model.c` |
+| A7 | `pc_fm_editor_compat` fails on this branch: the API went to 17 without the FM Editor; teach `tools/pc/fm_editor` API 17 and the `native_models` key | `tools/pc/fm_editor/compat.py` (+ its key lists) |
 
 ### B. Factoring, no visible change -> M2
 
@@ -125,8 +127,8 @@ This file is the action plan the agent follows, and its status board; `history.m
 ### H. Ecosystem
 
 H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-specific Blender scripts to
-`tools/hd-models/examples/`, no workspace path assumptions. H3 FM Editor (outside this repo): API 17 keys.
-H4 `history.md` and the developer notes updated per phase.
+`tools/hd-models/examples/`, no workspace path assumptions. H3 FM Editor (`tools/pc/fm_editor`): the final
+`native_models` shape (D2) and a package picker. H4 `history.md` and the developer notes updated per phase.
 
 ## Milestones for laptop tests
 
@@ -144,6 +146,6 @@ H4 `history.md` and the developer notes updated per phase.
 
 | Phase | State |
 |---|---|
-| M0 setup (branch, plan, build check) | done: game build + 3D Monsters build pass here |
+| M0 setup (branch, plan, build check) | done: game build (12 stubs) + 3D Monsters build pass here; ctest 146/149: `pc_utf8_paths` and `pc_fm_editor_compat` fail because of this branch (A6, A7), `pc_user_dir` fails only because the container runs as root (its chmod test cannot deny root) |
 | A | next |
 | B-H | planned |
