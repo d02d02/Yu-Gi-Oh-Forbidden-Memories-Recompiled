@@ -957,6 +957,16 @@ if(BUILD_TESTING)
         target_link_libraries(memories_native_anim_test PRIVATE m)
     endif()
     add_test(NAME pc_native_anim COMMAND memories_native_anim_test)
+    # The native model pass's capture (src/pc/render/native_model.h) with the game stood in for: instances for code
+    # mods, when the model's packets are left out, where its marker goes, when the arena camera moves.
+    add_executable(memories_native_capture_test tests/pc/native_capture_test.c src/pc/render/native_model.c
+        src/pc/render/native_format.c src/pc/mods/json.c)
+    target_include_directories(memories_native_capture_test PRIVATE src tests/pc)
+    if(NOT MSVC)
+        target_compile_options(memories_native_capture_test PRIVATE -Wall -Wextra -Werror)
+        target_link_libraries(memories_native_capture_test PRIVATE m)
+    endif()
+    add_test(NAME pc_native_capture COMMAND memories_native_capture_test)
     # Runs after every test (the fixture at the end of this file) and removes
     # the scratch folders a test could not: killed, or holding a file open.
     add_executable(memories_scratch_sweep_test tests/pc/scratch_sweep_test.c)

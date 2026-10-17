@@ -4,17 +4,74 @@
 #include <stdio.h>
 #include <string.h>
 
+NativeAct NativeAnim_Act(int row, int attack_row)
+{
+    int attack = attack_row == 4 ? 4 : 3;
+    if (row == attack) return NATIVE_ACT_ATTACK;
+    switch (row) {
+    case 2:
+        return NATIVE_ACT_ENTER;
+    case 5:
+        return NATIVE_ACT_HIT;
+    case 6:
+        return NATIVE_ACT_DESTROYED;
+    case 7:
+        return NATIVE_ACT_WIN;
+    case 8:
+        return NATIVE_ACT_GUARD;
+    default: /* 0 and 1 (idle, back from a hit), the other guardian star's attack row, anything else */
+        return NATIVE_ACT_IDLE;
+    }
+}
+
+/* The cross-fade's memory of each monster (NativeSlotInfo.key): the pose last drawn, and the pose a row change fades
+ * from. A key not seen for a while gives its place to a new one; a key whose mesh changed starts afresh (no fade from
+ * another skeleton). */
+#define MEMORIES 16
+typedef struct Memory {
+    int used, key, row, valid, fade, id;
+    unsigned stamp;
+    const NativeMesh *mesh;
+    float last[NATIVE_MAX_BONES][7], from[NATIVE_MAX_BONES][7];
+} Memory;
+static Memory memory[MEMORIES];
+static unsigned memory_clock;
+
+static Memory *memory_for(int key, const NativeMesh *mesh)
+{
+    Memory *m = NULL, *spare = NULL;
+    int i;
+    for (i = 0; i < MEMORIES && !m; i++) {
+        Memory *e = &memory[i];
+        if (e->used && e->key == key) {
+            m = e;
+        } else if (!spare || (!e->used && spare->used) || (e->used == spare->used && e->stamp < spare->stamp)) {
+            spare = e; /* an unused entry first, else the one drawn longest ago */
+        }
+    }
+    if (!m) {
+        m = spare;
+        memset(m, 0, sizeof(*m));
+        m->used = 1;
+        m->key = key;
+        m->mesh = mesh;
+    } else if (m->mesh != mesh) {
+        m->mesh = mesh;
+        m->valid = m->fade = m->id = 0;
+    }
+    m->stamp = ++memory_clock;
+    return m;
+}
+
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
  * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
  * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star. */
 float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out)
 {
-    static const char *by_row[8] = {"Sword_Idle", "Sword_Idle", "Idle_Loop", "Sword_Attack", "Sword_Idle", "Hit_Chest", "Death01", "Sword_Idle"};
+    static const char *const by_act[NATIVE_ACT_COUNT] = {"Sword_Idle", "Idle_Loop", "Sword_Attack", "Hit_Chest", "Death01",
+                                                         "Sword_Idle", "Sword_Idle"};
     int row = d->info.anim_index, attack = d->info.attack_row == 4 ? 4 : 3;
-    const char *want = forced && *forced ? forced
-                     : row == attack ? "Sword_Attack"
-                     : row == 3 || row == 4 ? "Sword_Idle" /* the other guardian star's attack: not this card's */
-                     : by_row[(unsigned)row < 8u ? row : 0];
+    const char *want = forced && *forced ? forced : by_act[NativeAnim_Act(row, d->info.attack_row)];
     const NativeClip *c = NULL;
     unsigned i;
     float phase, t;
@@ -116,32 +173,31 @@ void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeCl
         }
     }
     {
-        static struct { int row, valid, fade, id; float last[NATIVE_MAX_BONES][7]; float from[NATIVE_MAX_BONES][7]; } mem[3];
-        int s = in->slot >= 0 && in->slot < 3 ? in->slot : 2;
-        if (mem[s].id != d->id + 1) { /* once per draw (the same draw can be replayed) */
-            if (mem[s].valid && mem[s].row != in->anim_index) {
-                memcpy(mem[s].from, mem[s].last, sizeof(mem[s].from));
-                mem[s].fade = NATIVE_FADE;
+        Memory *m = memory_for(in->key, mesh);
+        if (m->id != d->id + 1) { /* once per draw (the same draw can be replayed) */
+            if (m->valid && m->row != in->anim_index) {
+                memcpy(m->from, m->last, sizeof(m->from));
+                m->fade = NATIVE_FADE;
             }
-            mem[s].row = in->anim_index;
-            mem[s].valid = 1;
-            mem[s].id = d->id + 1;
-            if (mem[s].fade > 0) {
-                float w = (float)(NATIVE_FADE - mem[s].fade + 1) / (float)(NATIVE_FADE + 1);
+            m->row = in->anim_index;
+            m->valid = 1;
+            m->id = d->id + 1;
+            if (m->fade > 0) {
+                float w = (float)(NATIVE_FADE - m->fade + 1) / (float)(NATIVE_FADE + 1);
                 for (b = 0; b < mesh->bones; b++) {
-                    const float *fr = mem[s].from[b];
+                    const float *fr = m->from[b];
                     float *o = lq[b], dot = fr[3] * o[3] + fr[4] * o[4] + fr[5] * o[5] + fr[6] * o[6], len;
                     for (r = 0; r < 3; r++) o[r] = fr[r] + (o[r] - fr[r]) * w;
                     for (r = 3; r < 7; r++) o[r] = fr[r] * (dot < 0.0f ? -1.0f : 1.0f) * (1.0f - w) + o[r] * w;
                     len = sqrtf(o[3] * o[3] + o[4] * o[4] + o[5] * o[5] + o[6] * o[6]);
                     for (r = 3; r < 7; r++) o[r] /= len;
                 }
-                mem[s].fade--;
+                m->fade--;
             }
-            memcpy(mem[s].last, lq, (size_t)mesh->bones * sizeof(lq[0]));
-        } else if (mem[s].fade >= 0) {
+            memcpy(m->last, lq, (size_t)mesh->bones * sizeof(lq[0]));
+        } else {
             /* a replay of the same draw: the blended pose was stored in `last` */
-            memcpy(lq, mem[s].last, (size_t)mesh->bones * sizeof(lq[0]));
+            memcpy(lq, m->last, (size_t)mesh->bones * sizeof(lq[0]));
         }
     }
     memset(done, 0, sizeof(done));

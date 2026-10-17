@@ -16,6 +16,9 @@
 #include "model_scene_setup.h"
 #include "duel_terrain_boost.h"
 #include "main_mode_state.h"
+#ifdef MEMORIES_PC
+#include "pc/render/native_model.h"
+#endif
 
 /* Defined rather than declared: the assembler only resolves a small global
    gp-relative when the translation unit defines it, and that is what supplies
@@ -71,6 +74,9 @@ void Main_RunAnimatedBattle(void)
         if (v != 0) {
             SD_KeyOffVoiceSlots();
             SD_BGMFadeOut();
+#ifdef MEMORIES_PC
+            NativeModel_SetBattleCards(0, 0); /* the arena is over: its slots show no battle's cards */
+#endif
             D_8009B26C = D_8009B269;
         }
         Model_UpdateScene();

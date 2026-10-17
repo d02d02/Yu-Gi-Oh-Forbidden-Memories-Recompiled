@@ -45,9 +45,12 @@ void Model_ControlSlotAnimation(s32 index, s32 anim, s32 flag) {
         return;
     }
 #ifdef MEMORIES_PC
-    LOG(LOG_MODEL, "evt row f=%u slot=%d model=%d row=%d flag=%d prev=%d state=%d clock=%d step=%d phase=%d",
+    /* other_clock: the other battle slot's clock when this one is told a row; a reaction row (5, 6, 8) told by the
+     * attacker's control module is its blow landing, at that clock of its attack row (the contact frames). */
+    LOG(LOG_MODEL, "evt row f=%u slot=%d model=%d row=%d flag=%d prev=%d state=%d clock=%d step=%d phase=%d other_row=%d other_clock=%d",
         Memories_PresentedFrames(), (int)index, (int)m->field_DF8, (int)anim, (int)flag, (int)m->field_E0F,
-        (int)m->field_E0E, (int)m->field_E06, (int)Model_GetFrameStep(), (int)D_8009AF9A);
+        (int)m->field_E0E, (int)m->field_E06, (int)Model_GetFrameStep(), (int)D_8009AF9A,
+        index < 2 ? (int)D_800F2C40[index ^ 1].field_BF5 : -1, index < 2 ? (int)D_800F2C40[index ^ 1].field_E06 : -1);
 #endif
     switch (anim) {
     case -1:

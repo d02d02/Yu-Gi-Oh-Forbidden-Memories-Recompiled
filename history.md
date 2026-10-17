@@ -30,3 +30,15 @@
     neither it nor the disc model showed; it is now copied into the wide target's centre (`wide_mirror`). A part past the
     4:3 edges does not reach the margins.
   - B1 kept the GL code in `gl_picture.c` (its loader, GLES shader conversion and targets are that file's own).
+* Phase C (instances and events, shared by both objectives):
+  - `NativeModel_SetInstance` (exported for code mods, `NativeInstance` with a `size` for later fields): a draw's context
+    (ARENA, FIELD, BIG_CARD, MEASURE), key, card, fade and contact frame, for the next slot draw only; MEASURE captures
+    nothing. The game's own draws: key = slot, card from `NativeModel_SetBattleCards` (battle step 5; cleared when the
+    arena ends).
+  - The marker goes to the nearest ordering-table entry the slot's packets would have taken (`NativeModel_Nearest`,
+    kept by the polygon and the outline drivers; the outline drivers now honour the suppression too), not entry 0.
+  - `native_anim.c`: `NativeAnim_Act` (row -> idle / enter / attack / hit / destroyed / win / guard); the cross-fade's
+    memory is kept per key (16, least recently drawn replaced) and starts afresh when a key's mesh changes.
+  - The composite takes the instance's fade (`opacity`; `glUniform1f` added to the picture's functions).
+  - 16 native draws a frame (ring 32); `evt native` and `evt row ... other_row other_clock` log lines.
+  - Tests: `pc_native_capture` (new: the game stood in for), `pc_native_anim` (acts, per-monster memory, mesh change).

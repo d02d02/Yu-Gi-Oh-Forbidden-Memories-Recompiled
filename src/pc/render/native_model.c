@@ -6,6 +6,8 @@
 #include "pc/compat/gte.h"
 #include "pc/mods/json.h"
 #include "pc/mods/mods.h"
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +34,12 @@ static NativeMesh mesh;
 static int logged;
 volatile int NativeModel_Suppress;
 volatile int NativeModel_GlReady;
+unsigned NativeModel_Nearest = ~0u;
+
+/* NativeModel_SetInstance's, for the next BeginSlot only; then the draw being captured's. */
+static NativeInstance pending, instance;
+static int pending_set, instance_set;
+static int battle_card[2]; /* NativeModel_SetBattleCards */
 unsigned NativeModel_Stats[8]; /* parts captured, draws closed, markers linked, takes with draws, replayed ops, markers hit, triangles */
 
 /* One HDM4 file in memory (`data`, kept by the mesh) -> `out`; 0 when it is malformed (nothing is kept then, and
@@ -162,9 +170,38 @@ const NativeMesh *NativeModel_Mesh(int model)
     return NULL;
 }
 
+void NativeModel_SetInstance(const NativeInstance *in)
+{
+    size_t size;
+    if (!in) {
+        pending_set = 0;
+        return;
+    }
+    memset(&pending, 0, sizeof(pending));
+    pending.contact_frame = -1;
+    size = in->size > 0 && (size_t)in->size < sizeof(pending) ? (size_t)in->size : sizeof(pending);
+    memcpy(&pending, in, size); /* fields past the caller's size keep their defaults */
+    pending.size = (int32_t)sizeof(pending);
+    if (pending.context < 0 || pending.context >= NATIVE_CONTEXT_COUNT) pending.context = NATIVE_CONTEXT_ARENA;
+    pending.key &= 0xffff;
+    pending.fade = pending.fade < 0 ? 0 : pending.fade > 255 ? 255 : pending.fade;
+    pending_set = 1;
+}
+
+void NativeModel_SetBattleCards(int card0, int card1)
+{
+    battle_card[0] = card0;
+    battle_card[1] = card1;
+}
+
 void NativeModel_BeginSlot(int model)
 {
     current = NULL;
+    NativeModel_Suppress = 0;
+    NativeModel_Nearest = ~0u;
+    instance = pending; /* a code mod's word for this draw, used once */
+    instance_set = pending_set;
+    pending_set = 0;
     if (!loaded) load();
     if (logged && model >= 0) {
         static int last = -2;
@@ -173,6 +210,7 @@ void NativeModel_BeginSlot(int model)
             last = model;
         }
     }
+    if (instance_set && instance.context == NATIVE_CONTEXT_MEASURE) return; /* the mod reads the disc model's packets */
     if (!NativeModel_Mesh(model) || frame_count >= NATIVE_MAX_DRAWS) return;
     current = &frame[frame_count];
     memset(current, 0, sizeof(*current));
@@ -229,7 +267,23 @@ void NativeModel_Part(int part)
 
 void NativeModel_SlotInfo(const NativeSlotInfo *info)
 {
-    if (current && info) current->info = *info;
+    NativeSlotInfo *out;
+    if (!current || !info) return;
+    out = &current->info;
+    *out = *info;
+    if (instance_set) { /* a code mod's monster: its own key space per context, so it never shares the arena's state */
+        out->context = instance.context;
+        out->key = (instance.context << 16) | instance.key;
+        out->card = instance.card;
+        out->fade = instance.fade;
+        out->contact_frame = instance.contact_frame;
+    } else { /* the game's own slot */
+        out->context = NATIVE_CONTEXT_ARENA;
+        out->key = info->slot;
+        out->card = info->slot >= 0 && info->slot < 2 ? battle_card[info->slot] : 0;
+        out->fade = 0;
+        out->contact_frame = -1;
+    }
 }
 
 int NativeModel_EndSlot(void)
@@ -237,7 +291,10 @@ int NativeModel_EndSlot(void)
     int draw;
     NativeModel_Suppress = 0;
     if (!current) return 0;
-    NativeModel_Suppress = 0;
+    LOG(LOG_MODEL, "evt native f=%u model=%d context=%d key=%d card=%d row=%d clock=%d fade=%d contact=%d entry=%d",
+        Memories_PresentedFrames(), (int)current->model, (int)current->info.context, (int)current->info.key,
+        (int)current->info.card, (int)current->info.anim_index, (int)current->info.anim_frame, (int)current->info.fade,
+        (int)current->info.contact_frame, NativeModel_Nearest == ~0u ? -1 : (int)NativeModel_Nearest);
     current->id = next_id++;
     NativeModel_Stats[1]++;
     draw = (int)current->id + 1;
@@ -251,10 +308,13 @@ void NativeModel_Link(uint32_t *ot, int draw)
     /* GsOT: length, org (the entries), offset, ...; entry 0 is drawn last (nearest). */
     uint32_t *entries = (uint32_t *)(uintptr_t)ot[1];
     uint32_t *packet = (uint32_t *)(uintptr_t)D_800FE240;
+    /* At the nearest entry the model's own packets would have taken (the drivers kept it), so the model sorts at
+     * its depth among the rest of the table; entry 0 (drawn last) when none was kept. */
+    unsigned at = NativeModel_Nearest != ~0u ? NativeModel_Nearest : 0u;
     if (draw < 1 || !entries || !packet) return;
-    packet[0] = (entries[0] & 0x00ffffffu) | (1u << 24);
+    packet[0] = (entries[at] & 0x00ffffffu) | (1u << 24);
     packet[1] = NATIVE_MARKER | (uint32_t)((draw - 1) & 0xff);
-    entries[0] = (uint32_t)(uintptr_t)packet & 0x00ffffffu;
+    entries[at] = (uint32_t)(uintptr_t)packet & 0x00ffffffu;
     D_800FE240 = (uint32_t)(uintptr_t)(packet + 2);
     NativeModel_Stats[2]++;
 }

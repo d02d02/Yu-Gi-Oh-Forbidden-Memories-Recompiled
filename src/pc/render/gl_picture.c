@@ -61,6 +61,7 @@
     X(PFNGLDELETEPROGRAMPROC, DeleteProgram) \
     X(PFNGLGETUNIFORMLOCATIONPROC, GetUniformLocation) \
     X(PFNGLUNIFORM1IPROC, Uniform1i) \
+    X(PFNGLUNIFORM1FPROC, Uniform1f) \
     X(PFNGLUNIFORM2IPROC, Uniform2i) \
     X(PFNGLUNIFORM3IPROC, Uniform3i) \
     X(PFNGLUNIFORM4IPROC, Uniform4i) \
@@ -1759,7 +1760,7 @@ static struct {
     int skin_failed;
     float *skin_rows;
     int fresh; /* a new frame's draws came: the first native draw clears the depth, the others share it */
-    GLint c_size, c_tex;
+    GLint c_size, c_tex, c_opacity;
     int w, h, failed;
     const NativeMesh *textured; /* the mesh `texture` holds */
 } nat;
@@ -1801,10 +1802,11 @@ static const char *native_comp_fragment_source =
     "#version 130\n"
 #endif
     "uniform sampler2D tex;\n"
+    "uniform float opacity;\n" /* 1 - the instance's fade: the model's colour is pre-multiplied, so all four scale */
     "in vec2 uv;\n"
     "out vec4 fragment;\n"
     "void main() {\n"
-    "    fragment = texture(tex, uv);\n"
+    "    fragment = texture(tex, uv) * opacity;\n"
     "}\n";
 
 static GLuint native_link(const char *vs_source, const char *fs_source, const char *attribute0, const char *attribute1,
@@ -1907,6 +1909,7 @@ static int native_ready(void)
         }
         nat.c_size = gl_GetUniformLocation(nat.comp_program, "picture_size");
         nat.c_tex = gl_GetUniformLocation(nat.comp_program, "tex");
+        nat.c_opacity = gl_GetUniformLocation(nat.comp_program, "opacity");
         gl_GenBuffers(1, &nat.buffer);
     }
     if (nat.w != w || nat.h != h) {
@@ -2453,6 +2456,7 @@ static void native_draw(unsigned id)
         gl_UseProgram(nat.comp_program);
         gl_Uniform2f(nat.c_size, (float)nat.w, (float)nat.h);
         gl_Uniform1i(nat.c_tex, 0);
+        gl_Uniform1f(nat.c_opacity, 1.0f - (float)(d->info.fade < 0 ? 0 : d->info.fade > 255 ? 255 : d->info.fade) / 255.0f);
         glBindTexture(GL_TEXTURE_2D, nat.color);
         gl_BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
         gl_VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (const void *)0);
