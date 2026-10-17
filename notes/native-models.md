@@ -49,7 +49,7 @@ monster is the disc's own model, as without the mod.
 ## How the model is chosen and played
 
 * The disc animation row picks the clip (idle, enter, attack, hit, destroyed, win) and the clock inside the row picks the frame; the attack row is
-  time-warped so the clip's strike lands on the game's contact frames (`native_director` in `gl_picture.c`). A change of row cross-fades over 6 frames.
+  time-warped so the clip's strike lands on the game's contact frames (`NativeAnim_Choose` in `native_anim.c`). A change of row cross-fades over 6 frames.
 * The model stands at the body root's position and facing; the clip is in place (its root motion is stripped when the file is made).
 * Lighting is the game's own three lights; with a normal map and a metal/roughness map in the file the surface is lit per pixel.
 

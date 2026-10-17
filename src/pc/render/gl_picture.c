@@ -30,6 +30,7 @@
 #include "texture_pack.h"
 #include <math.h>
 #include "native_model.h"
+#include "native_anim.h"
 #include "pc/cards/card_layout.h"
 #include "pc/text/hd_text.h"
 #include "pc/platform/settings.h"
@@ -1742,22 +1743,13 @@ static int wide_target(void)
 static NativeDraw native_ring[NATIVE_RING];
 static int native_ring_valid[NATIVE_RING];
 
-/* One vertex of a native mesh, already projected: x, y in picture pixels, z the view depth, uv, and the light. */
-typedef struct NativeVertex {
-    float x, y, z, u, v, r, g, b;
-} NativeVertex;
-
 /* The pass draws each model into a framebuffer of its own (colour and depth, the picture's size), so the model
  * has a real depth buffer while the picture has none, then lays the result over the picture where the model
  * sorts. */
 static struct {
-    GLuint program, comp_program, texture, color, fbo, depth, buffer;
+    GLuint comp_program, texture, color, fbo, depth, buffer; /* buffer: the composite's quad */
     GLuint ms_fbo, ms_color, ms_depth; /* the multisampled target the model is drawn into, resolved into `fbo` */
     int samples;
-    GLuint gpu_program, gpu_vbo, bones_tex; /* the GPU pose path: static vertices, the parts' matrices in a float texture */
-    const NativeMesh *gpu_mesh; /* the mesh `gpu_vbo` holds */
-    GLint g_size, g_tex, g_bones;
-    int gpu_failed;
     GLuint skin_program, skin_vbo, skin_ebo, skin_tex; /* HDM4: the model's own skeleton (4-weight vertex-shader skinning) */
     const NativeMesh *skin_mesh;
     GLint s_size, s_tex, s_bones;
@@ -1766,36 +1758,11 @@ static struct {
     int pbr_failed;
     int skin_failed;
     float *skin_rows;
-    float *bones;
     int fresh; /* a new frame's draws came: the first native draw clears the depth, the others share it */
-    GLint u_size, u_tex, c_size, c_tex;
+    GLint c_size, c_tex;
     int w, h, failed;
     const NativeMesh *textured; /* the mesh `texture` holds */
-    NativeVertex *vertices;
-    size_t capacity;
 } nat;
-
-static const char *native_vertex_source =
-#ifdef __APPLE__
-    "#version 150\n"
-#else
-    "#version 130\n"
-#endif
-    "uniform vec2 picture_size;\n"
-    "in vec3 position;\n"
-    "in vec2 texcoord;\n"
-    "in vec3 shade;\n"
-    "out vec2 uv;\n"
-    "out vec3 rgb;\n"
-    "void main() {\n"
-    /* x, y are picture pixels, z the view depth: clip = (ndc * z, depth * z, z), so the interpolation is
-     * perspective-correct and the depth test is linear in the view depth. */
-    "    float depth = (position.z - 16.0) / (200000.0 - 16.0) * 2.0 - 1.0;\n"
-    "    vec2 ndc = position.xy / picture_size * 2.0 - 1.0;\n"
-    "    gl_Position = vec4(ndc * position.z, depth * position.z, position.z);\n"
-    "    uv = texcoord;\n"
-    "    rgb = shade;\n"
-    "}\n";
 
 static const char *native_fragment_source =
 #ifdef __APPLE__
@@ -1873,7 +1840,6 @@ static GLuint native_link(const char *vs_source, const char *fs_source, const ch
 
 static void native_free(void)
 {
-    if (nat.program) gl_DeleteProgram(nat.program);
     if (nat.comp_program) gl_DeleteProgram(nat.comp_program);
     if (nat.texture) glDeleteTextures(1, &nat.texture);
     if (nat.color) glDeleteTextures(1, &nat.color);
@@ -1883,9 +1849,6 @@ static void native_free(void)
     if (nat.ms_color) gl_DeleteRenderbuffers(1, &nat.ms_color);
     if (nat.ms_depth) gl_DeleteRenderbuffers(1, &nat.ms_depth);
     if (nat.buffer) gl_DeleteBuffers(1, &nat.buffer);
-    if (nat.gpu_program) gl_DeleteProgram(nat.gpu_program);
-    if (nat.gpu_vbo) gl_DeleteBuffers(1, &nat.gpu_vbo);
-    if (nat.bones_tex) glDeleteTextures(1, &nat.bones_tex);
     if (nat.skin_program) gl_DeleteProgram(nat.skin_program);
     if (nat.pbr_program) gl_DeleteProgram(nat.pbr_program);
     if (nat.normal_tex) glDeleteTextures(1, &nat.normal_tex);
@@ -1894,8 +1857,6 @@ static void native_free(void)
     if (nat.skin_ebo) gl_DeleteBuffers(1, &nat.skin_ebo);
     if (nat.skin_tex) glDeleteTextures(1, &nat.skin_tex);
     free(nat.skin_rows);
-    free(nat.bones);
-    free(nat.vertices);
     memset(&nat, 0, sizeof(nat));
     NativeModel_GlReady = 0;
 }
@@ -1904,8 +1865,6 @@ static void native_free(void)
 static void native_forget(void)
 {
     free(nat.skin_rows);
-    free(nat.bones);
-    free(nat.vertices);
     memset(&nat, 0, sizeof(nat));
     NativeModel_GlReady = 0;
 }
@@ -1914,7 +1873,7 @@ static void native_forget(void)
 static struct {
     int read;
     char clip[32]; /* MEMORIES_NATIVE_CLIP: this clip on a free clock, the game ignored ("" = off) */
-    int skin_log, cpu, depth_per_model, no_pbr;
+    int skin_log, depth_per_model, no_pbr;
 } nat_env;
 
 static void native_env(void)
@@ -1925,7 +1884,6 @@ static void native_env(void)
     clip = getenv("MEMORIES_NATIVE_CLIP");
     if (clip) snprintf(nat_env.clip, sizeof(nat_env.clip), "%s", clip);
     nat_env.skin_log = getenv("MEMORIES_NATIVE_SKIN_LOG") != NULL;
-    nat_env.cpu = getenv("MEMORIES_NATIVE_CPU") != NULL;
     nat_env.depth_per_model = getenv("MEMORIES_NATIVE_DEPTH_PER_MODEL") != NULL;
     nat_env.no_pbr = getenv("MEMORIES_NATIVE_NOPBR") != NULL;
 }
@@ -1940,16 +1898,13 @@ static int native_ready(void)
         NativeModel_GlReady = 0;
         return 0;
     }
-    if (!nat.program) {
-        nat.program = native_link(native_vertex_source, native_fragment_source, "position", "texcoord", "shade");
+    if (!nat.comp_program) {
         nat.comp_program = native_link(native_comp_vertex_source, native_comp_fragment_source, "position", NULL, NULL);
-        if (!nat.program || !nat.comp_program) {
+        if (!nat.comp_program) {
             native_free();
             nat.failed = 1;
             return 0;
         }
-        nat.u_size = gl_GetUniformLocation(nat.program, "picture_size");
-        nat.u_tex = gl_GetUniformLocation(nat.program, "tex");
         nat.c_size = gl_GetUniformLocation(nat.comp_program, "picture_size");
         nat.c_tex = gl_GetUniformLocation(nat.comp_program, "tex");
         gl_GenBuffers(1, &nat.buffer);
@@ -2018,138 +1973,9 @@ static int native_ready(void)
     return 1;
 }
 
-/* The GPU pose path (the default; MEMORIES_NATIVE_CPU=1 = the CPU loop in native_draw, the reference). The mesh goes to a
- * static vertex buffer once; every draw only uploads the parts' matrices, a 9 x 65 float texture. Row p (< 64) = part p:
- * texels 0-2 the rows of R/4096 with the (retargeted) translation in .w, 3-5 the light matrix rows (.w of texel 3 = the part
- * is used), 6-8 the light colour matrix rows. Row 64 = the draw: texel 0 = (screen offset x, y incl. the picture offset, H,
- * scale), texel 1 = (tint rgb / 128, lit), texel 2 = (ambient rgb / 4096). The arithmetic is native_draw's CPU loop. */
-#define NATIVE_BONE_ROWS (NATIVE_MAX_PARTS + 1)
 #ifndef GL_RGBA32F
 #define GL_RGBA32F 0x8814
 #endif
-static const char *native_gpu_vertex_source =
-#ifdef __APPLE__
-    "#version 150\n"
-#else
-    "#version 130\n"
-#endif
-    "uniform vec2 picture_size;\n"
-    "uniform sampler2D bones;\n"
-    "in vec3 apos;\n"
-    "in vec3 anorm;\n"
-    "in vec2 auv;\n"
-    "in vec3 aparts;\n" /* part A, part B, weight of B */
-    "in vec3 aposb;\n"
-    "in vec3 anormb;\n"
-    "out vec2 uv;\n"
-    "out vec3 rgb;\n"
-    "vec4 texel(int x, int y) { return texelFetch(bones, ivec2(x, y), 0); }\n"
-    "vec3 pose(int p, vec3 v) {\n"
-    "    return vec3(dot(texel(0, p).xyz, v) + texel(0, p).w, dot(texel(1, p).xyz, v) + texel(1, p).w,\n"
-    "                dot(texel(2, p).xyz, v) + texel(2, p).w);\n"
-    "}\n"
-    "vec3 light(int p, vec3 n, vec3 ambient) {\n"
-    "    vec3 ir = max(vec3(dot(texel(3, p).xyz, n), dot(texel(4, p).xyz, n), dot(texel(5, p).xyz, n)), 0.0);\n"
-    "    return ambient + vec3(dot(texel(6, p).xyz, ir), dot(texel(7, p).xyz, ir), dot(texel(8, p).xyz, ir));\n"
-    "}\n"
-    "void main() {\n"
-    "    int pa = int(aparts.x + 0.5), pb = int(aparts.y + 0.5), c = 64;\n"
-    "    float wb = aparts.z;\n"
-    "    vec4 k0 = texel(0, c), k1 = texel(1, c);\n"
-    "    uv = auv;\n"
-    "    if (texel(3, pa).w < 0.5) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); rgb = vec3(0.0); return; }\n"
-    "    vec3 view = pose(pa, apos);\n"
-    "    bool second = wb > 0.0 && pb != pa && texel(3, pb).w > 0.5;\n"
-    "    if (second) view = mix(view, pose(pb, aposb), wb);\n"
-    "    if (view.z < 16.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); rgb = vec3(0.0); return; }\n"
-    "    vec3 shade = k1.xyz;\n"
-    "    if (k1.w > 0.5) {\n"
-    "        vec3 ambient = texel(2, c).xyz, l = light(pa, anorm, ambient);\n"
-    "        if (second) l = mix(l, light(pb, anormb, ambient), wb);\n"
-    "        shade = clamp(l * k1.xyz, 0.0, 255.0 / 128.0);\n"
-    "    }\n"
-    "    rgb = shade;\n"
-    "    vec2 px = vec2(k0.x + k0.z * view.x / view.z, k0.y + k0.z * view.y / view.z) * k0.w;\n"
-    "    float depth = (view.z - 16.0) / (200000.0 - 16.0) * 2.0 - 1.0;\n"
-    "    vec2 ndc = px / picture_size * 2.0 - 1.0;\n"
-    "    gl_Position = vec4(ndc * view.z, depth * view.z, view.z);\n"
-    "}\n";
-
-/* The program, the static vertex buffer of `mesh` and the matrix texture; 0 = not available (the CPU path draws). */
-static int native_gpu_ready(const NativeMesh *mesh)
-{
-    if (nat.gpu_failed) return 0;
-    if (!nat.gpu_program) {
-        GLuint vs = compile(GL_VERTEX_SHADER, native_gpu_vertex_source, NULL), fs, made;
-        GLint ok = 0;
-        static const char *names[6] = {"apos", "anorm", "auv", "aparts", "aposb", "anormb"};
-        int k;
-        if (!vs) { nat.gpu_failed = 1; return 0; }
-        fs = compile(GL_FRAGMENT_SHADER, native_fragment_source, NULL);
-        if (!fs) { gl_DeleteShader(vs); nat.gpu_failed = 1; return 0; }
-        made = gl_CreateProgram();
-        gl_AttachShader(made, vs);
-        gl_AttachShader(made, fs);
-        for (k = 0; k < 6; k++) gl_BindAttribLocation(made, (GLuint)k, names[k]);
-        gl_LinkProgram(made);
-        gl_DeleteShader(vs);
-        gl_DeleteShader(fs);
-        gl_GetProgramiv(made, GL_LINK_STATUS, &ok);
-        if (!ok) {
-            char log[2048];
-            gl_GetProgramInfoLog(made, sizeof(log), NULL, log);
-            fprintf(stderr, "memories-pc: native model: GPU program: %s (the CPU path draws)\n", log);
-            gl_DeleteProgram(made);
-            nat.gpu_failed = 1;
-            return 0;
-        }
-        nat.gpu_program = made;
-        nat.g_size = gl_GetUniformLocation(made, "picture_size");
-        nat.g_tex = gl_GetUniformLocation(made, "tex");
-        nat.g_bones = gl_GetUniformLocation(made, "bones");
-        nat.bones = (float *)malloc((size_t)9 * NATIVE_BONE_ROWS * 4 * sizeof(float));
-        if (!nat.bones) { nat.gpu_failed = 1; return 0; }
-        glGenTextures(1, &nat.bones_tex);
-        glBindTexture(GL_TEXTURE_2D, nat.bones_tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 9, NATIVE_BONE_ROWS, 0, GL_RGBA, GL_FLOAT, NULL);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        gl_GenBuffers(1, &nat.gpu_vbo);
-    }
-    if (nat.gpu_mesh != mesh) {
-        float *v = (float *)malloc((size_t)mesh->vertices * 17 * sizeof(float));
-        uint32_t i;
-        if (!v) return 0;
-        for (i = 0; i < mesh->vertices; i++) {
-            const uint32_t *w = mesh->words + (size_t)i * mesh->stride;
-            const float *f = (const float *)w;
-            float *o = v + (size_t)i * 17;
-            uint32_t pa = w[8] < NATIVE_MAX_PARTS ? w[8] : 0, pb = pa;
-            float wb = 0.0f;
-            int k;
-            for (k = 0; k < 8; k++) o[k] = f[k]; /* position, normal, uv */
-            for (k = 0; k < 3; k++) { o[11 + k] = f[k]; o[14 + k] = f[3 + k]; }
-            if (mesh->stride >= 17 && w[10] != 0) { /* smooth skin: the second part, its weight, position and normal */
-                pb = w[9] < NATIVE_MAX_PARTS ? w[9] : 0;
-                wb = f[10];
-                for (k = 0; k < 6; k++) o[11 + k] = f[11 + k];
-            }
-            o[8] = (float)pa;
-            o[9] = (float)pb;
-            o[10] = wb;
-        }
-        gl_BindBuffer(GL_ARRAY_BUFFER, nat.gpu_vbo);
-        gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->vertices * 17 * sizeof(float)), v, GL_STATIC_DRAW);
-        gl_BindBuffer(GL_ARRAY_BUFFER, 0);
-        free(v);
-        nat.gpu_mesh = mesh;
-    }
-    return 1;
-}
-
 
 /* --- HDM4: the model's own skeleton and clips -------------------------------------------------------------------
  * The game gives the root pose (NativeSlotInfo: body root + world-to-screen), the disc animation state and the lights; the
@@ -2157,8 +1983,6 @@ static int native_gpu_ready(const NativeMesh *mesh)
  * matrix (view <- model space) = root view matrix x bone world x inverse bind. Texture `skin_tex` is 4 x 131 RGBA32F:
  * rows 0-127 bones (texels 0-2 = matrix rows, .w = translation), row 128 = (screen offset x, y, H, scale), (tint rgb, lit),
  * (ambient rgb); row 129 = the three light directions in view space; row 130 = the light colour matrix rows. */
-#define NATIVE_SKIN_ROWS (NATIVE_MAX_BONES + 3)
-#define NATIVE_FADE 6 /* game frames of cross-fade when the disc animation row changes (0.2 s at 30 fps) */
 #ifndef GL_ELEMENT_ARRAY_BUFFER
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #endif
@@ -2413,329 +2237,17 @@ static int native_skin_ready(const NativeMesh *mesh)
     return 1;
 }
 
-/* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
- * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
- * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star. */
-static float native_director(const NativeDraw *d, const NativeMesh *mesh, const NativeClip **clip_out)
-{
-    static const char *by_row[8] = {"Sword_Idle", "Sword_Idle", "Idle_Loop", "Sword_Attack", "Sword_Idle", "Hit_Chest", "Death01", "Sword_Idle"};
-    const char *forced = nat_env.clip;
-    int row = d->info.anim_index, attack = d->info.attack_row == 4 ? 4 : 3;
-    const char *want = forced && *forced ? forced
-                     : row == attack ? "Sword_Attack"
-                     : row == 3 || row == 4 ? "Sword_Idle" /* the other guardian star's attack: not this card's */
-                     : by_row[(unsigned)row < 8u ? row : 0];
-    const NativeClip *c = NULL;
-    unsigned i;
-    float phase, t;
-    for (i = 0; i < mesh->clip_count; i++)
-        if (strcmp(mesh->clips[i].name, want) == 0) c = &mesh->clips[i];
-    if (!c && mesh->clip_count) c = &mesh->clips[0];
-    *clip_out = c;
-    if (!c || c->frames < 1) return 0.0f;
-    if (forced && *forced) {
-        float length = (float)c->frames / c->fps;
-        t = (float)d->id / 30.0f;
-        return t - (float)(int)(t / length) * length;
-    }
-    phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
-    phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
-    if (row == 3 && attack == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
-        /* Piecewise time warp keyed to the game's events (disc frames of row 3: contact window opens at 29, closes at 61, second
-         * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30).
-         * Measured on Black Luster Soldier's row 3 only: row 4 has no measurement yet, so its clip runs evenly over the row. */
-        static const float disc[6] = {0.0f, 25.0f, 30.0f, 61.0f, 95.0f, 150.0f};
-        static const float clip[6] = {0.0f, 8.0f, 11.0f, 22.0f, 30.0f, 46.0f};
-        float frame = (float)d->info.anim_frame / 16.0f;
-        int k;
-        if (frame >= disc[5]) return clip[5] / c->fps;
-        for (k = 0; k < 5 && frame >= disc[k + 1]; k++) continue;
-        return (clip[k] + (clip[k + 1] - clip[k]) * (frame - disc[k]) / (disc[k + 1] - disc[k])) / c->fps;
-    }
-    return phase * (float)(c->frames - 1) / c->fps;
-}
-
-/* 3x4 (row major, implied last row 0 0 0 1) product: out = a * b. */
-static void native_mul34(const float *a, const float *b, float *out)
-{
-    int r, c;
-    for (r = 0; r < 3; r++) {
-        for (c = 0; c < 3; c++) out[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] + a[r * 4 + 2] * b[8 + c];
-        out[r * 4 + 3] = a[r * 4] * b[3] + a[r * 4 + 1] * b[7] + a[r * 4 + 2] * b[11] + a[r * 4 + 3];
-    }
-}
-
-/* The clip at time t (seconds): per bone the local matrix, forward kinematics, then rows = root view x world x inverse bind. */
-static void native_skin_pose(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, float *rows, int lit)
-{
-    float world[NATIVE_MAX_BONES][12];
-    float lq[NATIVE_MAX_BONES][7]; /* local pose per bone: t[3], q[4] */
-    unsigned char done[NATIVE_MAX_BONES];
-    float rv[12];
-    unsigned b, pass;
-    int r, c;
-    const NativeSlotInfo *in = &d->info;
-    { /* the root's view matrix: ws * root, translation ws * root_t + ws_t (GTE: v' = R v / 4096 + TR) */
-        float ws[9], rr[9];
-        for (r = 0; r < 9; r++) {
-            ws[r] = (float)in->ws_rot[r] / 4096.0f;
-            rr[r] = (float)in->root_rot[r] / 4096.0f;
-        }
-        for (r = 0; r < 3; r++) {
-            for (c = 0; c < 3; c++) rv[r * 4 + c] = ws[r * 3] * rr[c] + ws[r * 3 + 1] * rr[3 + c] + ws[r * 3 + 2] * rr[6 + c];
-            rv[r * 4 + 3] = (ws[r * 3] * (float)in->root_tr[0] + ws[r * 3 + 1] * (float)in->root_tr[1] +
-                             ws[r * 3 + 2] * (float)in->root_tr[2]) + (float)in->ws_tr[r];
-        }
-    }
-    if (nat_env.skin_log) {
-        static unsigned n;
-        if (n++ % 20 == 0) {
-            const NativePart *p1 = &d->parts[1];
-            fprintf(stderr, "skin: row=%d root_rot=%d,%d,%d/%d,%d,%d/%d,%d,%d root_tr=%d,%d,%d scale=%d ws_tr=%d,%d,%d | rv_t=%.0f,%.0f,%.0f | part1 used=%d tr=%d,%d,%d rot=%d,%d,%d/%d,%d,%d/%d,%d,%d ofx=%d h=%d\n",
-                    in->anim_index, in->root_rot[0], in->root_rot[1], in->root_rot[2], in->root_rot[3], in->root_rot[4], in->root_rot[5],
-                    in->root_rot[6], in->root_rot[7], in->root_rot[8], in->root_tr[0], in->root_tr[1], in->root_tr[2], in->scale[0],
-                    in->ws_tr[0], in->ws_tr[1], in->ws_tr[2], rv[3], rv[7], rv[11], p1->used, p1->tr[0], p1->tr[1], p1->tr[2],
-                    p1->rot[0], p1->rot[1], p1->rot[2], p1->rot[3], p1->rot[4], p1->rot[5], p1->rot[6], p1->rot[7], p1->rot[8],
-                    d->ofx >> 16, d->h);
-        }
-    }
-    /* The clip's local pose (linear between the baked frames, rotation nlerp), then a short cross-fade when the game's
-     * animation row changes (the new row's clip starts elsewhere than the old one ended): the last pose drawn for this slot
-     * is blended into the new one over NATIVE_FADE draws (game frames). */
-    for (b = 0; b < mesh->bones; b++) {
-        float *o = lq[b];
-        o[0] = o[1] = o[2] = o[3] = o[4] = o[5] = 0.0f;
-        o[6] = 1.0f;
-        if (clip && clip->frames) {
-            float f = t * clip->fps, k, len;
-            unsigned i0, i1;
-            const float *a, *bb;
-            if (f < 0.0f) f = 0.0f;
-            i0 = (unsigned)f;
-            if (i0 >= clip->frames - 1) { i0 = clip->frames - 1; i1 = i0; k = 0.0f; }
-            else { i1 = i0 + 1; k = f - (float)i0; }
-            a = clip->data + ((size_t)i0 * mesh->bones + b) * 7;
-            bb = clip->data + ((size_t)i1 * mesh->bones + b) * 7;
-            for (r = 0; r < 3; r++) o[r] = a[r] + (bb[r] - a[r]) * k;
-            for (r = 0; r < 4; r++) o[3 + r] = a[3 + r] + (bb[3 + r] - a[3 + r]) * k;
-            len = sqrtf(o[3] * o[3] + o[4] * o[4] + o[5] * o[5] + o[6] * o[6]);
-            if (len < 1e-8f) { o[3] = o[4] = o[5] = 0.0f; o[6] = 1.0f; }
-            else for (r = 3; r < 7; r++) o[r] /= len;
-        }
-    }
-    {
-        static struct { int row, valid, fade, id; float last[NATIVE_MAX_BONES][7]; float from[NATIVE_MAX_BONES][7]; } mem[3];
-        int s = in->slot >= 0 && in->slot < 3 ? in->slot : 2;
-        if (mem[s].id != d->id + 1) { /* once per draw (the same draw can be replayed) */
-            if (mem[s].valid && mem[s].row != in->anim_index) {
-                memcpy(mem[s].from, mem[s].last, sizeof(mem[s].from));
-                mem[s].fade = NATIVE_FADE;
-            }
-            mem[s].row = in->anim_index;
-            mem[s].valid = 1;
-            mem[s].id = d->id + 1;
-            if (mem[s].fade > 0) {
-                float w = (float)(NATIVE_FADE - mem[s].fade + 1) / (float)(NATIVE_FADE + 1);
-                for (b = 0; b < mesh->bones; b++) {
-                    const float *fr = mem[s].from[b];
-                    float *o = lq[b], dot = fr[3] * o[3] + fr[4] * o[4] + fr[5] * o[5] + fr[6] * o[6], len;
-                    for (r = 0; r < 3; r++) o[r] = fr[r] + (o[r] - fr[r]) * w;
-                    for (r = 3; r < 7; r++) o[r] = fr[r] * (dot < 0.0f ? -1.0f : 1.0f) * (1.0f - w) + o[r] * w;
-                    len = sqrtf(o[3] * o[3] + o[4] * o[4] + o[5] * o[5] + o[6] * o[6]);
-                    for (r = 3; r < 7; r++) o[r] /= len;
-                }
-                mem[s].fade--;
-            }
-            memcpy(mem[s].last, lq, (size_t)mesh->bones * sizeof(lq[0]));
-        } else if (mem[s].fade >= 0) {
-            /* a replay of the same draw: the blended pose was stored in `last` */
-            memcpy(lq, mem[s].last, (size_t)mesh->bones * sizeof(lq[0]));
-        }
-    }
-    memset(done, 0, sizeof(done));
-    for (pass = 0; pass < NATIVE_MAX_BONES; pass++) {
-        unsigned left = 0;
-        for (b = 0; b < mesh->bones; b++) {
-            const uint32_t *bt = mesh->bone_table + (size_t)b * 16;
-            int parent = (int)bt[0];
-            float loc[12];
-            if (done[b]) continue;
-            if (parent >= 0 && !done[parent]) { left++; continue; }
-            memset(loc, 0, sizeof(loc));
-            loc[0] = loc[5] = loc[10] = 1.0f;
-            {   /* the (cross-faded) local pose of bone b: rotation as a unit quaternion, translation */
-                const float *lp = lq[b];
-                float x = lp[3], y = lp[4], z = lp[5], w = lp[6];
-                loc[0] = 1 - 2 * (y * y + z * z); loc[1] = 2 * (x * y - z * w); loc[2] = 2 * (x * z + y * w);
-                loc[4] = 2 * (x * y + z * w); loc[5] = 1 - 2 * (x * x + z * z); loc[6] = 2 * (y * z - x * w);
-                loc[8] = 2 * (x * z - y * w); loc[9] = 2 * (y * z + x * w); loc[10] = 1 - 2 * (x * x + y * y);
-                loc[3] = lp[0];
-                loc[7] = lp[1];
-                loc[11] = lp[2];
-            }
-            if (parent >= 0) native_mul34(world[parent], loc, world[b]);
-            else memcpy(world[b], loc, sizeof(loc));
-            done[b] = 1;
-        }
-        if (!left) break;
-    }
-    memset(rows, 0, (size_t)4 * NATIVE_SKIN_ROWS * 4 * sizeof(float));
-    for (b = 0; b < mesh->bones; b++) {
-        float m[12], v[12];
-        const float *ibm = (const float *)(mesh->bone_table + (size_t)b * 16) + 1;
-        native_mul34(world[b], ibm, m);
-        native_mul34(rv, m, v);
-        for (r = 0; r < 3; r++)
-            for (c = 0; c < 4; c++) rows[((size_t)b * 4 + (size_t)r) * 4 + (size_t)c] = v[r * 4 + c];
-    }
-    { /* the draw: row 128 (texels 0-2), the light directions: row 129, the light colour matrix: row 130 */
-        float *k = rows + (size_t)NATIVE_MAX_BONES * 4 * 4;
-        const NativePart *lp = NULL;
-        unsigned p;
-        k[0] = (float)d->ofx / 65536.0f + (float)state.offset_x;
-        k[1] = (float)d->ofy / 65536.0f + (float)state.offset_y;
-        k[2] = (float)d->h;
-        k[3] = (float)scale;
-        k[4] = (float)(d->tint & 0xff) / 128.0f;
-        k[5] = (float)((d->tint >> 8) & 0xff) / 128.0f;
-        k[6] = (float)((d->tint >> 16) & 0xff) / 128.0f;
-        k[7] = (float)lit;
-        k[8] = (float)d->bk[0] / 4096.0f;
-        k[9] = (float)d->bk[1] / 4096.0f;
-        k[10] = (float)d->bk[2] / 4096.0f;
-        /* HDM4 light tuning (the game's lights are dim for a detailed model): ambient lift (texel 3 .x) and light gain (.y) */
-        k[12] = NativeModel_Tune.ambient;
-        k[13] = NativeModel_Tune.light_gain;
-        for (p = 0; p < NATIVE_MAX_PARTS && !lp; p++)
-            if (d->parts[p].used) lp = &d->parts[p];
-        if (lp && lit) { /* d_i = unit(R_ls) x (light matrix row i), view space */
-            float ru[9], sc[3];
-            float *dirs = rows + (size_t)(NATIVE_MAX_BONES + 1) * 4 * 4, *cols = rows + (size_t)(NATIVE_MAX_BONES + 2) * 4 * 4;
-            for (c = 0; c < 3; c++)
-                sc[c] = sqrtf((float)lp->rot[c] * lp->rot[c] + (float)lp->rot[3 + c] * lp->rot[3 + c] + (float)lp->rot[6 + c] * lp->rot[6 + c]);
-            for (r = 0; r < 3; r++)
-                for (c = 0; c < 3; c++) ru[r * 3 + c] = sc[c] > 0.0f ? (float)lp->rot[r * 3 + c] / sc[c] : 0.0f;
-            for (r = 0; r < 3; r++) { /* light r: texel r of row 129; colour row r of row 130 */
-                for (c = 0; c < 3; c++) {
-                    dirs[r * 4 + c] = (ru[c * 3] * (float)lp->llm[r * 3] + ru[c * 3 + 1] * (float)lp->llm[r * 3 + 1] +
-                                       ru[c * 3 + 2] * (float)lp->llm[r * 3 + 2]) / 4096.0f;
-                    cols[r * 4 + c] = (float)lp->lcm[r * 3 + c] / 4096.0f;
-                }
-            }
-        }
-    }
-}
-
-static float native_clamp(float v, float lo, float hi)
-{
-    return v < lo ? lo : v > hi ? hi : v;
-}
-
-/* A part-local point to view space, with the part's GTE matrices (view = R v / 4096 + TR). `tr` (float) replaces the part's
- * translation when the model brings its own joints (native_retarget). */
-static void native_view(const NativePart *part, const float *tr, const float *v, float out[3])
-{
-    const float t0 = tr ? tr[0] : (float)part->tr[0], t1 = tr ? tr[1] : (float)part->tr[1], t2 = tr ? tr[2] : (float)part->tr[2];
-    out[0] = ((float)part->rot[0] * v[0] + (float)part->rot[1] * v[1] + (float)part->rot[2] * v[2]) / 4096.0f + t0;
-    out[1] = ((float)part->rot[3] * v[0] + (float)part->rot[4] * v[1] + (float)part->rot[5] * v[2]) / 4096.0f + t1;
-    out[2] = ((float)part->rot[6] * v[0] + (float)part->rot[7] * v[1] + (float)part->rot[8] * v[2]) / 4096.0f + t2;
-}
-
-/* RETARGET: the game poses its 25 parts for the disc model's proportions (each part's rotation R and the joint's posed
- * position T). A model with its own skeleton (HDM3: joint J per part, its own offsets and bone lengths) keeps the game's
- * ROTATIONS relative to the disc's bind pose, Rd = R * Rb^-1, and rebuilds the joint positions by forward kinematics:
- *   Q[child] = Q[parent] + Rd[parent] * (J[child] - J[parent]) + delta,   delta = T[child] - (T[parent] + Rd[parent] * (tb[child] - tb[parent]))
- * (delta keeps any translation the game animates on its own); a part without a drawn parent: Q = Rd * (J - tb) + T.
- * With J = tb (the disc's own skeleton) Q = T exactly, so the picture is the old one. */
-static void native_retarget(const NativeDraw *d, const NativeMesh *mesh, float q[NATIVE_MAX_PARTS][3])
-{
-    float rd[NATIVE_MAX_PARTS][9];
-    unsigned char done[NATIVE_MAX_PARTS];
-    unsigned n = mesh->joint_parts < NATIVE_MAX_PARTS ? mesh->joint_parts : NATIVE_MAX_PARTS, i, pass, left;
-    memset(done, 0, sizeof(done));
-    for (i = 0; i < n; i++) {
-        const NativePart *p = &d->parts[i];
-        const float *rbi = (const float *)(mesh->joints + i * 16) + 7;
-        int r, c, k;
-        for (r = 0; r < 3; r++)
-            for (c = 0; c < 3; c++) {
-                float sum = 0.0f;
-                for (k = 0; k < 3; k++) sum += ((float)p->rot[r * 3 + k] / 4096.0f) * rbi[k * 3 + c];
-                rd[i][r * 3 + c] = sum;
-            }
-    }
-    for (pass = 0; pass < 16; pass++) {
-        left = 0;
-        for (i = 0; i < n; i++) {
-            const uint32_t *w = mesh->joints + i * 16;
-            const float *ji = (const float *)w + 1, *tbi = (const float *)w + 4;
-            int parent = (int)w[0];
-            const NativePart *p = &d->parts[i];
-            float *out = q[i];
-            if (done[i] || !p->used) continue;
-            if (parent >= 0 && (unsigned)parent < n && d->parts[parent].used) {
-                const uint32_t *wp = mesh->joints + (unsigned)parent * 16;
-                const float *jp = (const float *)wp + 1, *tbp = (const float *)wp + 4;
-                const NativePart *pp = &d->parts[parent];
-                const float *r = rd[parent];
-                float dj[3], dt[3], rj[3], rt[3];
-                int c;
-                if (!done[parent]) { left++; continue; }
-                for (c = 0; c < 3; c++) {
-                    dj[c] = ji[c] - jp[c];
-                    dt[c] = tbi[c] - tbp[c];
-                }
-                for (c = 0; c < 3; c++) {
-                    rj[c] = r[c * 3] * dj[0] + r[c * 3 + 1] * dj[1] + r[c * 3 + 2] * dj[2];
-                    rt[c] = r[c * 3] * dt[0] + r[c * 3 + 1] * dt[1] + r[c * 3 + 2] * dt[2];
-                    out[c] = q[parent][c] + rj[c] + ((float)p->tr[c] - ((float)pp->tr[c] + rt[c]));
-                }
-            } else {
-                const float *r = rd[i];
-                float dj[3];
-                int c;
-                for (c = 0; c < 3; c++) dj[c] = ji[c] - tbi[c];
-                for (c = 0; c < 3; c++) out[c] = r[c * 3] * dj[0] + r[c * 3 + 1] * dj[1] + r[c * 3 + 2] * dj[2] + (float)p->tr[c];
-            }
-            done[i] = 1;
-        }
-        if (!left) break;
-    }
-}
-
-/* The GTE's lighting (NCCS) of a part-local normal: the colour matrix times the light matrix times the normal, plus the
- * ambient; 1.0 = full light. */
-static void native_light(const NativeDraw *d, const NativePart *part, const float *n, float out[3])
-{
-    float ir[3];
-    int c, l;
-    for (l = 0; l < 3; l++) {
-        ir[l] = ((float)part->llm[l * 3] * n[0] + (float)part->llm[l * 3 + 1] * n[1] +
-                 (float)part->llm[l * 3 + 2] * n[2]) / 4096.0f;
-        if (ir[l] < 0.0f) ir[l] = 0.0f;
-    }
-    for (c = 0; c < 3; c++) {
-        out[c] = (float)d->bk[c] / 4096.0f + ((float)part->lcm[c * 3] * ir[0] + (float)part->lcm[c * 3 + 1] * ir[1] +
-                                              (float)part->lcm[c * 3 + 2] * ir[2]) / 4096.0f;
-    }
-}
-
-/* The mesh of draw `id` posed with the parts' GTE matrices the game set (view = R v / 4096 + TR, screen =
- * offset + H x / z: the GTE's own arithmetic, in floats), lit as the GTE lights (NCCS: the colour matrix times
- * the light matrix times the normal, plus the ambient), textured, depth-tested, laid over the picture. */
 static void native_draw(unsigned id)
 {
     const NativeDraw *d = &native_ring[id % NATIVE_RING];
     const NativeMesh *mesh;
     uint32_t i;
-    float min_x = 1e9f, min_y = 1e9f, max_x = -1e9f, max_y = -1e9f;
-    int x0, y0, x1, y1, lit, retargeted, use_gpu, skinned;
-    float q[NATIVE_MAX_PARTS][3];
+    int x0, y0, x1, y1, lit;
     NativeModel_Stats[5]++;
     native_env();
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
     mesh = NativeModel_Mesh(d->model);
-    if (!mesh || !native_ready()) return;
+    if (!mesh || !mesh->bones || !native_ready()) return;
     /* The primitives before this model, in order, are in the picture first. */
     flush_runs();
     if (nat.textured != mesh) {
@@ -2800,148 +2312,41 @@ static void native_draw(unsigned id)
         glBindTexture(GL_TEXTURE_2D, 0);
         nat.pbr_mesh = mesh;
     }
-    if (nat.capacity < mesh->vertices) {
-        free(nat.vertices);
-        nat.vertices = (NativeVertex *)malloc((size_t)mesh->vertices * sizeof(NativeVertex));
-        nat.capacity = nat.vertices ? mesh->vertices : 0;
-        if (!nat.vertices) return;
-    }
     /* Whether the slot's lights are set at all: a slot drawn from the colour cache has no light of its own. */
     lit = 0;
     for (i = 0; i < NATIVE_MAX_PARTS && !lit; i++) {
         int k;
         for (k = 0; k < 9; k++) lit |= d->parts[i].used && d->parts[i].lcm[k] != 0;
     }
-    retargeted = mesh->joints != NULL;
-    if (retargeted) native_retarget(d, mesh, q);
-    skinned = mesh->bones != 0;
-    use_gpu = !skinned && !nat_env.cpu && native_gpu_ready(mesh);
-    if (skinned) { /* HDM4: the model's own clip, posed on the CPU (forward kinematics), skinned on the GPU */
+    { /* the model's own clip, posed on the CPU (native_anim.c: forward kinematics), skinned on the GPU */
         const NativeClip *clip = NULL;
+        NativeAnimFrame frame;
         float t;
         if (!native_skin_ready(mesh)) {
             NativeModel_GlReady = 0; /* the disc model is drawn from the next frame on */
             return;
         }
-        t = native_director(d, mesh, &clip);
-        native_skin_pose(d, mesh, clip, t, nat.skin_rows, lit);
+        frame.offset_x = (float)state.offset_x;
+        frame.offset_y = (float)state.offset_y;
+        frame.scale = scale;
+        frame.lit = lit;
+        frame.ambient = NativeModel_Tune.ambient;
+        frame.light_gain = NativeModel_Tune.light_gain;
+        frame.log = nat_env.skin_log;
+        t = NativeAnim_Choose(d, mesh, nat_env.clip, &clip);
+        NativeAnim_Rows(d, mesh, clip, t, &frame, nat.skin_rows);
         gl_ActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, NATIVE_SKIN_ROWS, GL_RGBA, GL_FLOAT, nat.skin_rows);
         gl_ActiveTexture(GL_TEXTURE0);
         NativeModel_Stats[7]++;
     }
-    if (use_gpu) {
-        float *b = nat.bones;
-        unsigned pidx;
-        memset(b, 0, (size_t)9 * NATIVE_BONE_ROWS * 4 * sizeof(float));
-        for (pidx = 0; pidx < NATIVE_MAX_PARTS; pidx++) {
-            const NativePart *part = &d->parts[pidx];
-            float *row = b + (size_t)pidx * 9 * 4;
-            int r, c;
-            if (!part->used) continue;
-            for (r = 0; r < 3; r++) {
-                for (c = 0; c < 3; c++) {
-                    row[r * 4 + c] = (float)part->rot[r * 3 + c] / 4096.0f;
-                    row[(3 + r) * 4 + c] = (float)part->llm[r * 3 + c] / 4096.0f;
-                    row[(6 + r) * 4 + c] = (float)part->lcm[r * 3 + c] / 4096.0f;
-                }
-                row[r * 4 + 3] = retargeted && pidx < mesh->joint_parts ? q[pidx][r] : (float)part->tr[r];
-            }
-            row[3 * 4 + 3] = 1.0f; /* used */
-        }
-        {
-            float *k = b + (size_t)NATIVE_MAX_PARTS * 9 * 4;
-            k[0] = (float)d->ofx / 65536.0f + (float)state.offset_x;
-            k[1] = (float)d->ofy / 65536.0f + (float)state.offset_y;
-            k[2] = (float)d->h;
-            k[3] = (float)scale;
-            k[4] = (float)(d->tint & 0xff) / 128.0f;
-            k[5] = (float)((d->tint >> 8) & 0xff) / 128.0f;
-            k[6] = (float)((d->tint >> 16) & 0xff) / 128.0f;
-            k[7] = (float)lit;
-            k[8] = (float)d->bk[0] / 4096.0f;
-            k[9] = (float)d->bk[1] / 4096.0f;
-            k[10] = (float)d->bk[2] / 4096.0f;
-        }
-        gl_ActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, nat.bones_tex);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 9, NATIVE_BONE_ROWS, GL_RGBA, GL_FLOAT, b);
-        gl_ActiveTexture(GL_TEXTURE0);
-        NativeModel_Stats[7]++;
-    }
-    if (use_gpu || skinned) { /* the box: the whole clip rectangle (the pose is on the GPU) */
-        min_x = 0.0f;
-        min_y = 0.0f;
-        max_x = (float)nat.w;
-        max_y = (float)nat.h;
-    } else {
-        for (i = 0; i < mesh->vertices; i++) {
-            const uint32_t *w = mesh->words + (size_t)i * mesh->stride;
-            const float *f = (const float *)w;
-            NativeVertex *out = &nat.vertices[i];
-            float view[3], other[3], light[3], tint[3], weight = 0.0f;
-            const NativePart *part = &d->parts[w[8] < NATIVE_MAX_PARTS ? w[8] : 0];
-            const NativePart *second = NULL;
-            out->z = 1e7f; /* outside the far plane: not drawn */
-            if (!part->used) continue;
-            if (mesh->stride >= 17 && w[10] != 0) { /* smooth skin: this vertex also follows a neighbour part */
-                const float *fb = (const float *)w;
-                weight = fb[10];
-                second = &d->parts[w[9] < NATIVE_MAX_PARTS ? w[9] : 0];
-                if (!second->used || weight <= 0.0f) second = NULL;
-            }
-            native_view(part, retargeted ? q[part - d->parts] : NULL, f, view);
-            if (second) {
-                float other_position[3] = {((const float *)w)[11], ((const float *)w)[12], ((const float *)w)[13]};
-                native_view(second, retargeted ? q[second - d->parts] : NULL, other_position, other);
-                view[0] += (other[0] - view[0]) * weight;
-                view[1] += (other[1] - view[1]) * weight;
-                view[2] += (other[2] - view[2]) * weight;
-            }
-            if (view[2] < 16.0f) continue;
-            out->x = ((float)d->ofx / 65536.0f + (float)d->h * view[0] / view[2] + (float)state.offset_x) * (float)scale;
-            out->y = ((float)d->ofy / 65536.0f + (float)d->h * view[1] / view[2] + (float)state.offset_y) * (float)scale;
-            out->z = view[2];
-            out->u = f[6];
-            out->v = f[7];
-            tint[0] = (float)(d->tint & 0xff) / 128.0f;
-            tint[1] = (float)((d->tint >> 8) & 0xff) / 128.0f;
-            tint[2] = (float)((d->tint >> 16) & 0xff) / 128.0f;
-            if (lit) {
-                native_light(d, part, f + 3, light);
-                if (second) {
-                    float light_b[3], normal_b[3] = {((const float *)w)[14], ((const float *)w)[15], ((const float *)w)[16]};
-                    native_light(d, second, normal_b, light_b);
-                    light[0] += (light_b[0] - light[0]) * weight;
-                    light[1] += (light_b[1] - light[1]) * weight;
-                    light[2] += (light_b[2] - light[2]) * weight;
-                }
-                out->r = native_clamp(light[0] * tint[0], 0.0f, 255.0f / 128.0f);
-                out->g = native_clamp(light[1] * tint[1], 0.0f, 255.0f / 128.0f);
-                out->b = native_clamp(light[2] * tint[2], 0.0f, 255.0f / 128.0f);
-            } else {
-                out->r = tint[0];
-                out->g = tint[1];
-                out->b = tint[2];
-            }
-            if (out->x < min_x) min_x = out->x;
-            if (out->y < min_y) min_y = out->y;
-            if (out->x > max_x) max_x = out->x;
-            if (out->y > max_y) max_y = out->y;
-        }
-        /* A triangle with one vertex out takes the others out with it. */
-        for (i = 0; i + 2 < mesh->vertices; i += 3) {
-            if (nat.vertices[i].z > 1e6f || nat.vertices[i + 1].z > 1e6f || nat.vertices[i + 2].z > 1e6f)
-                nat.vertices[i].z = nat.vertices[i + 1].z = nat.vertices[i + 2].z = 1e7f;
-        }
-    }
-    if (min_x > max_x) return;
-    /* Its box in picture pixels, inside the picture and the primitive clip rectangle the game has set. */
-    x0 = (int)min_x - 1;
-    y0 = (int)min_y - 1;
-    x1 = (int)max_x + 2;
-    y1 = (int)max_y + 2;
+    /* Its box: the primitive clip rectangle the game has set, inside the picture (the pose is on the GPU, so the
+     * model's own extent is not known here). */
+    x0 = 0;
+    y0 = 0;
+    x1 = nat.w;
+    y1 = nat.h;
     {
         int cx0 = state.clip_x1 * scale, cy0 = state.clip_y1 * scale;
         int cx1 = (state.clip_x2 + 1) * scale, cy1 = (state.clip_y2 + 1) * scale;
@@ -2955,7 +2360,7 @@ static void native_draw(unsigned id)
         if (y1 > nat.h) y1 = nat.h;
     }
     if (x1 <= x0 || y1 <= y0) return;
-    NativeModel_Stats[6] += mesh->vertices / 3;
+    NativeModel_Stats[6] += mesh->index_count / 3;
 
     /* The model, with depth, into the private target (multisampled when there is one). */
     gl_BindFramebuffer(GL_FRAMEBUFFER, nat.ms_fbo ? nat.ms_fbo : nat.fbo);
@@ -2975,7 +2380,7 @@ static void native_draw(unsigned id)
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-    if (skinned) {
+    {
         int k;
         GLuint program = nat.skin_program;
         if (nat.pbr_mesh == mesh && !nat_env.no_pbr && native_pbr_program()) program = nat.pbr_program;
@@ -3026,41 +2431,6 @@ static void native_draw(unsigned id)
         for (k = 1; k < 5; k++) gl_DisableVertexAttribArray((GLuint)k);
         gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer); /* the composite below fills it */
-    } else if (use_gpu) {
-        int k;
-        gl_UseProgram(nat.gpu_program);
-        gl_Uniform2f(nat.g_size, (float)nat.w, (float)nat.h);
-        gl_Uniform1i(nat.g_tex, 0);
-        gl_Uniform1i(nat.g_bones, 1);
-        gl_ActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, nat.texture);
-        gl_BindBuffer(GL_ARRAY_BUFFER, nat.gpu_vbo);
-        for (k = 0; k < 6; k++) gl_EnableVertexAttribArray((GLuint)k);
-        gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)0);
-        gl_VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)(3 * sizeof(float)));
-        gl_VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)(6 * sizeof(float)));
-        gl_VertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)(8 * sizeof(float)));
-        gl_VertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)(11 * sizeof(float)));
-        gl_VertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 17 * sizeof(float), (const void *)(14 * sizeof(float)));
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mesh->vertices);
-        for (k = 1; k < 6; k++) gl_DisableVertexAttribArray((GLuint)k);
-        gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer); /* the composite below fills it */
-    } else {
-    gl_UseProgram(nat.program);
-    gl_Uniform2f(nat.u_size, (float)nat.w, (float)nat.h);
-    gl_Uniform1i(nat.u_tex, 0);
-    gl_ActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, nat.texture);
-    gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer);
-    gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->vertices * sizeof(NativeVertex)), nat.vertices,
-                  GL_STREAM_DRAW);
-    gl_EnableVertexAttribArray(0);
-    gl_EnableVertexAttribArray(1);
-    gl_EnableVertexAttribArray(2);
-    gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)0);
-    gl_VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)(3 * sizeof(float)));
-    gl_VertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(NativeVertex), (const void *)(5 * sizeof(float)));
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mesh->vertices);
     }
     glDisable(GL_DEPTH_TEST);
     if (nat.ms_fbo) { /* the samples into the texture, over the box */
@@ -3093,6 +2463,13 @@ static void native_draw(unsigned id)
     }
     gl_DisableVertexAttribArray(0);
     glDisable(GL_SCISSOR_TEST);
+    /* Widescreen (soft_gpu.c): a full-screen drawing area is shown from a target a margin wider each side, whose
+     * centre is the picture; the model goes there too, as a transfer into the area would. It is drawn at the
+     * picture's size, so a part of it past the 4:3 edges does not reach the margins. */
+    {
+        int wx = x0 / scale, wy = y0 / scale;
+        wide_mirror(wx, wy, (x1 + scale - 1) / scale - wx, (y1 + scale - 1) / scale - wy, 0, 0.0f, 0.0f, 0.0f);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
     gl_BindFramebuffer(GL_FRAMEBUFFER, 0);
 }
