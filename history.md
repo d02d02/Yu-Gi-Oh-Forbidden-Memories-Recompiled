@@ -69,4 +69,7 @@
     contact frame and package strike frames is warped so the first strike lands on it; the arena keeps the measured
     BLS warp until its contact frames are measured (E2/E3).
   - Milestones re-sequenced: M5 is the field (F, E1, E4), M6 the arena's measured timing (E2, E3).
+* H3 (first part): the FM Editor checks a mod's `native_models` as the port reads them (`tools/pc/fm_editor/native_models.py`:
+  package or file inside the mod and present, cards, disc model, setting, duplicates, the 64-entry limit); test
+  `pc_fm_editor_native_models`.
 

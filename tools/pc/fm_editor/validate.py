@@ -15,7 +15,7 @@ from .gamedata import (CARD_COUNT, DECK_COPY_LIMIT, DECK_POOL_MIN_CARDS, DECK_SI
                        POOL_LABELS, POOL_TOTAL, RITUAL_ORIGINS, RITUAL_TRIBUTE_MAX, TAG_LENGTH_MAX, TAGS_MAX, TYPE_MAGIC, TYPE_EQUIP, TYPE_LIMIT, TYPE_NAMES,
                        TYPE_RITUAL, exodia_piece)
 from . import art, board_art, campaign_map, card_text, fixed_decks, guardian_stars, packs as packmath, values
-from . import manifest, monster_effects, roster, starter_pools, tower, ui_rules
+from . import manifest, monster_effects, native_models, roster, starter_pools, tower, ui_rules
 from .compat import HOST_API, external_packs
 from .model import KEY_RE, Project, duelist_named
 
@@ -525,6 +525,8 @@ def validate(project: Project) -> list:
         return name in project.files or bool(project.source_dir and (Path(project.source_dir) / name).is_file())
     for level, where, message in ui_rules.check(project, has_file):
         out.append(Issue(level, "UI", where, message))
+    for level, where, message in native_models.check(project, has_file):
+        out.append(Issue(level, "Mod info", where, message))
     return out
 
 
