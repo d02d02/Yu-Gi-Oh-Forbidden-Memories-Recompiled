@@ -274,7 +274,7 @@ void func_800540B4(s32 index)
     }
 
 #ifdef MEMORIES_PC
-    NativeModel_BeginSlot(index < 2 ? (s32)slot->field_DF8 : -1);
+    NativeModel_BeginSlot(index < 2 ? (s32)slot->field_DF8 : -1, index);
 #endif
     e = slot->field_000;
     if (D_8009AFE4 >= 3) {

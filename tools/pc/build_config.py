@@ -120,6 +120,7 @@ COMMON_FILES = [
     "render/native_anim.c",
     "render/native_format.c",
     "render/native_model.c",
+    "render/native_registry.c",
     "render/soft_gpu.c",
     "render/texture_dump.c",
     "render/texture_pack.c",
