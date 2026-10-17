@@ -71,7 +71,7 @@ editors write, is fine):
 | `limits` | the numbers the game caps (ATK and DEF, life points, starchips, the chest, the records) and the cards a won duel deals (`card_drops`), below |
 | `guardian_stars` | the stars' names and icons, stars 11 to 15, and what each star gets against each other, below |
 | `attributes` | the six retail attribute names, and new monster attributes from the port's attribute bank, below |
-| `native_models` | a monster's battle model drawn from a modern skinned model file ([Native models](native-models.md)) |
+| `native_models` | monsters' battle models drawn from modern skinned models, by card: packages made from a rigged glTF by `tools/hd-models/new_native_mod.py` ([Native models](native-models.md)) |
 | `card_text_colors` | the color a card's name, description and guardian star are written in on its details, below |
 | `palette_ramps` | the game's eight text color ramps, and ramps of the mod's own for its code to draw with, below |
 | `starter` | the forty cards a new game begins with, one deck or a list of them, below |

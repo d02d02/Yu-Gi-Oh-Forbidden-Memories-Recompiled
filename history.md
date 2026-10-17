@@ -42,3 +42,21 @@
   - The composite takes the instance's fade (`opacity`; `glUniform1f` added to the picture's functions).
   - 16 native draws a frame (ring 32); `evt native` and `evt row ... other_row other_clock` log lines.
   - Tests: `pc_native_capture` (new: the game stood in for), `pc_native_anim` (acts, per-monster memory, mesh change).
+* Phase D (the modder's package and tools):
+  - `src/pc/render/native_registry.c`: the mods' `native_models` by card (`cards` / `card`) or disc model (`model`), a bare
+    HDM4 (`file`) or a package (`package`: `model.json` format 1 with PNG textures, clips per act, strike frames, scale about
+    the soles, look), an entry `setting` as other rule lists; read when a slot first needs it; the later mod's for the same
+    card, a refused one falls back to the earlier; texture cap (`MEMORIES_NATIVE_TEXTURE_MAX`) and memory budget
+    (`MEMORIES_NATIVE_BUDGET_MB`); the test switch reads packages too. The look (camera, light, normal map) is per model
+    now: package `look` < the mod's settings < the environment.
+  - The capture chooses the model from the draw's card (`NativeModel_BeginSlot(model, slot)`, `NativeDraw.mesh_id`);
+    the arena camera takes the drawn model's look; `NativeAnim_ActClip` plays the package's clip for an act.
+  - The GL pass keeps each model's textures and buffers (`NativeGlMesh`, 16): two different native monsters no longer
+    upload again every frame.
+  - Tools (`tools/hd-models`): `native_convert.py` (no disc: root height fit, rig profiles ue/mixamo/generic, materials
+    packed into one texture, unskinned props on their bone, cubic/step keys, clips per act guessed by name, strike frames
+    from the hand's speed), `new_native_mod.py` (the mod folder, entries merged on a second run), `native_check.py` and
+    `native_spec.py` (the game's checks in plain Python); `rigged_to_hdm4.py` kept for comparison.
+  - Tests: `pc_native_registry`, `pc_native_tools` (a rigged glb made by the test, converted, checked, made into a mod and
+    read back by the game's loader), `pc_native_capture` and `pc_native_anim` updated. `notes/native-models.md` is the
+    modder's how-to (five steps, the package, acts, look, limits, troubleshooting).

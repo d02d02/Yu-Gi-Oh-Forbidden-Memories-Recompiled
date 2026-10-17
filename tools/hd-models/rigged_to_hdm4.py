@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """A RIGGED glTF (Quaternius UAL, Mixamo...) -> a model.hdm of kind HDM4: the model keeps its OWN skeleton and clips.
+(Superseded by native_convert.py, which needs no disc and writes a whole package; kept to compare against.)
 
     rigged_to_hdm4.py MODEL.glb OUT.hdm --card 364 [--clips Sword_Attack,Sword_Idle,...|all] [--keep-root-motion] [--texture T.png]
 

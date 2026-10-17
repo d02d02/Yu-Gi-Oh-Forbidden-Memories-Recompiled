@@ -51,7 +51,8 @@ This file is the action plan the agent follows, and its status board; `history.m
 |---|---|---|---|---|
 | M1 | `milestone/native-m1` (0191bde7) | 1-7 | awaiting | |
 | M2 | `milestone/native-m2` (5cfc2168) | 1-3 | awaiting | |
-| M3 | `milestone/native-m3` | 1-5 | awaiting | |
+| M3 | `milestone/native-m3` (afc069ea) | 1-5 | awaiting | |
+| M4 | `milestone/native-m4` | 1-8 | awaiting | |
 
 ## Rules for every change
 
@@ -104,10 +105,10 @@ This file is the action plan the agent follows, and its status board; `history.m
 
 | ID | Change |
 |---|---|
-| D1 | Spec `notes/native-models-format.md`: `model.json` (format 1: binary, textures, fit, clips map, strike frames, look, sockets, cinematics, license/author) + binary `FMNM` v1 (chunks: MESH with submeshes and a texture slot each, SKEL, CLIP; bounds per chunk) |
+| D1 | Revised: the binary stays HDM4 (no `FMNM`: one texture set per model is all the GL pass draws, so the converter packs several materials into one atlas instead of submeshes). `model.json` format 1 (model, textures, clips per act, strike frames, scale, look, name/author/license/source) is specified in `src/pc/render/native_registry.h` and `notes/native-models.md`; sockets wait for a need, cinematics are G's `shots.json` |
 | D2 | Manifest: `"native_models": [{"cards": [364], "package": "angel/model.json"}]` (`card`/`cards`; `model` kept as an alias for disc model ids). Several mods, priority = mod order |
-| D3 | Loader: lazy (first need, not first frame), PNG through libpng (as `src/pc/cards/art.c`), texture cap (default 2048, a setting), memory budget for the 32-bit build, freed when the mod is turned off; HDM4 files still load (defaults for the metadata) |
-| D4 | Fit at run time from the template's rest size (the slot's coordinate section when the model loads) + `fit` {mode, scale, offset, yaw}; the converter no longer needs the disc |
+| D3 | Loader: lazy (first need, not first frame), PNG through libpng (as `src/pc/cards/art.c`), texture cap (default 2048, a setting), memory budget for the 32-bit build; HDM4 files still load (defaults for the metadata). Revised: nothing to free when a mod is turned off, a `native_models` mod already needs a restart (`mods.c`) |
+| D4 | Revised: the converter sizes the model without the disc (the root `--root-height` 300 above the soles, Black Luster Soldier's; or `--height` / `--scale`) and `model.json` `scale` adjusts it about the soles at run time. A run-time fit from the disc model's extents waits for the M4 result (reading them is possible; feeding a size back is not, D3) |
 | D5 | Converter `tools/hd-models/native_convert.py`: glTF/glb -> package; rig profiles (Unreal/Quaternius, Mixamo, generic with `--root/--feet`), multi-material, PNG textures (resized to the cap), clip list + semantic guesses by name, strike frame estimate (hand/weapon speed peak), report |
 | D6 | `tools/hd-models/new_native_mod.py MODEL.glb --card 364 --out mods/my-mod`: the whole mod folder |
 | D7 | Validator `native_check.py` = the engine's checks, offline |
@@ -172,6 +173,22 @@ Build `milestone/native-m3`; the M1 and M2 items hold on it too.
 | 4 | The Library's model view of Black Luster Soldier, if you reach it | say what shows (the angel or the disc model): it decides H1 |
 | 5 | 1x/2x and widescreen as in M1 | as in M1 |
 
+## M4 checklist (copy into `test-results/m4.md`)
+
+Build `milestone/native-m4`; the M1-M3 items hold on it too. `pip install numpy pillow` once for the converter (the checker needs nothing).
+The old angel mod can stay applied: an entry for the card wins over its entry for the disc model.
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | `python tools/hd-models/new_native_mod.py ANGEL.glb --card 364 --out mods/angel-m4 -- --clips-from UAL1_Standard.glb --clips Sword_Attack,Sword_Idle,Hit_Chest,Death01,Idle_Loop` (no `--disc`); send its output | no error; the acts as before (idle Sword_Idle, enter Idle_Loop, attack Sword_Attack, hit Hit_Chest, destroyed Death01, win and guard Sword_Idle); blows near frame 11 (and 30) |
+| 2 | `python tools/hd-models/native_check.py OLD_ANGEL.hdm mods/angel-m4`; send its output | 0 errors; the two "bind pose" lines (height, soles below the root) within about 10% of each other. Both numbers decide the default root height if not |
+| 3 | Apply "angel-m4" in Mods, restart, Internal 2x, `play-bls.ps1 -Attack 0` without `-NativeModel` | the angel as in M1: size, feet on the ground, lighting, the strike on the hit (any difference = report, with item 2's numbers) |
+| 4 | Change `mods/angel-m4/models/<name>/base.png` (tint it in any editor), restart | the tint shows; nothing converted again |
+| 5 | Rename `normal.png` away, restart; open the Mods window | the angel still draws (flatter); beside the mod: `textures.normal: normal.png: it cannot be read (the model's own is used)` |
+| 6 | The same command as 1 with `--card 1` and the same `--out`; a battle Blue-Eyes White Dragon vs Black Luster Soldier | `mod.json` has one entry with cards [1, 364]; two angels fight, both drawn, the frame rate as with one |
+| 7 | Item 3 with `MEMORIES_TRACE=model`; send the log | `evt native ... mesh=<n> ... card=364` for the attacker and the defender's card |
+| 8 | `MEMORIES_NATIVE_MODEL=mods/angel-m4/models/<name>/model.json` with the mod off | the angel, as in 3 (the test switch reads packages too) |
+
 ## Status
 
 | Phase | State |
@@ -180,5 +197,5 @@ Build `milestone/native-m3`; the M1 and M2 items hold on it too.
 | A | done (A1-A7), awaiting M1 on the laptop; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
 | B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), awaiting M2; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
 | C | done (C1-C7), awaiting M3; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_capture` new (instances, suppression, marker entry, camera) and `pc_native_anim` extended (acts, per-monster memory), only `pc_user_dir` fails (root container) |
-| D | next |
+| D | done (D1, D3, D4 revised; D2, D5-D9), awaiting M4; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_registry` and `pc_native_tools` new (a rigged glb made by the test, converted without the disc, checked, made into a mod, read back by the game's loader), `pc_native_capture` / `pc_native_anim` updated, only `pc_user_dir` fails (root container); registry and capture tests under ASan/UBSan 32+64-bit |
 | E-H | planned |

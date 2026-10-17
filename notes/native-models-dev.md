@@ -8,7 +8,7 @@ machinery, the asset pipeline, the test method, the traps and what is still open
 ## 1. What it is, in one paragraph
 
 The game draws a monster in the arena battle from PS1 packets (25-30 rigid parts, 1198 triangles for Black Luster Soldier). With the
-OpenGL picture on at Internal 2x or more, a monster whose model id has a *native model* is instead drawn from a modern mesh (hundreds of
+OpenGL picture on at Internal 2x or more, a monster whose card (or disc model id) has a *native model* is instead drawn from a modern mesh (hundreds of
 thousands of triangles, 4-weight skinned, its OWN skeleton and animation clips, base colour + normal + metal/roughness maps). The game's logic
 is untouched: the original model still runs out of sight (the camera, sound, effects and hit logic read its joints), the native model is
 placed from the original's root, and plays its own clip chosen from the game's animation row and clock.
@@ -16,11 +16,19 @@ placed from the original's root, and plays its own clip chosen from the game's a
 ## 2. Data flow (follow the code in this order)
 
 1. **Capture (game thread).** `Model_UpdateScene` -> `func_800540B4(slot)` (src/game/func_800540B4.c) draws one slot. Under `#ifdef MEMORIES_PC` it
-   calls `NativeModel_BeginSlot(model)`, `NativeModel_Part(part)` per part (reads the GTE matrices the game just set), `NativeModel_SlotInfo(&info)`,
+   calls `NativeModel_BeginSlot(model, slot)`, `NativeModel_Part(part)` per part (reads the GTE matrices the game just set), `NativeModel_SlotInfo(&info)`,
    then `NativeModel_Link(ot, NativeModel_EndSlot())` which links a one-word marker packet (GP0 command 0, a no-op for every GPU) at the
    nearest OT entry the slot's own packets would have taken (`NativeModel_Nearest`, kept by the polygon and outline drivers), so the model
    sorts at its depth among the rest of the table. While the pass will draw it (`NativeModel_GlReady` and a software GPU scale of 2 or more)
    the slot's own PS1 packets are built but not linked (`NativeModel_Suppress`). Code: `src/pc/render/native_model.c/.h`.
+   **Which model.** BeginSlot asks `NativeRegistry_Find(model, card)` (native_registry.c) with the draw's card (the instance's, else the
+   battle's for slots 0 and 1); the entry's index goes in `NativeDraw.mesh_id` and the replay gets the mesh with `NativeModel_MeshById`.
+   The registry reads the manifests' `native_models` once (the first slot draw) and a model only when Find first picks it (a package:
+   model.json, the HDM4, PNGs through libpng; per mesh its act clips, strike frames, scale/ground and `NativeTune`). Order: the test switch,
+   then an entry naming the card, then one for the disc model; among equals the later mod's; a refused entry is skipped for the next.
+   Meshes are never freed during a run (a native_models mod needs a restart), which is what lets the GL pass key its cache on the
+   pointer. Budget (`MEMORIES_NATIVE_BUDGET_MB`, 512) and texture cap (`MEMORIES_NATIVE_TEXTURE_MAX`, 2048) are checked before decoding.
+   Test: `pc_native_registry`; `--load PATH` on its binary reads one package (the tools' round trip, `pc_native_tools`).
    **Instances.** A draw is the game's own (context ARENA, key = the slot, the card from `NativeModel_SetBattleCards`, which the battle's
    step 5 calls) unless a code mod named it just before with `NativeModel_SetInstance` (used for that one draw): context FIELD or BIG_CARD,
    its own key (the key becomes `context << 16 | key`, so a mod's monsters never share the arena's animation state), the card, a fade
@@ -37,6 +45,8 @@ placed from the original's root, and plays its own clip chosen from the game's a
    on the CPU and uploads one small float texture, the vertex shader skins and projects, the fragment shader lights. The model is drawn into a private
    multisampled framebuffer (4x MSAA, one shared depth buffer per frame) and composited over the picture at the marker, at the model's nearest
    depth: what the table sorts nearer is drawn over it, what it sorts farther under it (only native-vs-native depth is per pixel).
+   Each mesh's texture, maps, VBO and EBO stay on the GPU (`NativeGlMesh`, the `NATIVE_GL_MESHES` = 16 drawn last), so a field of
+   different native monsters does not upload again every frame.
 
 ## 3. Model formats (the loader accepts all; only HDM4 is the current path)
 
@@ -49,12 +59,17 @@ placed from the original's root, and plays its own clip chosen from the game's a
   vertices: `nverts x 13 words` = `f32 pos[3], nrm[3], uv[2], u32 joints (4 x u8), f32 weights[4]`; indices `u32`;
   base texture `RGBA8`; then per flag `u32 w, u32 h, RGBA8`; clips: `12 words` (`char name[32], u32 nframes, f32 fps, 2 pad`) then
   `nframes x nbones x 7 f32` = local translation `t[3]` + rotation `q[4]` (xyzw) per bone, baked at 30 fps in DISC space. Max 128 bones, 16 clips.
-* Written by `tools/hd-models/rigged_to_hdm4.py`; parsed by `parse_hdm4` (native_model.c); documented in the converter's docstring.
+* Written by `tools/hd-models/native_convert.py` (and the older `rigged_to_hdm4.py`); checked whole by `NativeFormat_ParseHdm4`
+  (native_format.c; `native_spec.py` mirrors it in Python). `native_convert.py` writes a 1x1 texture into the file: the package's
+  `base.png` is drawn over it.
+* **The package** (`model.json` format 1, native_registry.h): the HDM4 plus PNG textures, act -> clip, strike frames, scale, look.
 
 ## 4. The coordinate and placement facts that cost the most time
 
 * **Disc units and axes.** The disc model's space is y-down; the converter maps glTF (y up, metres) with `FLIP = diag(1,-1,-1)`, scale 100 units per metre (`SCALE
   = 0.01`) and a fit factor so the model's hip-to-ankle length equals Black Luster Soldier's (`s_fit`), so the game's camera/effects/shadow volume still make sense.
+  `native_convert.py` needs no disc: it scales so the root (hips) stands `--root-height` (300) game units above the soles, from BLS's root
+  y of -300 (below); `--height` / `--scale` instead.
 * **THE TRAP: the disc's part coordinates (`Hmd.world()`, `tb`) include the root's world position** (BLS hips = (0,-300,575) = `field_D1C->workm.t`). The native
   model must have its hips at the ORIGIN of its own space; the game's root matrix carries the position: `view = WS_rot * (root_rot * v / 4096 + root_tr) / 4096 + WS_tr`
   (GTE convention `v' = R v / 4096 + TR`). Putting the hips at `tb[1]` placed the model half a body too high.
@@ -105,6 +120,9 @@ between them, and changing only the second one shrank the models against a fixed
 5. `rigged_to_hdm4.py MODEL.glb OUT.hdm --card 364 --clips-from UAL1_Standard.glb [--clips a,b|all] [--height 0.75] [--no-pbr]`: FK/skin conversion described above; the wing bones (no constraints in glTF)
    get the arm's rotation beyond its parent at 80% in world axes (`--wing-follow`); normal and metal/roughness maps are written when their texCoord is 0 (or 1 equal to 0).
 6. Drop the .hdm in a mod folder with a `mod.json` (`native_models`), see native-models.md.
+Now (phase D): steps 5-6 are `new_native_mod.py MODEL.glb --card 364 --out mods/angel -- --clips-from UAL1_Standard.glb
+--clips Sword_Attack,Sword_Idle,Hit_Chest,Death01,Idle_Loop` (no disc; the wing bones are followed as before when they are named
+`wing_a/b_l/r`; `--follow BONE=SOURCE@0.8` for others).
 Debug aids: `blender/debug_island_colours.py` (colour the mesh islands by role), `debug_zoom_views.py`, `debug_sword_fragments.py`.
 
 ## 9. How to test (and what NOT to trust)
@@ -137,5 +155,7 @@ is drawn at the picture's size, so a part of it past the 4:3 edges does not reac
 
 * Custom camera at the coup de grace (defender's second hit / destroyed row): feasible in `Model_SetArenaView`, keyed to the defender slot's row and clock; slow motion is not (one game clock for logic, sound, effects).
 * Effects are anchored to the hidden original model's joints, not the new model's bones (no visible mismatch in the BLS-vs-191 fight: the visible effects are on the defender); re-anchoring needs the new pose on the game thread.
-* Tint-flash mask per part (the hit flash is a whole-body tint now); guard/defence rows; a second monster; GLES/macOS check; fm_editor `compat.py` does not know API 17; the angel's licence (the asset must not be shared).
+* Tint-flash mask per part (the hit flash is a whole-body tint now); guard/defence rows; a second monster; GLES/macOS check; the angel's licence (the asset must not be shared).
+* The no-disc fit's default root height (300, BLS's) is to be compared with a `rigged_to_hdm4.py` conversion of the same model
+  (`native_check.py` prints both models' soles); a first load of a big package happens in the frame that needs it (a hitch).
 * The game's real "3D Monsters" option crash (user report, needs their crash-*.txt) is unrelated and unreproduced.
