@@ -49,6 +49,13 @@ void Mods_Note(const char *id, const char *format, ...)
     (void)id;
     (void)format;
 }
+int Mods_EntryUsed(const char *id, const struct JsonValue *entry, const char *where)
+{
+    (void)id;
+    (void)entry;
+    (void)where;
+    return 1;
+}
 
 /* --- a one-bone model on disc ------------------------------------------------------------------------------------ */
 static void put_float(uint32_t *word, float value)
@@ -94,7 +101,7 @@ static void set_env(const char *name, const char *value)
 static int slot_draw(int model, int slot, int nearest)
 {
     NativeSlotInfo info;
-    NativeModel_BeginSlot(model);
+    NativeModel_BeginSlot(model, slot);
     if (nearest >= 0 && NativeModel_Suppress) NativeModel_Nearest = (unsigned)nearest; /* what the drivers keep */
     memset(&info, 0, sizeof(info));
     info.slot = slot;
@@ -129,7 +136,7 @@ int main(void)
     NativeModel_SetBattleCards(364, 58);
     CHECK(slot_draw(363, 1, -1) > 0);
     d = last_taken(&count);
-    CHECK(count == 1 && d && d->model == 363);
+    CHECK(count == 1 && d && d->model == 363 && d->mesh_id >= 0 && NativeModel_MeshById(d->mesh_id));
     CHECK(d && d->info.context == NATIVE_CONTEXT_ARENA && d->info.key == 1 && d->info.card == 58);
     CHECK(d && d->info.fade == 0 && d->info.contact_frame == -1 && d->info.anim_index == 3);
     NativeModel_SetBattleCards(0, 0);
@@ -138,21 +145,21 @@ int main(void)
     CHECK(d && d->info.card == 0);
 
     /* Left out only when the pass will draw it. */
-    NativeModel_BeginSlot(363);
+    NativeModel_BeginSlot(363, 0);
     CHECK(NativeModel_Suppress == 1);
     NativeModel_EndSlot();
     CHECK(NativeModel_Suppress == 0);
     test_scale = 1;
-    NativeModel_BeginSlot(363);
+    NativeModel_BeginSlot(363, 0);
     CHECK(NativeModel_Suppress == 0);
     NativeModel_EndSlot();
     test_scale = 2;
     NativeModel_GlReady = 0;
-    NativeModel_BeginSlot(363);
+    NativeModel_BeginSlot(363, 0);
     CHECK(NativeModel_Suppress == 0);
     NativeModel_EndSlot();
     NativeModel_GlReady = 1;
-    NativeModel_BeginSlot(100); /* no model for it: the disc model, captured for nothing */
+    NativeModel_BeginSlot(100, 0); /* no model for it: the disc model, captured for nothing */
     CHECK(NativeModel_Suppress == 0 && NativeModel_EndSlot() == 0);
     NativeModel_Take();
 
@@ -196,7 +203,7 @@ int main(void)
     in.context = NATIVE_CONTEXT_MEASURE;
     in.fade = 0;
     NativeModel_SetInstance(&in);
-    NativeModel_BeginSlot(363);
+    NativeModel_BeginSlot(363, 0);
     CHECK(NativeModel_Suppress == 0);
     CHECK(NativeModel_EndSlot() == 0);
     NativeModel_Take();
@@ -229,12 +236,12 @@ int main(void)
     }
 
     /* The arena camera: pushed out only when a slot's model is drawn natively. */
-    CHECK(NativeModel_WillDraw(363) && !NativeModel_WillDraw(100) && !NativeModel_WillDraw(-1));
+    CHECK(NativeModel_WillDraw(363, 0) && !NativeModel_WillDraw(100, 0) && !NativeModel_WillDraw(-1, 0));
     CHECK(NativeModel_ArenaCameraFactor(363, -1, 0.0f, 0.0f, 500.0f) > 1.4f);   /* a close shot, pushed to 750 */
     CHECK(NativeModel_ArenaCameraFactor(-1, 363, 0.0f, 0.0f, 2000.0f) == 1.0f); /* the far orbit is left alone */
     CHECK(NativeModel_ArenaCameraFactor(100, -1, 0.0f, 0.0f, 500.0f) == 1.0f);  /* no native model in the battle */
     test_scale = 1;
-    CHECK(!NativeModel_WillDraw(363) && NativeModel_ArenaCameraFactor(363, 363, 0.0f, 0.0f, 500.0f) == 1.0f);
+    CHECK(!NativeModel_WillDraw(363, 0) && NativeModel_ArenaCameraFactor(363, 363, 0.0f, 0.0f, 500.0f) == 1.0f);
     test_scale = 2;
 
     if (failures) {

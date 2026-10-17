@@ -1,6 +1,7 @@
 /* The native model's animation without OpenGL (src/pc/render/native_anim.h): the disc row picks the clip (the attack is
  * row field_DFE + 3), the attack row of Black Luster Soldier is time-warped onto the game's contact frames, the clip is
- * posed by forward kinematics into the skinning rows, and a row change cross-fades over NATIVE_FADE draws. */
+ * posed by forward kinematics into the skinning rows, and a row change cross-fades over NATIVE_FADE draws; a package's
+ * clip choices and scale (native_registry.h) are honoured. */
 #include "pc/render/native_anim.h"
 #include <math.h>
 #include <stdio.h>
@@ -249,6 +250,37 @@ int main(void)
         int k;
         for (k = 0; k < 40; k++) pose_mesh(300 + k, 0x30000 + k, 0, &mesh);
         CHECK(near(bone_row(0, 0)[0], 1.0f));
+    }
+
+    /* A package's choices (model.json, native_registry.c): an act's clip by index + 1, the others by the default names;
+     * a mesh without clips plays none. */
+    {
+        static NativeMesh mapped, bare;
+        const NativeMesh *keep = &mesh;
+        mapped = mesh;
+        mapped.act_clip[NATIVE_ACT_ATTACK] = HIT + 1;
+        mapped.act_clip[NATIVE_ACT_IDLE] = DEATH + 1;
+        set_draw(1, 0, 3, 3, 0, 10);
+        NativeAnim_Choose(&draw, &mapped, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Hit_Chest") == 0);
+        set_draw(1, 0, 0, 3, 0, 10);
+        NativeAnim_Choose(&draw, &mapped, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Death01") == 0);
+        CHECK(NativeAnim_ActClip(&mapped, NATIVE_ACT_HIT) == &mapped.clips[HIT]); /* not mapped: its default name */
+        CHECK(NativeAnim_ActClip(keep, NATIVE_ACT_WIN) == &keep->clips[IDLE]);
+        memset(&bare, 0, sizeof(bare));
+        CHECK(NativeAnim_ActClip(&bare, NATIVE_ACT_IDLE) == NULL && NativeAnim_ActClip(&mesh, NATIVE_ACT_COUNT) == NULL);
+    }
+    /* A package's scale is about the soles: twice the size, the ground (y = 10, y down) where it was. */
+    {
+        static NativeMesh big;
+        big = mesh;
+        big.scale = 2.0f;
+        big.ground = 10.0f;
+        pose_mesh(400, 0x40000, 0, &big);
+        CHECK(near(bone_row(0, 0)[0], 2.0f) && near(bone_row(0, 1)[1], 2.0f) && near(bone_row(0, 2)[2], 2.0f));
+        CHECK(near(bone_row(0, 1)[3], -10.0f) && near(bone_row(0, 2)[3], 1000.0f)); /* y' = 2 y - 10: 10 stays 10 */
+        CHECK(near(bone_row(0, 1)[1] * 10.0f + bone_row(0, 1)[3], 10.0f));
     }
 
     if (failures) {

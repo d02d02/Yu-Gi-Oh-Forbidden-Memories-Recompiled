@@ -63,21 +63,40 @@ static Memory *memory_for(int key, const NativeMesh *mesh)
     return m;
 }
 
+static const NativeClip *named(const NativeMesh *mesh, const char *name)
+{
+    const NativeClip *c = NULL;
+    unsigned i;
+    for (i = 0; i < mesh->clip_count; i++)
+        if (strcmp(mesh->clips[i].name, name) == 0) c = &mesh->clips[i];
+    return c;
+}
+
+const NativeClip *NativeAnim_ActClip(const NativeMesh *mesh, NativeAct act)
+{
+    static const char *const by_act[NATIVE_ACT_COUNT] = {"Sword_Idle", "Idle_Loop", "Sword_Attack", "Hit_Chest", "Death01",
+                                                         "Sword_Idle", "Sword_Idle"};
+    const NativeClip *c;
+    if (act < 0 || act >= NATIVE_ACT_COUNT || !mesh->clip_count) return NULL;
+    if (mesh->act_clip[act] && mesh->act_clip[act] <= mesh->clip_count) return &mesh->clips[mesh->act_clip[act] - 1];
+    c = named(mesh, by_act[act]);
+    return c ? c : &mesh->clips[0];
+}
+
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
  * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
  * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star. */
 float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out)
 {
-    static const char *const by_act[NATIVE_ACT_COUNT] = {"Sword_Idle", "Idle_Loop", "Sword_Attack", "Hit_Chest", "Death01",
-                                                         "Sword_Idle", "Sword_Idle"};
     int row = d->info.anim_index, attack = d->info.attack_row == 4 ? 4 : 3;
-    const char *want = forced && *forced ? forced : by_act[NativeAnim_Act(row, d->info.attack_row)];
-    const NativeClip *c = NULL;
-    unsigned i;
+    const NativeClip *c;
     float phase, t;
-    for (i = 0; i < mesh->clip_count; i++)
-        if (strcmp(mesh->clips[i].name, want) == 0) c = &mesh->clips[i];
-    if (!c && mesh->clip_count) c = &mesh->clips[0];
+    if (forced && *forced) {
+        c = named(mesh, forced);
+        if (!c && mesh->clip_count) c = &mesh->clips[0];
+    } else {
+        c = NativeAnim_ActClip(mesh, NativeAnim_Act(row, d->info.attack_row));
+    }
     *clip_out = c;
     if (!c || c->frames < 1) return 0.0f;
     if (forced && *forced) {
@@ -134,6 +153,14 @@ void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeCl
             for (c = 0; c < 3; c++) rv[r * 4 + c] = ws[r * 3] * rr[c] + ws[r * 3 + 1] * rr[3 + c] + ws[r * 3 + 2] * rr[6 + c];
             rv[r * 4 + 3] = (ws[r * 3] * (float)in->root_tr[0] + ws[r * 3 + 1] * (float)in->root_tr[1] +
                              ws[r * 3 + 2] * (float)in->root_tr[2]) + (float)in->ws_tr[r];
+        }
+    }
+    if (mesh->scale > 0.0f && mesh->scale != 1.0f) {
+        /* The package's scale, about the soles (the model's largest y): rv x (s, translated by (0, ground (1 - s), 0)). */
+        const float s = mesh->scale, lift = mesh->ground * (1.0f - s);
+        for (r = 0; r < 3; r++) {
+            rv[r * 4 + 3] += rv[r * 4 + 1] * lift;
+            for (c = 0; c < 3; c++) rv[r * 4 + c] *= s;
         }
     }
     if (frame->log) {

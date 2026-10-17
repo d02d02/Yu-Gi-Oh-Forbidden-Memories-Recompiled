@@ -1742,25 +1742,35 @@ static int wide_target(void)
 static NativeDraw native_ring[NATIVE_RING];
 static int native_ring_valid[NATIVE_RING];
 
+/* A model's textures and buffers on the GPU, kept for the NATIVE_GL_MESHES models drawn last (a frame draws at most
+ * NATIVE_MAX_DRAWS, so a field of different models is not uploaded again every frame). The meshes stay put for the
+ * run (native_registry.h), so the pointer names one. */
+#define NATIVE_GL_MESHES NATIVE_MAX_DRAWS
+typedef struct NativeGlMesh {
+    const NativeMesh *mesh;
+    GLuint texture, normal_tex, mr_tex, vbo, ebo;
+    int pbr; /* both PBR-lite maps are held */
+    unsigned stamp;
+} NativeGlMesh;
+
 /* The pass draws each model into a framebuffer of its own (colour and depth, the picture's size), so the model
  * has a real depth buffer while the picture has none, then lays the result over the picture where the model
  * sorts. */
 static struct {
-    GLuint comp_program, texture, color, fbo, depth, buffer; /* buffer: the composite's quad */
+    GLuint comp_program, color, fbo, depth, buffer; /* buffer: the composite's quad */
     GLuint ms_fbo, ms_color, ms_depth; /* the multisampled target the model is drawn into, resolved into `fbo` */
     int samples;
-    GLuint skin_program, skin_vbo, skin_ebo, skin_tex; /* HDM4: the model's own skeleton (4-weight vertex-shader skinning) */
-    const NativeMesh *skin_mesh;
+    GLuint skin_program, skin_tex; /* HDM4: the model's own skeleton (4-weight vertex-shader skinning) */
     GLint s_size, s_tex, s_bones;
-    GLuint pbr_program, normal_tex, mr_tex; /* HDM4 PBR-lite: program, normal map, metal/roughness map */
-    const NativeMesh *pbr_mesh;             /* the mesh the two maps hold */
+    GLuint pbr_program; /* HDM4 PBR-lite: normal map, metal/roughness map */
     int pbr_failed;
     int skin_failed;
     float *skin_rows;
     int fresh; /* a new frame's draws came: the first native draw clears the depth, the others share it */
     GLint c_size, c_tex, c_opacity;
     int w, h, failed;
-    const NativeMesh *textured; /* the mesh `texture` holds */
+    NativeGlMesh meshes[NATIVE_GL_MESHES];
+    unsigned mesh_clock;
 } nat;
 
 static const char *native_fragment_source =
@@ -1838,10 +1848,21 @@ static GLuint native_link(const char *vs_source, const char *fs_source, const ch
     return made;
 }
 
+/* A cached mesh's names deleted. */
+static void native_drop_mesh(NativeGlMesh *g)
+{
+    if (g->texture) glDeleteTextures(1, &g->texture);
+    if (g->normal_tex) glDeleteTextures(1, &g->normal_tex);
+    if (g->mr_tex) glDeleteTextures(1, &g->mr_tex);
+    if (g->vbo) gl_DeleteBuffers(1, &g->vbo);
+    if (g->ebo) gl_DeleteBuffers(1, &g->ebo);
+    memset(g, 0, sizeof(*g));
+}
+
 static void native_free(void)
 {
+    int k;
     if (nat.comp_program) gl_DeleteProgram(nat.comp_program);
-    if (nat.texture) glDeleteTextures(1, &nat.texture);
     if (nat.color) glDeleteTextures(1, &nat.color);
     if (nat.fbo) gl_DeleteFramebuffers(1, &nat.fbo);
     if (nat.depth) gl_DeleteRenderbuffers(1, &nat.depth);
@@ -1851,10 +1872,7 @@ static void native_free(void)
     if (nat.buffer) gl_DeleteBuffers(1, &nat.buffer);
     if (nat.skin_program) gl_DeleteProgram(nat.skin_program);
     if (nat.pbr_program) gl_DeleteProgram(nat.pbr_program);
-    if (nat.normal_tex) glDeleteTextures(1, &nat.normal_tex);
-    if (nat.mr_tex) glDeleteTextures(1, &nat.mr_tex);
-    if (nat.skin_vbo) gl_DeleteBuffers(1, &nat.skin_vbo);
-    if (nat.skin_ebo) gl_DeleteBuffers(1, &nat.skin_ebo);
+    for (k = 0; k < NATIVE_GL_MESHES; k++) native_drop_mesh(&nat.meshes[k]);
     if (nat.skin_tex) glDeleteTextures(1, &nat.skin_tex);
     free(nat.skin_rows);
     memset(&nat, 0, sizeof(nat));
@@ -2168,7 +2186,7 @@ static void native_upload_map(GLuint *tex, uint32_t width, uint32_t height, cons
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
-static int native_skin_ready(const NativeMesh *mesh)
+static int native_skin_ready(void)
 {
     if (nat.skin_failed) return 0;
     if (!nat.skin_program) {
@@ -2209,109 +2227,133 @@ static int native_skin_ready(const NativeMesh *mesh)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, NATIVE_SKIN_ROWS, 0, GL_RGBA, GL_FLOAT, NULL);
         glBindTexture(GL_TEXTURE_2D, 0);
-        gl_GenBuffers(1, &nat.skin_vbo);
-        gl_GenBuffers(1, &nat.skin_ebo);
     }
-    if (nat.skin_mesh != mesh) {
+    return 1;
+}
+
+/* The base texture: above the disc's own size (384x256) filtered, with a mip chain made here (alpha-weighted box
+ * filter, so the transparent texels' colour does not darken the edges); else sampled as the disc's, nearest. */
+static void native_upload_base(GLuint *tex, const NativeMesh *mesh)
+{
+    if (!*tex) glGenTextures(1, tex);
+    glBindTexture(GL_TEXTURE_2D, *tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)mesh->tex_w, (GLsizei)mesh->tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 mesh->rgba);
+    if (mesh->tex_w > 384 || mesh->tex_h > 256) {
+        size_t w = mesh->tex_w, h = mesh->tex_h;
+        uint8_t *from = (uint8_t *)malloc(w * h * 4), *to;
+        int level = 0;
+        if (from) memcpy(from, mesh->rgba, w * h * 4);
+        while (from && (w > 1 || h > 1)) {
+            size_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1, x, y;
+            to = (uint8_t *)malloc(nw * nh * 4);
+            if (!to) break;
+            for (y = 0; y < nh; y++) {
+                for (x = 0; x < nw; x++) {
+                    float sum[3] = {0, 0, 0}, alpha = 0;
+                    int k;
+                    for (k = 0; k < 4; k++) {
+                        size_t sx = x * 2 + (size_t)(k & 1), sy = y * 2 + (size_t)(k >> 1);
+                        const uint8_t *p;
+                        if (sx >= w) sx = w - 1;
+                        if (sy >= h) sy = h - 1;
+                        p = from + (sy * w + sx) * 4;
+                        sum[0] += (float)p[0] * p[3];
+                        sum[1] += (float)p[1] * p[3];
+                        sum[2] += (float)p[2] * p[3];
+                        alpha += (float)p[3];
+                    }
+                    to[(y * nw + x) * 4 + 0] = alpha > 0 ? (uint8_t)(sum[0] / alpha + 0.5f) : 0;
+                    to[(y * nw + x) * 4 + 1] = alpha > 0 ? (uint8_t)(sum[1] / alpha + 0.5f) : 0;
+                    to[(y * nw + x) * 4 + 2] = alpha > 0 ? (uint8_t)(sum[2] / alpha + 0.5f) : 0;
+                    to[(y * nw + x) * 4 + 3] = (uint8_t)(alpha / 4.0f + 0.5f);
+                }
+            }
+            level++;
+            glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA8, (GLsizei)nw, (GLsizei)nh, 0, GL_RGBA, GL_UNSIGNED_BYTE, to);
+            free(from);
+            from = to;
+            w = nw;
+            h = nh;
+        }
+        free(from);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+/* The mesh's textures and buffers on the GPU: kept, or made in place of the one drawn longest ago. NULL: no memory. */
+static NativeGlMesh *native_gl_mesh(const NativeMesh *mesh)
+{
+    NativeGlMesh *g = NULL, *spare = &nat.meshes[0];
+    int k;
+    for (k = 0; k < NATIVE_GL_MESHES && !g; k++) {
+        NativeGlMesh *e = &nat.meshes[k];
+        if (e->mesh == mesh) g = e;
+        else if (!e->mesh) { if (spare->mesh) spare = e; } /* an unused one first */
+        else if (spare->mesh && e->stamp < spare->stamp) spare = e;
+    }
+    if (!g) {
         float *v = (float *)malloc((size_t)mesh->vertices * 16 * sizeof(float));
         uint32_t i;
-        if (!v) return 0;
+        if (!v) return NULL;
+        g = spare;
+        native_drop_mesh(g);
         for (i = 0; i < mesh->vertices; i++) {
             const uint32_t *w = mesh->words + (size_t)i * 13;
             float *o = v + (size_t)i * 16;
-            int k;
-            memcpy(o, w, 8 * sizeof(float)); /* position, normal, uv */
             for (k = 0; k < 4; k++) {
                 o[8 + k] = (float)((w[8] >> (8 * k)) & 255u);
                 memcpy(o + 12 + k, w + 9 + k, sizeof(float));
             }
+            memcpy(o, w, 8 * sizeof(float)); /* position, normal, uv */
         }
-        gl_BindBuffer(GL_ARRAY_BUFFER, nat.skin_vbo);
+        gl_GenBuffers(1, &g->vbo);
+        gl_GenBuffers(1, &g->ebo);
+        gl_BindBuffer(GL_ARRAY_BUFFER, g->vbo);
         gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->vertices * 16 * sizeof(float)), v, GL_STATIC_DRAW);
         gl_BindBuffer(GL_ARRAY_BUFFER, 0);
         free(v);
-        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, nat.skin_ebo);
-        gl_BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->index_count * sizeof(uint32_t)), mesh->indices, GL_STATIC_DRAW);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ebo);
+        gl_BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)mesh->index_count * sizeof(uint32_t)), mesh->indices,
+                      GL_STATIC_DRAW);
         gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        nat.skin_mesh = mesh;
+        native_upload_base(&g->texture, mesh);
+        if (mesh->normal_rgba && mesh->mr_rgba) { /* PBR-lite maps (units 2 and 3 at draw time) */
+            native_upload_map(&g->normal_tex, mesh->normal_w, mesh->normal_h, mesh->normal_rgba);
+            native_upload_map(&g->mr_tex, mesh->mr_w, mesh->mr_h, mesh->mr_rgba);
+            g->pbr = 1;
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+        g->mesh = mesh;
     }
-    return 1;
+    g->stamp = ++nat.mesh_clock;
+    return g;
 }
 
 static void native_draw(unsigned id)
 {
     const NativeDraw *d = &native_ring[id % NATIVE_RING];
     const NativeMesh *mesh;
+    NativeGlMesh *g;
     uint32_t i;
     int x0, y0, x1, y1, lit;
     NativeModel_Stats[5]++;
     native_env();
     if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
-    mesh = NativeModel_Mesh(d->model);
+    mesh = NativeModel_MeshById(d->mesh_id);
     if (!mesh || !mesh->bones || !native_ready()) return;
     /* The primitives before this model, in order, are in the picture first. */
     flush_runs();
-    if (nat.textured != mesh) {
-        if (!nat.texture) glGenTextures(1, &nat.texture);
-        glBindTexture(GL_TEXTURE_2D, nat.texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)mesh->tex_w, (GLsizei)mesh->tex_h, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, mesh->rgba);
-        if (mesh->tex_w > 384 || mesh->tex_h > 256) {
-            /* A texture above the disc's own (384x256): filtered, with a mip chain made here (alpha-weighted box
-             * filter, so the transparent texels' colour does not darken the edges). */
-            size_t w = mesh->tex_w, h = mesh->tex_h;
-            uint8_t *from = (uint8_t *)malloc(w * h * 4), *to;
-            int level = 0;
-            if (from) memcpy(from, mesh->rgba, w * h * 4);
-            while (from && (w > 1 || h > 1)) {
-                size_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1, x, y;
-                to = (uint8_t *)malloc(nw * nh * 4);
-                if (!to) break;
-                for (y = 0; y < nh; y++) {
-                    for (x = 0; x < nw; x++) {
-                        float sum[3] = {0, 0, 0}, alpha = 0;
-                        int k;
-                        for (k = 0; k < 4; k++) {
-                            size_t sx = x * 2 + (size_t)(k & 1), sy = y * 2 + (size_t)(k >> 1);
-                            const uint8_t *p;
-                            if (sx >= w) sx = w - 1;
-                            if (sy >= h) sy = h - 1;
-                            p = from + (sy * w + sx) * 4;
-                            sum[0] += (float)p[0] * p[3];
-                            sum[1] += (float)p[1] * p[3];
-                            sum[2] += (float)p[2] * p[3];
-                            alpha += (float)p[3];
-                        }
-                        to[(y * nw + x) * 4 + 0] = alpha > 0 ? (uint8_t)(sum[0] / alpha + 0.5f) : 0;
-                        to[(y * nw + x) * 4 + 1] = alpha > 0 ? (uint8_t)(sum[1] / alpha + 0.5f) : 0;
-                        to[(y * nw + x) * 4 + 2] = alpha > 0 ? (uint8_t)(sum[2] / alpha + 0.5f) : 0;
-                        to[(y * nw + x) * 4 + 3] = (uint8_t)(alpha / 4.0f + 0.5f);
-                    }
-                }
-                level++;
-                glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA8, (GLsizei)nw, (GLsizei)nh, 0, GL_RGBA, GL_UNSIGNED_BYTE, to);
-                free(from);
-                from = to;
-                w = nw;
-                h = nh;
-            }
-            free(from);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        } else {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        }
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        nat.textured = mesh;
-    }
-    if (nat.pbr_mesh != mesh && mesh->bones && mesh->normal_rgba && mesh->mr_rgba) { /* HDM4 PBR-lite maps (units 2 and 3 at draw time) */
-        native_upload_map(&nat.normal_tex, mesh->normal_w, mesh->normal_h, mesh->normal_rgba);
-        native_upload_map(&nat.mr_tex, mesh->mr_w, mesh->mr_h, mesh->mr_rgba);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        nat.pbr_mesh = mesh;
+    if (!native_skin_ready() || !(g = native_gl_mesh(mesh))) {
+        NativeModel_GlReady = 0; /* the disc model is drawn from the next frame on */
+        return;
     }
     /* Whether the slot's lights are set at all: a slot drawn from the colour cache has no light of its own. */
     lit = 0;
@@ -2323,16 +2365,12 @@ static void native_draw(unsigned id)
         const NativeClip *clip = NULL;
         NativeAnimFrame frame;
         float t;
-        if (!native_skin_ready(mesh)) {
-            NativeModel_GlReady = 0; /* the disc model is drawn from the next frame on */
-            return;
-        }
         frame.offset_x = (float)state.offset_x;
         frame.offset_y = (float)state.offset_y;
         frame.scale = scale;
         frame.lit = lit;
-        frame.ambient = NativeModel_Tune.ambient;
-        frame.light_gain = NativeModel_Tune.light_gain;
+        frame.ambient = mesh->tune.ambient;
+        frame.light_gain = mesh->tune.light_gain;
         frame.log = nat_env.skin_log;
         t = NativeAnim_Choose(d, mesh, nat_env.clip, &clip);
         NativeAnim_Rows(d, mesh, clip, t, &frame, nat.skin_rows);
@@ -2384,7 +2422,7 @@ static void native_draw(unsigned id)
     {
         int k;
         GLuint program = nat.skin_program;
-        if (nat.pbr_mesh == mesh && !nat_env.no_pbr && native_pbr_program()) program = nat.pbr_program;
+        if (g->pbr && !nat_env.no_pbr && native_pbr_program()) program = nat.pbr_program;
         gl_UseProgram(program);
         gl_Uniform2f(gl_GetUniformLocation(program, "picture_size"), (float)nat.w, (float)nat.h);
         gl_Uniform1i(gl_GetUniformLocation(program, "tex"), 0);
@@ -2393,19 +2431,19 @@ static void native_draw(unsigned id)
             /* flip_green defaults to 1: glTF's green is up in the image, our v runs down, so B must be negated */
             gl_Uniform1i(gl_GetUniformLocation(program, "nmap"), 2);
             gl_Uniform1i(gl_GetUniformLocation(program, "mrmap"), 3);
-            gl_Uniform3f(gl_GetUniformLocation(program, "pbr"), NativeModel_Tune.flip_green, NativeModel_Tune.highlight,
-                         NativeModel_Tune.normal_strength);
+            gl_Uniform3f(gl_GetUniformLocation(program, "pbr"), mesh->tune.flip_green, mesh->tune.highlight,
+                         mesh->tune.normal_strength);
             gl_ActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, nat.normal_tex);
+            glBindTexture(GL_TEXTURE_2D, g->normal_tex);
             gl_ActiveTexture(GL_TEXTURE3);
-            glBindTexture(GL_TEXTURE_2D, nat.mr_tex);
+            glBindTexture(GL_TEXTURE_2D, g->mr_tex);
         }
         gl_ActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, nat.skin_tex);
         gl_ActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, nat.texture);
-        gl_BindBuffer(GL_ARRAY_BUFFER, nat.skin_vbo);
-        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, nat.skin_ebo);
+        glBindTexture(GL_TEXTURE_2D, g->texture);
+        gl_BindBuffer(GL_ARRAY_BUFFER, g->vbo);
+        gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ebo);
         for (k = 0; k < 5; k++) gl_EnableVertexAttribArray((GLuint)k);
         gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)0);
         gl_VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(3 * sizeof(float)));

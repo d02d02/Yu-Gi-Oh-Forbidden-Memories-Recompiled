@@ -894,14 +894,28 @@ if(BUILD_TESTING)
     add_test(NAME pc_native_anim COMMAND memories_native_anim_test)
     # The native model pass's capture (src/pc/render/native_model.h) with the game stood in for: instances for code
     # mods, when the model's packets are left out, where its marker goes, when the arena camera moves.
+    set(memories_native_registry_sources src/pc/render/native_registry.c src/pc/render/native_format.c
+        src/pc/render/native_anim.c src/pc/mods/json.c src/pc/platform/paths.c)
     add_executable(memories_native_capture_test tests/pc/native_capture_test.c src/pc/render/native_model.c
-        src/pc/render/native_format.c src/pc/mods/json.c)
+        ${memories_native_registry_sources})
     target_include_directories(memories_native_capture_test PRIVATE src tests/pc)
+    target_link_libraries(memories_native_capture_test PRIVATE PNG::PNG)
     if(NOT MSVC)
         target_compile_options(memories_native_capture_test PRIVATE -Wall -Wextra -Werror)
         target_link_libraries(memories_native_capture_test PRIVATE m)
     endif()
     add_test(NAME pc_native_capture COMMAND memories_native_capture_test)
+    # The native models the mods supply (src/pc/render/native_registry.h): by card and by disc model, a later mod
+    # over an earlier one, packages (model.json) with PNG textures, clips, strike frames, scale and look, the texture
+    # cap, the memory budget, and every entry that cannot be used noted beside its mod.
+    add_executable(memories_native_registry_test tests/pc/native_registry_test.c ${memories_native_registry_sources})
+    target_include_directories(memories_native_registry_test PRIVATE src tests/pc)
+    target_link_libraries(memories_native_registry_test PRIVATE PNG::PNG)
+    if(NOT MSVC)
+        target_compile_options(memories_native_registry_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        target_link_libraries(memories_native_registry_test PRIVATE m)
+    endif()
+    add_test(NAME pc_native_registry COMMAND memories_native_registry_test)
     # Runs after every test (the fixture at the end of this file) and removes
     # the scratch folders a test could not: killed, or holding a file open.
     add_executable(memories_scratch_sweep_test tests/pc/scratch_sweep_test.c)

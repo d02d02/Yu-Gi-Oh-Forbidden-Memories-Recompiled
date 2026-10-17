@@ -1,8 +1,8 @@
 #ifndef MEMORIES_PC_NATIVE_MODEL_H
 #define MEMORIES_PC_NATIVE_MODEL_H
-/* Native model pass: a monster whose model has an HDM4 replacement (native_models in a mod's manifest,
- * notes/native-models.md) is drawn by the OpenGL picture from that model instead of from the game's PS1 packets. The
- * game's logic, animation, packet buffer and save states are untouched:
+/* Native model pass: a monster whose card (or disc model) has a native model (native_models in a mod's manifest,
+ * native_registry.h, notes/native-models.md) is drawn by the OpenGL picture from that model instead of from the
+ * game's PS1 packets. The game's logic, animation, packet buffer and save states are untouched:
  *
  *   func_800540B4 (the slot draw) calls BeginSlot / Part / SlotInfo / EndSlot while it sorts the slot. Part reads the
  *   part's GTE matrices (the lights come from them), SlotInfo the slot's animation row, clock and body root, EndSlot
@@ -12,7 +12,8 @@
  *   `native`), and gl_picture.c draws the model when its marker comes by: its own clip (native_anim.c), skinned on the
  *   GPU, with a depth buffer of its own, laid over the picture.
  *
- * The file is HDM4 (native_format.h), which tools/hd-models/rigged_to_hdm4.py writes from a rigged glTF. */
+ * The model is an HDM4 file (native_format.h), alone or in a package with its textures and choices (model.json);
+ * tools/hd-models/native_convert.py makes both from a rigged glTF. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -76,8 +77,9 @@ typedef struct NativeSlotInfo {
 } NativeSlotInfo;
 
 typedef struct NativeDraw {
-    int32_t id;     /* running number; its low 8 bits are in the marker (the replay keeps the last 16) */
+    int32_t id;     /* running number; its low 8 bits are in the marker (the replay keeps the last NATIVE_RING) */
     int32_t model;  /* the slot's model id */
+    int32_t mesh_id; /* the native model chosen for it (NativeModel_MeshById) */
     int32_t ofx, ofy; /* GTE screen offset (16.16) */
     int32_t h;      /* GTE projection distance */
     int32_t bk[3];  /* GTE background (ambient) colour, 1.0 = 0x1000 */
@@ -96,6 +98,29 @@ typedef struct NativeClip {
     const float *data; /* frames x bones x 7: t[3], q[4] (xyzw) */
 } NativeClip;
 
+/* What a slot is doing, from its disc row: the rows the arena plays (func_8004EB00, model_control.c) and 3D Monsters
+ * plays on the field. 0 and 1 idle (1: back from a hit), 2 enter, the attack row field_DFE + 3 (3, or 4 with the second
+ * guardian star), 5 hit and standing, 6 destroyed, 7 the winner's pose, 8 guard (NativeAnim_Act). */
+typedef enum NativeAct {
+    NATIVE_ACT_IDLE,
+    NATIVE_ACT_ENTER,
+    NATIVE_ACT_ATTACK,
+    NATIVE_ACT_HIT,
+    NATIVE_ACT_DESTROYED,
+    NATIVE_ACT_WIN,
+    NATIVE_ACT_GUARD,
+    NATIVE_ACT_COUNT
+} NativeAct;
+
+/* How a native model is lit and framed: defaults, under its mod's settings, under its package's "look", under the
+ * environment (MEMORIES_ARENA_CAMERA_*, MEMORIES_NATIVE_*: one run). Made when the model is read (native_registry.c). */
+typedef struct NativeTune {
+    float camera_near, camera_keep, camera_scale; /* arena camera: close shots under `near` are pushed out, `keep` of the way in stays; overall scale */
+    float ambient, light_gain;                    /* added to the game's ambient light; the game's lights multiplied */
+    float normal_strength, highlight, flip_green; /* PBR-lite: normal map strength, specular highlight strength, flip the normal map's green (0/1) */
+} NativeTune;
+#define NATIVE_MAX_STRIKES 4
+
 typedef struct NativeMesh {
     uint32_t vertices, tex_w, tex_h;
     uint32_t stride;       /* words per vertex: 13 */
@@ -108,16 +133,15 @@ typedef struct NativeMesh {
     const uint32_t *bone_table; /* per bone 16 words: i32 parent, f32 ibm[12] (3x4 row major) */
     const uint32_t *indices;
     NativeClip clips[NATIVE_MAX_CLIPS];
+    /* From the package (model.json, native_registry.c); all 0 = the defaults, so a mesh made by hand needs none: */
+    uint8_t act_clip[NATIVE_ACT_COUNT]; /* the clip an act plays, + 1 (0: the default names, NativeAnim_Choose) */
+    uint8_t strike_count;               /* the attack clip's frames where its blows land (NATIVE_MAX_STRIKES at most) */
+    uint16_t strike[NATIVE_MAX_STRIKES];
+    float scale;                        /* drawn this many times as large, standing where it stood (0: 1) */
+    float ground;                       /* the soles' height in the model's space (y down: its largest y), for `scale` */
+    NativeTune tune;
 } NativeMesh;
 
-/* The look of big native models: environment (MEMORIES_ARENA_CAMERA_*, MEMORIES_NATIVE_*) over the mod's settings over these defaults
- * (filled when the first slot is drawn, on the game thread; the GL pass only reads). */
-typedef struct NativeTune {
-    float camera_near, camera_keep, camera_scale; /* arena camera: close shots under `near` are pushed out, `keep` of the way in stays; overall scale */
-    float ambient, light_gain;                    /* added to the game's ambient light; the game's lights multiplied */
-    float normal_strength, highlight, flip_green; /* PBR-lite: normal map strength, specular highlight strength, flip the normal map's green (0/1) */
-} NativeTune;
-extern NativeTune NativeModel_Tune;
 extern unsigned NativeModel_Stats[8];
 /* 1 while the slot being sorted has a replacement mesh the GL pass will draw: the drivers then leave the model's
  * PS1 packets unlinked (they still run, so the packet cursor and the colour cache stay as they were). */
@@ -131,8 +155,8 @@ extern unsigned NativeModel_Nearest;
 void NativeModel_SetInstance(const NativeInstance *instance);
 /* The battle code, as the arena starts: the cards of its slots 0 and 1 (0, 0 when it ends). */
 void NativeModel_SetBattleCards(int card0, int card1);
-/* The slot draw (game side). model < 0: not a duel model. */
-void NativeModel_BeginSlot(int model);
+/* The slot draw (game side): the model it draws (< 0: not a duel model) and the slot (0 and 1: the battle's). */
+void NativeModel_BeginSlot(int model, int slot);
 void NativeModel_Part(int part);
 /* Closes the draw; returns its id + 1 (0: nothing to draw). */
 int NativeModel_EndSlot(void);
@@ -145,10 +169,11 @@ void NativeModel_Link(uint32_t *ot, int draw);
 void NativeModel_Take(void);
 const NativeDraw *NativeModel_Taken(size_t *count);
 
-/* The mesh for a model id (the replay), or NULL. */
-const NativeMesh *NativeModel_Mesh(int model);
-/* 1 when a slot drawing `model` now is drawn by the native pass (a mesh, the pass ready, a picture of 2x or more). */
-int NativeModel_WillDraw(int model);
+/* The mesh a captured draw chose (NativeDraw.mesh_id; the replay), or NULL. */
+const NativeMesh *NativeModel_MeshById(int id);
+/* 1 when a slot drawing `model` for `card` (0: unknown) now is drawn by the native pass (a model for it, the pass
+ * ready, a picture of 2x or more). */
+int NativeModel_WillDraw(int model, int card);
 /* The arena camera's eye-to-look-at factor for a frame whose battle slots draw model0 and model1 (-1: none): 1 (the
  * game's camera) unless one of them is drawn natively. */
 float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);
