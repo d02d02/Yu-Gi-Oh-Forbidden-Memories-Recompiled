@@ -53,6 +53,7 @@ This file is the action plan the agent follows, and its status board; `history.m
 | M2 | `milestone/native-m2` (5cfc2168) | 1-3 | awaiting | |
 | M3 | `milestone/native-m3` (afc069ea) | 1-5 | awaiting | |
 | M4 | `milestone/native-m4` (194aeba1) | 1-8 | awaiting | |
+| M5 | `milestone/native-m5` | 1-7 | awaiting | |
 
 ## Rules for every change
 
@@ -115,23 +116,23 @@ This file is the action plan the agent follows, and its status board; `history.m
 | D8 | Tests: a synthetic rigged glTF made by the test -> package -> C loader unit test (round trip) |
 | D9 | `notes/native-models.md` rewritten as the modder's how-to (glb to playing in five steps, limits, licences, troubleshooting) |
 
-### E. Data-driven director -> M5
+### E. Data-driven director -> M5 (E1, E4 on the field) and M6 (E2, E3: the arena)
 
 | ID | Change |
 |---|---|
-| E1 | State -> clip from `model.json` `clips`, name-based defaults, fallback chain (guard -> hit -> idle, win -> idle, enter -> idle) |
+| E1 | Done: state -> clip from `model.json` `clips` (D), the default names, then the fallback chain (guard, destroyed -> hit -> idle; win, enter, the others -> idle) |
 | E2 | Disc timing table `data/native/contact.json`: per disc model, attack row -> contact frames (BLS row 3: 29, 61, 95) |
 | E3 | Tool to measure E2 for every disc model with the rigkit arena (origin/dev) and the event log; run on the laptop (needs the disc), result committed |
-| E4 | Warp: package strike frames <-> contact frames of the instance (arena: table; field: the mod's contact frame); piecewise linear inside the row; no table entry = no warp |
+| E4 | Warp: package strike frames <-> contact frames of the instance (arena: table; field: the mod's contact frame); piecewise linear inside the row; no table entry = no warp. Done for the field (the first strike on the instance's contact frame); the arena keeps BLS's measured warp until E2/E3 |
 
-### F. 3D Monsters field attack (objective 2) -> M6
+### F. 3D Monsters field attack (objective 2) -> M5
 
 | ID | Change | Files |
 |---|---|---|
-| F1 | `sort_monster`: instance before `func_800540B4(0)` (FIELD or BIG_CARD, key = zone/side, card, `monster->fade`, contact = attack row midpoint); `sort_aside`: MEASURE; cleared after | `mods/3d-monsters/field_models.c` |
-| F2 | Depth: the mod's `nearest` now sees the real entry (C4); check the explicit `at` of `draw_battle` | same |
-| F3 | Fade in the composite (`SOFT_GPU_FADE` meaning: 0 opaque .. 255 gone) | `native_gl.c` |
-| F4 | Optional binding through `host->symbol("NativeModel_SetInstance")` | mod |
+| F1 | Done: `sort_monster`: instance before `func_800540B4(0)` (FIELD or BIG_CARD, key = the monster's cache entry, which owns its slot state; card, `monster->fade`, contact = attack row midpoint unless the attacker's module decides); `sort_aside`: MEASURE. Nothing to clear: an instance is used by the next slot draw only | `mods/3d-monsters/field_models.c` |
+| F2 | Depth: the mod's `nearest` now sees the real entry (C4); check the explicit `at` of `draw_battle`. Read: with the packets left out the scratch table holds the marker alone, at the model's nearest entry, so `nearest` is its depth; `draw_battle`'s `at` puts the whole run, marker included, over the big card. To see on the laptop (M5) | same |
+| F3 | Done in C: fade in the composite (`SOFT_GPU_FADE` meaning: 0 opaque .. 255 gone) | `gl_picture.c` |
+| F4 | Done: optional binding through `host->symbol("NativeModel_SetInstance")` (mod API 4) | mod |
 | F5 | Field size: keep the mod's fit from the disc model; option later to fit the native bounds | - |
 
 ### G. Cinematics -> M7
@@ -157,8 +158,8 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 | M2 | B | `attack_clip.py` over the same frames as an M1 run | Same pictures (any difference = report) |
 | M3 | C | arena attack and field attack (`-Attack 2`) with `MEMORIES_TRACE=native` | The event log (the agent gives the expected sequence); field monster no longer over every card |
 | M4 | D | Convert the angel with `native_convert.py` (no disc), install with `new_native_mod.py`; swap `base.png` | Same look; texture swap works without converting again |
-| M5 | E (+E3 run) | Arena: BLS, BLS with guardian star 2, a second monster with the angel | Strike on the hit each time |
-| M6 | F | `-Attack 2`: angel vs disc monster, angel vs angel, guard, destroyed, summon/withdraw fades | Depth right, no pose mixing, strike on the reaction, fades |
+| M5 | F, E1, E4 (field) | `-Attack 2`: angel vs disc monster, angel vs angel, guard, destroyed, summon/withdraw fades | Depth right, no pose mixing, strike on the reaction, fades |
+| M6 | E2, E3 (+E3 run) | Arena: BLS, BLS with guardian star 2, a second monster with the angel | Strike on the hit each time |
 | M7 | G | One `shots.json` in arena and field | Shots play, game timing unchanged in the arena |
 
 ## M3 checklist (copy into `test-results/m3.md`)
@@ -189,6 +190,22 @@ The old angel mod can stay applied: an entry for the card wins over its entry fo
 | 7 | Item 3 with `MEMORIES_TRACE=model`; send the log | `evt native ... mesh=<n> ... card=364` for the attacker and the defender's card |
 | 8 | `MEMORIES_NATIVE_MODEL=mods/angel-m4/models/<name>/model.json` with the mod off | the angel, as in 3 (the test switch reads packages too) |
 
+## M5 checklist (copy into `test-results/m5.md`)
+
+Build `milestone/native-m5`; the M1-M4 items hold on it too. `play-bls.ps1` makes its own profile (Test scenes, 3D Monsters, HD only),
+so the angel comes in through the test switch: `-NativeModel <the M4 package>\model.json` (a package works there since M4).
+`MEMORIES_MOD_3D_MONSTERS_<SETTING>=<value>` sets one of the mod's settings for a run.
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | `play-bls.ps1 -NativeModel PKG\model.json` (attack on the field, the default) | the angel on BLS's card, the Kuriboh the disc's; it crosses, strikes, goes home; depth right against the cards and the Kuriboh |
+| 2 | 1 with `MEMORIES_MOD_3D_MONSTERS_EFFECTS=0` | the angel's swing lands as the Kuriboh reacts (the clip's strike on the mod's contact, half the attack row), not early or late |
+| 3 | 1 with `-NativeId -2` (every monster an angel) | each keeps its own pose: the attacker attacks, the others idle, none twitches into another's pose; the destroyed one fades away; nearer angels over farther ones |
+| 4 | 3 with `-Attack 3` (field, then the attack cards) | the angels on the big cards play their own rows, not the field ones' |
+| 5 | 1 with `MEMORIES_TRACE=model`; send the log | `evt native ... context=1 key=<n> card=364` on the field (`context=2` on big cards), `contact=<half the row>` while the attack row plays (-1 with effects on), no `evt native` while a monster loads (its measuring draws) |
+| 6 | Summon on (`MEMORIES_MOD_3D_MONSTERS_SUMMON=1`) with 3 | the angels grow from their cards and fade in |
+| 7 | `-Attack 0` and Internal 1x | the arena as in M4; at 1x the disc models everywhere |
+
 ## Status
 
 | Phase | State |
@@ -198,4 +215,6 @@ The old angel mod can stay applied: an entry for the card wins over its entry fo
 | B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), awaiting M2; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
 | C | done (C1-C7), awaiting M3; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_capture` new (instances, suppression, marker entry, camera) and `pc_native_anim` extended (acts, per-monster memory), only `pc_user_dir` fails (root container) |
 | D | done (D1, D3, D4 revised; D2, D5-D9), awaiting M4; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_registry` and `pc_native_tools` new (a rigged glb made by the test, converted without the disc, checked, made into a mod, read back by the game's loader), `pc_native_capture` / `pc_native_anim` updated, only `pc_user_dir` fails (root container); registry and capture tests under ASan/UBSan 32+64-bit |
-| E-H | planned |
+| E | E1 done, E4 done for the field, in M5; E2/E3 (the arena's contact frames) wait for the measurement on the laptop (M3's event log shows them for BLS) |
+| F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
+| G-H | planned |

@@ -60,3 +60,13 @@
   - Tests: `pc_native_registry`, `pc_native_tools` (a rigged glb made by the test, converted, checked, made into a mod and
     read back by the game's loader), `pc_native_capture` and `pc_native_anim` updated. `notes/native-models.md` is the
     modder's how-to (five steps, the package, acts, look, limits, troubleshooting).
+* Phase F (3D Monsters field attack, first part) and E (director):
+  - 3D Monsters names every draw of slot 0 to the native pass (`native_say`, bound with `host->symbol`): field or big
+    card, its cache entry as the key (two monsters drawn through the one slot no longer share a pose), the model's card,
+    its fade, and half its attack row as the blow's frame (unknown, -1, while the attacker's control module decides);
+    the measuring draws (`sort_aside`) are MEASURE and capture nothing.
+  - `NativeAnim_ActClip`: an act with no clip plays the hit's (guard, destroyed) or the idle's. The attack with a known
+    contact frame and package strike frames is warped so the first strike lands on it; the arena keeps the measured
+    BLS warp until its contact frames are measured (E2/E3).
+  - Milestones re-sequenced: M5 is the field (F, E1, E4), M6 the arena's measured timing (E2, E3).
+

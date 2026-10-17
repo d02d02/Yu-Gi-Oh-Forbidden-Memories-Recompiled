@@ -1,7 +1,8 @@
 /* The native model's animation without OpenGL (src/pc/render/native_anim.h): the disc row picks the clip (the attack is
  * row field_DFE + 3), the attack row of Black Luster Soldier is time-warped onto the game's contact frames, the clip is
  * posed by forward kinematics into the skinning rows, and a row change cross-fades over NATIVE_FADE draws; a package's
- * clip choices and scale (native_registry.h) are honoured. */
+ * clip choices (with the fallbacks of an act it has no clip for), strike frames and scale (native_registry.h) are
+ * honoured. */
 #include "pc/render/native_anim.h"
 #include <math.h>
 #include <stdio.h>
@@ -270,6 +271,58 @@ int main(void)
         CHECK(NativeAnim_ActClip(keep, NATIVE_ACT_WIN) == &keep->clips[IDLE]);
         memset(&bare, 0, sizeof(bare));
         CHECK(NativeAnim_ActClip(&bare, NATIVE_ACT_IDLE) == NULL && NativeAnim_ActClip(&mesh, NATIVE_ACT_COUNT) == NULL);
+    }
+    /* An act without a clip plays the nearest act that has one: guard and destroyed the hit, the others the idle. */
+    {
+        static NativeMesh partial;
+        partial = mesh;
+        snprintf(partial.clips[IDLE].name, sizeof(partial.clips[IDLE].name), "Stand");
+        snprintf(partial.clips[HIT].name, sizeof(partial.clips[HIT].name), "Ouch");
+        snprintf(partial.clips[LOOP].name, sizeof(partial.clips[LOOP].name), "Spin");
+        snprintf(partial.clips[DEATH].name, sizeof(partial.clips[DEATH].name), "Fall");
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_GUARD) == &partial.clips[0]); /* nothing mapped, no default names */
+        partial.act_clip[NATIVE_ACT_IDLE] = IDLE + 1;
+        partial.act_clip[NATIVE_ACT_HIT] = HIT + 1;
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_GUARD) == &partial.clips[HIT]);
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_DESTROYED) == &partial.clips[HIT]);
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_WIN) == &partial.clips[IDLE]);
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_ENTER) == &partial.clips[IDLE]);
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_ATTACK) == &partial.clips[ATTACK]); /* Sword_Attack: its default name */
+        partial.act_clip[NATIVE_ACT_HIT] = 0;
+        CHECK(NativeAnim_ActClip(&partial, NATIVE_ACT_GUARD) == &partial.clips[IDLE]); /* no hit either: the idle */
+    }
+    /* The blow's frame known (a code mod's draw): the package's first strike frame lands on it, both ends fixed; the
+     * second guardian star's row too. Unknown (the arena) or no strike frames: as before. */
+    {
+        static NativeMesh struck;
+        struck = mesh;
+        struck.strike_count = 2;
+        struck.strike[0] = 11;
+        struck.strike[1] = 30;
+        set_draw(1, 0, 3, 3, 75 * 16, 150);
+        draw.info.contact_frame = 75;
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 11.0f / 30.0f) && clip == &struck.clips[ATTACK]);
+        draw.info.anim_frame = 0;
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 0.0f));
+        draw.info.anim_frame = 150 * 16;
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 46.0f / 30.0f));
+        draw.info.anim_frame = 375 * 16 / 10; /* 37.5: half way to the blow */
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 5.5f / 30.0f));
+        draw.info.anim_frame = 1125 * 16 / 10; /* 112.5: half way from the blow to the end */
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 28.5f / 30.0f));
+        set_draw(1, 0, 4, 4, 40 * 16, 80);
+        draw.info.contact_frame = 40;
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 11.0f / 30.0f));
+        set_draw(1, 0, 3, 3, 30 * 16, 150);
+        draw.info.contact_frame = -1; /* the arena: Black Luster Soldier's measured warp */
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 11.0f / 30.0f));
+        draw.info.contact_frame = 75;
+        struck.strike_count = 0; /* no strike frames: the measured warp too */
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 11.0f / 30.0f));
+        struck.strike_count = 1;
+        set_draw(1, 0, 5, 3, 5 * 16, 10);
+        draw.info.contact_frame = 5; /* not the attack: no warp */
+        CHECK(near(NativeAnim_Choose(&draw, &struck, NULL, &clip), 0.5f * 1.0f / 30.0f));
     }
     /* A package's scale is about the soles: twice the size, the ground (y = 10, y down) where it was. */
     {

@@ -76,11 +76,31 @@ const NativeClip *NativeAnim_ActClip(const NativeMesh *mesh, NativeAct act)
 {
     static const char *const by_act[NATIVE_ACT_COUNT] = {"Sword_Idle", "Idle_Loop", "Sword_Attack", "Hit_Chest", "Death01",
                                                          "Sword_Idle", "Sword_Idle"};
-    const NativeClip *c;
+    /* An act with neither a clip of the package's nor one of the default name plays the nearest act that has one:
+     * guard and destroyed the hit, everything else the idle. */
+    static const NativeAct instead[NATIVE_ACT_COUNT] = {NATIVE_ACT_IDLE, NATIVE_ACT_IDLE, NATIVE_ACT_IDLE, NATIVE_ACT_IDLE,
+                                                        NATIVE_ACT_HIT, NATIVE_ACT_IDLE, NATIVE_ACT_HIT};
+    int steps;
     if (act < 0 || act >= NATIVE_ACT_COUNT || !mesh->clip_count) return NULL;
-    if (mesh->act_clip[act] && mesh->act_clip[act] <= mesh->clip_count) return &mesh->clips[mesh->act_clip[act] - 1];
-    c = named(mesh, by_act[act]);
-    return c ? c : &mesh->clips[0];
+    for (steps = 0; steps < 3; steps++) {
+        const NativeClip *c;
+        if (mesh->act_clip[act] && mesh->act_clip[act] <= mesh->clip_count) return &mesh->clips[mesh->act_clip[act] - 1];
+        if ((c = named(mesh, by_act[act])) != NULL) return c;
+        if (act == NATIVE_ACT_IDLE) break;
+        act = instead[act];
+    }
+    return &mesh->clips[0];
+}
+
+/* The attack clip's time (seconds) at disc frame `frame` of a row `length` frames long whose blow lands at `contact`:
+ * piecewise linear, so the package's first strike frame meets the contact and both ends meet; -1 when it cannot. */
+static float strike_warp(const NativeMesh *mesh, const NativeClip *c, float frame, int contact, int length)
+{
+    float strike = mesh->strike_count ? (float)mesh->strike[0] : 0.0f, last = (float)(c->frames - 1);
+    if (!mesh->strike_count || contact <= 0 || contact >= length || strike <= 0.0f || strike >= last) return -1.0f;
+    frame = frame < 0.0f ? 0.0f : frame > (float)length ? (float)length : frame;
+    if (frame <= (float)contact) return strike * frame / (float)contact / c->fps;
+    return (strike + (last - strike) * (frame - (float)contact) / (float)(length - contact)) / c->fps;
 }
 
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
@@ -106,6 +126,11 @@ float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char 
     }
     phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
     phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
+    if (NativeAnim_Act(row, d->info.attack_row) == NATIVE_ACT_ATTACK) {
+        /* The blow's frame known (a code mod's, NativeInstance.contact_frame): the package's strike lands on it. */
+        t = strike_warp(mesh, c, (float)d->info.anim_frame / 16.0f, d->info.contact_frame, d->info.anim_length);
+        if (t >= 0.0f) return t;
+    }
     if (row == 3 && attack == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
         /* Piecewise time warp keyed to the game's events (disc frames of row 3: contact window opens at 29, closes at 61, second
          * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30).

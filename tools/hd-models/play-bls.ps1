@@ -18,7 +18,7 @@ param(
     [int]$ShotFrame = 2400,
     [switch]$NoHd,
     [string]$Log = '',           # save the game's messages (stderr) to this file
-    [string]$NativeModel = '',   # a model.hdm: the native model pass draws it for model -NativeId (needs a build with native_model.c)
+    [string]$NativeModel = '',   # a model.hdm or a package's model.json: drawn for model -NativeId (-2: every monster), over every mod's
     [int]$NativeId = 363,        # model id = card id - 1 (BLS: card 364, model 363)
     [int]$TimeoutS = 150,
     [string]$Repo = "$PSScriptRoot\..\..\..\Yu-Gi-Oh-Forbidden-Memories-Recompiled-dev"

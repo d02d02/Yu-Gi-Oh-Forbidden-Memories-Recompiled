@@ -93,6 +93,7 @@
 #include "game/model_control.h"
 #include "game/model_transfer_flags.h"
 #include "pc/compat/gte.h"
+#include "pc/render/native_model.h"
 #include "pc/render/packets.h"
 #include "pc/render/soft_gpu.h"
 #include "pc/mods/modapi.h"
@@ -718,6 +719,32 @@ static int packets_fit(const Monster *monster)
 static Monster *effect_monster;
 static void effect_run(void);
 
+/* The native model pass (src/pc/render/native_model.h, notes/native-models.md) is told what each draw of slot 0 is:
+ * which monster (its cache entry, so two monsters drawn through the one slot never share a pose), its card, its fade,
+ * and the frame of its attack row where the blow lands. A measuring draw is said to be one, so nothing of it is
+ * captured. Looked up when the mod starts: on a game without the pass the call is not there and nothing is said. */
+static void (*native_instance)(const NativeInstance *instance);
+static int blow_frame(const Monster *monster, const ModelSlot *slot);
+
+static void native_say(const Monster *monster, int context)
+{
+    NativeInstance instance;
+    if (!native_instance) {
+        return;
+    }
+    memset(&instance, 0, sizeof(instance));
+    instance.size = (int32_t)sizeof(instance);
+    instance.context = context;
+    instance.contact_frame = -1;
+    if (context != NATIVE_CONTEXT_MEASURE) {
+        instance.key = (int32_t)(monster - cache);
+        instance.card = monster->card; /* the card whose model it is (Cards_ModelId) */
+        instance.fade = monster->fade;
+        instance.contact_frame = blow_frame(monster, &D_800F2C40[0]);
+    }
+    native_instance(&instance);
+}
+
 static void sort_monster(Monster *monster, GsOT *into, int at)
 {
     const u32 *from = (const u32 *)(uintptr_t)D_800FE240;
@@ -740,6 +767,8 @@ static void sort_monster(Monster *monster, GsOT *into, int at)
     GsClearOt(0, 0, table);
     end = tags[0] & LINK_MASK; /* what entry 0 leads to: the table's tail */
     D_800E9D90[2] = table;
+    /* tag 0 stands on the field, side + FIELD_TAG fights there; side + 1 is on a big card (battle_monster) */
+    native_say(monster, monster->tag == 1 || monster->tag == 2 ? NATIVE_CONTEXT_BIG_CARD : NATIVE_CONTEXT_FIELD);
     func_800540B4(0);
     if (monster == effect_monster) {
         effect_run();
@@ -804,6 +833,7 @@ static int sort_aside(Monster *monster)
     GsClearOt(0, 0, table);
     GsSetWorkBase((PACKET *)(scratch + PACKETS_AT));
     D_800E9D90[2] = table;
+    native_say(monster, NATIVE_CONTEXT_MEASURE); /* its packets are measured: the disc model's, linked */
     func_800540B4(0);
     height = packet_height((const u32 *)(scratch + PACKETS_AT), (const u32 *)(uintptr_t)D_800FE240);
     if (D_800FE240 - (u32)(uintptr_t)(scratch + PACKETS_AT) > monster->packet_bytes) {
@@ -1538,6 +1568,21 @@ static int attack_progress(int side, const ModelSlot *slot)
                                   : 0;
     attack.last[side] = at;
     return progress;
+}
+
+/* The frame of the row `slot` plays where its blow lands, for the native model pass, or -1: while the attack is on
+ * and the slot plays its attack row, half way through it (attack_side), unless the attacker's control module says
+ * when (effect_run), which is not known ahead. */
+static int blow_frame(const Monster *monster, const ModelSlot *slot)
+{
+    int row = slot->field_BF5;
+    if (attack.phase == ATTACK_IDLE || row != slot->field_DFE + 3 || !slot->field_750[row].max) {
+        return -1;
+    }
+    if (monster == effect_monster && attack.stage == STAGE_FIELD) {
+        return -1;
+    }
+    return slot->field_750[row].max / 2;
 }
 
 /* The blow struck by side `side` lands. */
@@ -2979,6 +3024,10 @@ int MemoriesModInit(const MemoriesModHost *from, MemoriesMod *mod)
     }
     host = from;
     mod->api = MEMORIES_MOD_API;
+    if (from->api >= 4) { /* symbol arrived in mod API 4 */
+        void *found = host->symbol(host, "NativeModel_SetInstance");
+        memcpy(&native_instance, &found, sizeof(native_instance)); /* a data pointer to a function pointer, as dlsym */
+    }
     mod->frame = draw_frame;
     mod->reset = reset;
     mod->applied = applied;
