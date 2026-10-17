@@ -1,0 +1,149 @@
+# Native models: plug-and-play content + 3D Monsters field attack
+
+Branch `feat/native-models-plug-and-play`, from `feat/battle-events-log` at `96cd1c3a`
+(itself `feat/hd-model-bls` + upstream master). Never a PR. Pushed only to this branch.
+This file is the action plan the agent follows, and its status board; `history.md` keeps what is done.
+
+## Objectives and what "done" means
+
+1. **Plug-and-play content.** A modder with a rigged glTF (any common rig) makes a working mod with one
+   command and no C, no disc image, no Blender script of ours: a folder with `mod.json`, `model.json`
+   (hand-editable metadata), the generated model binary and PNG textures. Textures can be swapped by
+   replacing a PNG. Animations, strike timing, size, look and camera shots ("cinematics") are data.
+   Errors are notes in the Mods window, never a crash.
+2. **3D Monsters field attack.** With `mod.3d-monsters.attack` = field, a native model stands on its card,
+   attacks, reacts, guards, dies and fades on the field correctly: right depth against cards and other
+   monsters, no pose mixing between monsters, strike on the defender's reaction, the mod's fades.
+
+## Defaults taken (from the analysis; any can be overridden)
+
+| # | Decision | Default |
+|---|---|---|
+| D1 | Runtime glTF loader or converter | Converter to a validated package; no new C library |
+| D2 | Where animation sampling runs | Pure-C module, called where it is now (render side); inputs only from captured data |
+| D3 | Native model size fed back into the game (`field_DD0`/`field_DC8`) | No (keeps console timing and save-state parity) |
+| D4 | Arena cinematics | Camera (on the view copy) + clip choice; no change of length |
+| D5 | Model key | Card id (resolved per draw), not disc model id |
+| D6 | Legacy HDM1-3 paths | Removed (HDM4 is the path; HDM4 files keep loading) |
+
+## What the agent can verify here, and what needs the laptop
+
+* Here (cloud container, no disc, no GPU/window): `python3 tools/pc/build_game32.py` (45 s, must keep
+  "12 outside_resident_image stubs"), the CMake unit tests (`ctest`), `tools/pc/build_mod.py mods/3d-monsters`,
+  Python tests of the converter, pure-C unit tests of the loader/director/pose.
+* Laptop (disc + real GL window): every picture. At each milestone (M1..M7) the agent pushes, says so, and
+  lists exactly what to run and what to look at. Work continues on the next phase meanwhile only where it does
+  not depend on the result.
+
+## Rules for every change
+
+* Game units (`src/game`): `#ifdef MEMORIES_PC` only, no libc/libm (each adds an outside_resident_image stub),
+  `make match` unaffected. Engine code in `src/pc`.
+* Code-mod surface: new exports only, structs carry a `size` field, never change an exported layout;
+  3D Monsters binds the new entry with `host->symbol()` so it still loads on a game without it.
+* Mod API: `native_models` is not released yet; its final shape lands with this work (API number checked
+  against upstream at merge time).
+* Before each push: game build, ctest, 3D Monsters build, Python tests; diff re-read. Small commits.
+
+## Phases
+
+### A. Correctness fixes (small, first) -> M1
+
+| ID | Change | Files |
+|---|---|---|
+| A1 | `NativeModel_GlReady` = "the pass will draw this frame": cleared when the picture drops below 2x (`resync`, `native_ready` returning 0) and when the GL picture stops; suppression only then. Fixes the invisible monster at 1x | `gl_picture.c`, `native_model.c` |
+| A2 | Arena camera push only when the GL pass is ready AND slot 0 or 1 of the current arena scene (`D_8009AF94 == 15`) has a native mesh. Credits and other battles untouched | `native_model.c`, `model_scene_states.c` |
+| A3 | HDM4 parser: 64-bit size arithmetic, every offset checked before it is read, parent < bone and acyclic, joint ids < bones, indices < vertices, clip sizes; malformed = note + disc model | `native_model.c` (+ unit test) |
+| A4 | Capture `field_DFE`; the attack is row `field_DFE + 3` (guardian star 2 plays row 4) | `func_800540B4.c`, `native_model.h`, director |
+| A5 | Test switch: `MEMORIES_NATIVE_MODEL` without `_ID` = model 363, not 364; every `getenv` read once | `native_model.c`, `gl_picture.c` |
+
+### B. Factoring, no visible change -> M2
+
+| ID | Change |
+|---|---|
+| B1 | The pass leaves `gl_picture.c`: `src/pc/render/native_gl.c` (programs, MSAA target, shared depth, composite). `gl_picture.c` keeps `OP_NATIVE`, the marker and one call `NativeGl_Draw(draw, &context)` (picture target, offsets, clip, scale, flush) |
+| B2 | `native_model.c` split: `native_capture.c` (BeginSlot/Part/Info/EndSlot/Link), `native_format.c` (load + validate, no GL, unit-tested), `native_registry.c` (manifests -> models, tuning, lazy load) |
+| B3 | `native_anim.c` (pure C): director + clip sampling + cross-fade + forward kinematics -> bone rows. Unit tests: sampling, FK, quaternion blend, warp |
+| B4 | Remove HDM1-3 (part-posed CPU/GPU paths, retarget, their shaders) |
+| B5 | Debug switches under `MEMORIES_TRACE=native` + `MEMORIES_NATIVE_DEBUG=<flags>`; player-facing tuning becomes settings (package `look`, one global "Native models" option) |
+| B6 | Widescreen: check whether the arena/field draw into the widescreen target; if so composite there too |
+
+### C. Instance + event layer (shared by both objectives) -> M3
+
+| ID | Change |
+|---|---|
+| C1 | `NativeSlotInfo` -> `NativeState` (versioned): `key`, `card`, `context` (ARENA, FIELD, BIG_CARD, LIBRARY, MEASURE), semantic `state` (IDLE, ENTER, ATTACK, CONTACT, HIT, GUARD, DESTROYED, WIN, RECOVER), row, clock, length, speed, attack row, defence, `fade`, `contact_frames[]`, nearest OT entry |
+| C2 | Arena source: key = slot; card from `D_801A7AD8[D_800E9EF0[slot]->field_6A]`; contact from `func_800559D4` (handler returns 3/1/4, or the midpoint fallback), destroyed/win from the rows; contact frames for the attack row from the timing table (E2) |
+| C3 | Export for code mods: `void NativeModel_SetInstance(const NativeInstance *)` (`size`, `card`, `context`, `key`, `fade`, `contact_frame`); NULL clears; MEASURE = capture nothing, suppress nothing |
+| C4 | The polygon drivers record the nearest entry they would have linked while suppressing; `NativeModel_Link` puts the marker there instead of entry 0 |
+| C5 | Cross-fade/animation state per instance key (small table, least-recently-used) |
+| C6 | More native draws per frame (24); overflow = disc model, as today |
+| C7 | Event log, one line per semantic event (`MEMORIES_TRACE=native`); capture runs without GL when tracing, so it is checkable headless |
+
+### D. Package format + loader + tools (objective 1 core) -> M4
+
+| ID | Change |
+|---|---|
+| D1 | Spec `notes/native-models-format.md`: `model.json` (format 1: binary, textures, fit, clips map, strike frames, look, sockets, cinematics, license/author) + binary `FMNM` v1 (chunks: MESH with submeshes and a texture slot each, SKEL, CLIP; bounds per chunk) |
+| D2 | Manifest: `"native_models": [{"cards": [364], "package": "angel/model.json"}]` (`card`/`cards`; `model` kept as an alias for disc model ids). Several mods, priority = mod order |
+| D3 | Loader: lazy (first need, not first frame), PNG through libpng (as `src/pc/cards/art.c`), texture cap (default 2048, a setting), memory budget for the 32-bit build, freed when the mod is turned off; HDM4 files still load (defaults for the metadata) |
+| D4 | Fit at run time from the template's rest size (the slot's coordinate section when the model loads) + `fit` {mode, scale, offset, yaw}; the converter no longer needs the disc |
+| D5 | Converter `tools/hd-models/native_convert.py`: glTF/glb -> package; rig profiles (Unreal/Quaternius, Mixamo, generic with `--root/--feet`), multi-material, PNG textures (resized to the cap), clip list + semantic guesses by name, strike frame estimate (hand/weapon speed peak), report |
+| D6 | `tools/hd-models/new_native_mod.py MODEL.glb --card 364 --out mods/my-mod`: the whole mod folder |
+| D7 | Validator `native_check.py` = the engine's checks, offline |
+| D8 | Tests: a synthetic rigged glTF made by the test -> package -> C loader unit test (round trip) |
+| D9 | `notes/native-models.md` rewritten as the modder's how-to (glb to playing in five steps, limits, licences, troubleshooting) |
+
+### E. Data-driven director -> M5
+
+| ID | Change |
+|---|---|
+| E1 | State -> clip from `model.json` `clips`, name-based defaults, fallback chain (guard -> hit -> idle, win -> idle, enter -> idle) |
+| E2 | Disc timing table `data/native/contact.json`: per disc model, attack row -> contact frames (BLS row 3: 29, 61, 95) |
+| E3 | Tool to measure E2 for every disc model with the rigkit arena (origin/dev) and the event log; run on the laptop (needs the disc), result committed |
+| E4 | Warp: package strike frames <-> contact frames of the instance (arena: table; field: the mod's contact frame); piecewise linear inside the row; no table entry = no warp |
+
+### F. 3D Monsters field attack (objective 2) -> M6
+
+| ID | Change | Files |
+|---|---|---|
+| F1 | `sort_monster`: instance before `func_800540B4(0)` (FIELD or BIG_CARD, key = zone/side, card, `monster->fade`, contact = attack row midpoint); `sort_aside`: MEASURE; cleared after | `mods/3d-monsters/field_models.c` |
+| F2 | Depth: the mod's `nearest` now sees the real entry (C4); check the explicit `at` of `draw_battle` | same |
+| F3 | Fade in the composite (`SOFT_GPU_FADE` meaning: 0 opaque .. 255 gone) | `native_gl.c` |
+| F4 | Optional binding through `host->symbol("NativeModel_SetInstance")` | mod |
+| F5 | Field size: keep the mod's fit from the disc model; option later to fit the native bounds | - |
+
+### G. Cinematics -> M7
+
+| ID | Change |
+|---|---|
+| G1 | Spec `shots.json`: shots keyed to events (attack.start, attack.contact, hit, destroyed, win, enter), subject/target (attacker, defender), camera {orbit yaw/pitch, distance, height, look-at}, duration, ease, clip override |
+| G2 | `native_cinematic.c`: `NativeCinematic_View(GsRVIEW2 *view, context)` on a copy of the view; arena via `Model_SetArenaView`; field via one call where the mod sets its camera |
+| G3 | Field length: the mod already holds step 7 (up to 1200 frames); a shot may ask for extra frames there; arena never changes length |
+| G4 | (later) Sounds of a shot on the field through `host->sound_play` |
+
+### H. Ecosystem
+
+H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-specific Blender scripts to
+`tools/hd-models/examples/`, no workspace path assumptions. H3 FM Editor (outside this repo): API 17 keys.
+H4 `history.md` and the developer notes updated per phase.
+
+## Milestones for laptop tests
+
+| M | After | Run | Look for |
+|---|---|---|---|
+| M1 | A | `play-bls.ps1 -Attack 0 -NativeModel angel.hdm`; toggle Internal 1x/2x in the arena; a battle of two other monsters; the credits | Angel as before; at 1x the disc BLS (not nothing); other battles and credits with the console camera |
+| M2 | B | `attack_clip.py` over the same frames as an M1 run | Same pictures (any difference = report) |
+| M3 | C | arena attack and field attack (`-Attack 2`) with `MEMORIES_TRACE=native` | The event log (the agent gives the expected sequence); field monster no longer over every card |
+| M4 | D | Convert the angel with `native_convert.py` (no disc), install with `new_native_mod.py`; swap `base.png` | Same look; texture swap works without converting again |
+| M5 | E (+E3 run) | Arena: BLS, BLS with guardian star 2, a second monster with the angel | Strike on the hit each time |
+| M6 | F | `-Attack 2`: angel vs disc monster, angel vs angel, guard, destroyed, summon/withdraw fades | Depth right, no pose mixing, strike on the reaction, fades |
+| M7 | G | One `shots.json` in arena and field | Shots play, game timing unchanged in the arena |
+
+## Status
+
+| Phase | State |
+|---|---|
+| M0 setup (branch, plan, build check) | done: game build + 3D Monsters build pass here |
+| A | next |
+| B-H | planned |
