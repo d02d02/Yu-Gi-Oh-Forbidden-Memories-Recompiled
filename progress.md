@@ -35,6 +35,22 @@ This file is the action plan the agent follows, and its status board; `history.m
   lists exactly what to run and what to look at. Work continues on the next phase meanwhile only where it does
   not depend on the result.
 
+## Milestones, results and fixes (how work goes on while tests run)
+
+* Each milestone is an annotated tag that never moves (`native-m1`, `native-m2`, ...). Testing a tag tests exactly that
+  build while development goes on here.
+* Results come back on the orphan branch `test-results` (`mN.md` checklists, files under `mN/`; its README says how).
+  The agent created it once and only reads it.
+* A failed item is fixed forward on this branch: commit `Fix M<N>-<item>: ...`, a unit test where the bug can be
+  tested here, a line in the table below; a tag `native-m<N>.<k>` when the fix needs testing on its own.
+* Only work a pending result cannot invalidate goes ahead of it: the event layer and the package tooling are tested
+  here; visual tuning and the deep field-attack work (F) wait for the milestone that shows them.
+
+| Milestone | Tag | Item | Result | Fix |
+|---|---|---|---|---|
+| M1 | `native-m1` (0191bde7) | 1-7 | awaiting | |
+| M2 | `native-m2` (5cfc2168) | 1-3 | awaiting | |
+
 ## Rules for every change
 
 * Game units (`src/game`): `#ifdef MEMORIES_PC` only, no libc/libm (each adds an outside_resident_image stub),
