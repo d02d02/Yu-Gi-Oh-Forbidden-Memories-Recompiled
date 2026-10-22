@@ -1,4 +1,4 @@
-# Play / screenshot a test duel with the Test scenes, 3D Monsters and Forbidden Memories HD (assets-hd; -NoHd drops it) mods ONLY:
+# Play / screenshot a test duel with the Test scenes, 3D Monsters, Hand camera (L1/R1/L2/R2 turn and zoom the camera while the hand is up; always on) and Forbidden Memories HD (assets-hd; -NoHd drops it) mods ONLY:
 # nothing else enabled (no Duel Links art, no Kuriboh, no other data mods),
 # its own profile (shared\test-user-bls), a private copy of the build (your build folder is never locked).
 #
@@ -43,8 +43,8 @@ robocopy "$build\mods" "$priv\mods" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 $user = "$shared\test-user-bls"
 New-Item -ItemType Directory -Force -Path $user | Out-Null
 $off = Get-ChildItem "$build\mods" -Directory | ForEach-Object { $_.Name } |
-    Where-Object { $_ -notin 'test-scenes', '3d-monsters' } | Where-Object { $_ -notin $Mods }
-$lines = @("internal_scale=$Scale", 'show_hud=0', 'fullscreen=0', 'mod.test-scenes=1', 'mod.3d-monsters=1', "mod.3d-monsters.attack=$Attack")
+    Where-Object { $_ -notin 'test-scenes', '3d-monsters', 'hand-camera' } | Where-Object { $_ -notin $Mods }
+$lines = @("internal_scale=$Scale", 'show_hud=0', 'fullscreen=0', 'mod.test-scenes=1', 'mod.3d-monsters=1', 'mod.hand-camera=1', "mod.3d-monsters.attack=$Attack")
 $lines += $off | ForEach-Object { "mod.$_=0" }
 $lines += $Mods | ForEach-Object { "mod.$_=1" }
 $lines += 'mod.duel-links-2d-arts=0', 'mod.2d-monsters=0', 'mod.camera-pin=0', 'mod.kuriboh=0', 'mod.kuriboh-hd=0'
