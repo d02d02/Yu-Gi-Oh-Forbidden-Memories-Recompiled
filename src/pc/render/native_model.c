@@ -314,3 +314,35 @@ int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye
     NativeCinematic_Orbit(look, eye, &chosen, eye);
     return 1;
 }
+
+int NativeModel_FieldShot(NativeFieldShot *shot)
+{
+    int s;
+    float best = 0.0f;
+    NativeCamera camera, chosen;
+    if (!shot || shot->size < (int32_t)sizeof(NativeFieldShot)) return 0;
+    chosen.yaw = chosen.pitch = chosen.height = 0.0f;
+    chosen.distance = 1.0f;
+    for (s = 0; s < 2; s++) {
+        int act[2], frame[2], i;
+        const NativeMesh *mesh;
+        float w;
+        if (shot->card[s] <= 0 || !NativeModel_WillDraw(shot->card[s] - 1, shot->card[s])) continue;
+        mesh = NativeRegistry_Mesh(NativeRegistry_Find(shot->card[s] - 1, shot->card[s]));
+        if (!mesh || !mesh->shot_count) continue;
+        for (i = 0; i < 2; i++) {
+            act[i] = shot->row[i] ? (int)NativeAnim_Act(shot->row[i], shot->attack_row[i]) : (int)NATIVE_ACT_IDLE;
+            frame[i] = shot->row[i] ? shot->frame[i] : 0;
+        }
+        w = NativeCinematic_Pick(mesh->shots, mesh->shot_count, act[s], frame[s], act[1 - s], frame[1 - s], &camera);
+        if (w > best) {
+            best = w;
+            chosen = camera;
+        }
+    }
+    shot->yaw = chosen.yaw;
+    shot->pitch = chosen.pitch;
+    shot->distance = chosen.distance;
+    shot->height = chosen.height;
+    return best > 0.0f;
+}

@@ -31,6 +31,17 @@ enum {
     NATIVE_CONTEXT_COUNT
 };
 
+/* What a code mod says about the camera shots (NativeModel_FieldShot, native_cinematic.h): the two fighters' cards and what they
+ * are playing, and, filled by the call, the camera move: degrees of yaw and pitch, the distance as a factor, units of height. */
+typedef struct NativeFieldShot {
+    int32_t size;
+    int32_t card[2];       /* the attacker's and the defender's card (0: none) */
+    int32_t row[2];        /* the disc animation row each plays (0: none) */
+    int32_t attack_row[2]; /* the row each card attacks with */
+    int32_t frame[2];      /* the frame of that row each is at (-1: not begun) */
+    float yaw, pitch, distance, height; /* out; 0, 0, 1, 0 when no shot applies */
+} NativeFieldShot;
+
 /* What a code mod says about the slot it is about to draw with func_800540B4 (NativeModel_SetInstance). It applies
  * to that one draw. `size` is sizeof(NativeInstance) in the caller's build: a field past it is taken as 0, so a mod
  * built against this layout keeps working when fields are added at the end. */
@@ -192,4 +203,7 @@ float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, 
 /* The arena camera of a shot of a drawn native model's package (native_cinematic.h): `eye` moved about `look` while the
  * acts of the battle's two monsters match one; 0 (and `eye` as it was) when none does. */
 int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye[3]);
+/* The same for a code mod's camera (the field fight): the strongest shot of the two fighters' packages that matches what they
+ * play. Returns 1 when one applies (the camera move is in the structure), else 0. */
+int NativeModel_FieldShot(NativeFieldShot *shot);
 #endif
