@@ -158,7 +158,7 @@ the procedure is tested on real examples and checked against the plug-and-play p
 
 | ID | Change |
 |---|---|
-| I1 | Procedure `notes/adding-a-model.md`: where a model comes from (a rigged glb, an unrigged mesh, a character from a game or a series), its licence (a copyrighted character is for private use, never committed or distributed with the repo), what the pipeline needs of it (humanoid rig profile ue / mixamo / generic; wings, tails, extra bones; textures; size) |
+| I1 | Draft done (`notes/adding-a-model.md`; steps not yet run on a real model of their kind are marked untested). Procedure `notes/adding-a-model.md`: where a model comes from (a rigged glb, an unrigged mesh, a character from a game or a series), its licence (models made by third parties as fans, with a licence that allows it (CC0, CC-BY...): author and licence go into the package (`--author`, `--license`)), what the pipeline needs of it (humanoid rig profile ue / mixamo / generic; wings, tails, extra bones; textures; size) |
 | I2 | Rigging when the source has none: humanoid (Mixamo or Rigify, then `--clips-from` a CC0 set such as the UAL), non-humanoid (a dragon: a quadruped or winged rig, its own clips: idle, enter, attack, hit, destroyed, win, guard, blow frames), and the repo's Blender scripts made generic (no angel specifics) |
 | I3 | Converter profiles for what the first two profiles do not cover (a quadruped or winged rig; a model with several materials, hair, capes), found by trying real models |
 | I4 | Sizing and placement by data, not by patches: the root height, `scale`, the idle clip (an upright one), `offset` only as a last resort; a checklist of "looks wrong -> what to change" from real cases |
