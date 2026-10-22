@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A field attack (3D Monsters' attack=2) in a REAL window, GL pictures of chosen frames, and a contact sheet.
 
-    python -I field_attack.py OUTDIR [--native] [--scale 2] [--every 12] [--frames 240] [--cards 364,364,364] [--attack 1,4]
+    python -I field_attack.py OUTDIR [--native] [--scale 2] [--start 0] [--every 12] [--frames 240] [--cards 364,364,364] [--attack 1,4]
 
 Setup is rigkit's driver: the first monster face up on column 3, a turn, the second on column 1, then the attack
 (Cross, the game's own). The state is saved at the commit; a windowed game loads it and is stepped, one run per shot
@@ -19,7 +19,7 @@ BATTLE_STEP = 0x8009B174   # the battle sub-step in its low nibble (scene phase 
 
 ap = argparse.ArgumentParser()
 ap.add_argument("out"); ap.add_argument("--native", action="store_true"); ap.add_argument("--scale", type=int, default=2)
-ap.add_argument("--every", type=int, default=12); ap.add_argument("--frames", type=int, default=240)
+ap.add_argument("--start", type=int, default=0); ap.add_argument("--every", type=int, default=12); ap.add_argument("--frames", type=int, default=240)
 ap.add_argument("--cards", default="364,364,364,332,683", help="the player's hand (the first two are played)")
 ap.add_argument("--attack", default="1,4", help="column of the attacker, column of the target")
 ap.add_argument("--setting", action="append", default=[], help="NAME=VALUE game setting")
@@ -51,11 +51,13 @@ if not state.exists():
         g._settle = lambda *x, **k: g.save(state)
         g.attack(column, target)
 
-ks = list(range(0, a.frames + 1, a.every))
+ks = list(range(a.start, a.frames + 1, a.every))
 look = dict(settings, internal_scale=a.scale)
 frames = {}
 with yc.Game(executable=a.exe, out=out / "look-measure", settings=look, env=env, headless=False) as g:
     g.load(state)
+    if a.start:
+        g.step(a.start)
     for k in ks:
         frames[k] = (g.info()["frame"], step_of(g)); g.step(a.every if k < ks[-1] else 1)
 print("frames", frames, flush=True)

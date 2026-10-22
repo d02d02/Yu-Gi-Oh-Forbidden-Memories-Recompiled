@@ -490,6 +490,15 @@ void DrawOTag(u32 *list)
         exit(70);
     }
     pending_words = count;
+    if (Log_Enabled(LOG_MODEL)) { /* which native markers the walk of the list collected */
+        char found[96];
+        size_t i, n = 0;
+        found[0] = 0;
+        for (i = 0; i < count && n + 8 < sizeof(found); i++) {
+            if ((frame_words[i] & 0xffffff00u) == NATIVE_MARKER) n += (size_t)snprintf(found + n, sizeof(found) - n, " %u", (unsigned)(frame_words[i] & 0xffu));
+        }
+        LOG(LOG_MODEL, "evt walk words=%u markers:%s", (unsigned)count, found);
+    }
     NativeModel_Take(); /* the draws sorted for this frame go with its words */
     /* PGXP (pgxp.h): the frame's words that are vertices projected since the
      * last DrawOTag, with where they really are: those the game's drawing

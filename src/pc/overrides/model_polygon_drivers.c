@@ -277,10 +277,14 @@ static u32 *draw(u32 *scratch, const Driver *kind)
             if (!NativeModel_Suppress) {
                 packet[0] = (*entry & 0x00ffffffu) | ((u32)packet_words << 24);
                 *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
-            } else if ((unsigned)(entry - entries) < NativeModel_Nearest) {
-                /* A model the native pass draws: the packet is made but never linked; the nearest entry it would
-                 * have taken is where the model's marker goes (NativeModel_Link). */
-                NativeModel_Nearest = (unsigned)(entry - entries);
+            } else {
+                /* A model the native pass draws: the packet is made but never linked, yet its tag still says how long
+                 * it is, as the code that walks a model's packets in memory (the 3D Monsters mod's) reads it. The
+                 * nearest entry it would have taken is where the model's marker goes (NativeModel_Link). */
+                packet[0] = (u32)packet_words << 24;
+                if ((unsigned)(entry - entries) < NativeModel_Nearest) {
+                    NativeModel_Nearest = (unsigned)(entry - entries);
+                }
             }
             packet += packet_words + 1;
             /* The translucent second pass: flat template color, its CLUT, blend mode 2. */
@@ -476,8 +480,11 @@ static u32 *outline(u32 *scratch, int quad, int gouraud, int window, int shared)
         if (!NativeModel_Suppress) {
             packet[0] = (*entry & 0x00ffffffu) | ((u32)words << 24);
             *entry = (u32)(uintptr_t)packet & 0x00ffffffu;
-        } else if ((unsigned)(entry - entries) < NativeModel_Nearest) { /* as the polygons' (draw, above) */
-            NativeModel_Nearest = (unsigned)(entry - entries);
+        } else { /* as the polygons' (draw, above) */
+            packet[0] = (u32)words << 24;
+            if ((unsigned)(entry - entries) < NativeModel_Nearest) {
+                NativeModel_Nearest = (unsigned)(entry - entries);
+            }
         }
         packet = out;
     }
