@@ -150,6 +150,21 @@ H1 Library viewer preview as a deliberate option (context LIBRARY). H2 Angel-spe
 `tools/hd-models/examples/`, no workspace path assumptions. H3 FM Editor (`tools/pc/fm_editor`): the final
 `native_models` shape (D2; done: `native_models.py`, the port's entry checks in the editor's validation) and a package picker (open). H4 `history.md` and the developer notes updated per phase.
 
+### I. A practical procedure to add a new model (LAST: only once the plug-and-play pipeline A-H is validated and confirmed stable)
+
+Goal: someone who wants a Game of Thrones dragon or Goku (Dragon Ball Z) in the game follows one written procedure, end to end, and it works;
+the procedure is tested on real examples and checked against the plug-and-play pipeline (D: `new_native_mod.py`, `native_check.py`, the loader,
+`field_attack.py` captures). Gate: M1-M7 results in on `test-results`, no open fix, the mannequin and one more model (the angel) stable.
+
+| ID | Change |
+|---|---|
+| I1 | Procedure `notes/adding-a-model.md`: where a model comes from (a rigged glb, an unrigged mesh, a character from a game or a series), its licence (a copyrighted character is for private use, never committed or distributed with the repo), what the pipeline needs of it (humanoid rig profile ue / mixamo / generic; wings, tails, extra bones; textures; size) |
+| I2 | Rigging when the source has none: humanoid (Mixamo or Rigify, then `--clips-from` a CC0 set such as the UAL), non-humanoid (a dragon: a quadruped or winged rig, its own clips: idle, enter, attack, hit, destroyed, win, guard, blow frames), and the repo's Blender scripts made generic (no angel specifics) |
+| I3 | Converter profiles for what the first two profiles do not cover (a quadruped or winged rig; a model with several materials, hair, capes), found by trying real models |
+| I4 | Sizing and placement by data, not by patches: the root height, `scale`, the idle clip (an upright one), `offset` only as a last resort; a checklist of "looks wrong -> what to change" from real cases |
+| I5 | Two worked examples, each from the raw model to playing in the field and the arena: a dragon (non-humanoid) and Goku (humanoid, hair, aura effects left to the game's own); the pictures and the exact commands go in the note |
+| I6 | Validation: the examples go through the same checks as the plug-and-play mannequin (native_check 0 errors, the field attack and arena captures, the unit tests untouched, no engine change needed; any engine change an example needs is a bug of the pipeline and is fixed there first) |
+
 ## Milestones for laptop tests
 
 | M | After | Run | Look for |
@@ -219,6 +234,7 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
 | F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
 | G | planned (waits for M1's camera results: shots build on the arena camera) |
 | H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 done (the Blender scripts hold no path; the capture scripts find the dev tools and the game by `_paths.py`); H3's picker open |
+| I | planned, last: after A-H are validated and stable (see its section); starts with the written procedure, then a dragon and Goku as worked, tested examples
 
 ## Local log (this machine, Windows; newest last)
 
