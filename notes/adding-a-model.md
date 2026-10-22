@@ -1,0 +1,81 @@
+# Adding a new model (a dragon, a Dragon Ball character, anything)
+
+Draft of the procedure (phase I of `progress.md`). It sits on top of the plug-and-play pipeline, which `notes/native-models.md`
+explains (the package, the acts, the limits, troubleshooting). Steps marked **untested** have not been run on a real model of that
+kind yet; the worked examples (a dragon, Goku) will replace them with tested commands and pictures.
+
+Only models with a licence that allows this use are in scope (fan-made models shared under CC0 or CC-BY and the like). Put the
+author and the licence in the package: `--author` and `--license` (they go into `model.json`; the game does not read them).
+
+## 1. What do you have?
+
+| You have | Go to |
+|---|---|
+| A **rigged** glb or glTF with animations (the clips are in the file) | 3, then 4 |
+| A rigged humanoid with **no** animations | 2b (take clips from a library), then 4 |
+| A **humanoid mesh with no rig** | 2a, then 4 |
+| A rigged **non-humanoid** (dragon, beast, winged) with its own animations | 3 with `--rig generic`, then 4 |
+| A non-humanoid mesh with no rig or no animations | 2c: this takes real animation work, plan for it |
+
+Check the file first: `tools/hd-models/native_check.py MODEL.glb` is for packages; for a glb just open it in Blender (`blender -b FILE.glb --python-expr "import bpy; print(len(bpy.data.armatures), [a.name for a in bpy.data.actions])"`). Limits: 128 bones, 16 clips, 4 influences a vertex, one
+texture set (several materials are packed into one), 512 MB of models in all.
+
+## 2. Making it playable
+
+**2a. A humanoid with no rig (untested beyond the angel).** Dress the CC0 Universal Animation Library's mannequin rig with the mesh
+by weight transfer: the repo's `tools/hd-models/blender/angel_on_mannequin_weights.py` does it for the angel (its inputs: the mesh as an
+object named `Angel`, the UAL as `UAL1_Standard.glb` with Unreal bone names). Expect to hand-fix capes, wings, swords and hair (the angel's
+sword arm is still wrong). `export_rigged_glb.py` writes the skinned glb. Mixamo or Blender's Rigify are other ways to get a rig; the result
+only has to be a glb with an armature (humanoid names: Mixamo's `mixamo` profile or Unreal's `ue`).
+
+**2b. A rigged humanoid with no animations.** Borrow them: `--clips-from UAL1_Standard.glb --clips Sword_Attack,Sword_Idle,Hit_Chest,Death01,Idle_Loop`
+works when the bone names match (`ue`, `mixamo` profiles). Choose an **upright** idle (`Idle_Loop`): a lunge such as `Sword_Idle` puts the feet
+far from the hips and the monster looks off its card (seen on the mannequin; the origin was right).
+
+**2c. A non-humanoid.** The clips must come with the model or be made in Blender (an action each for idle, attack, hit, death, and
+optionally enter, win, guard). There is no retargeting from a humanoid set to a dragon. Name them so the converter finds the acts
+(Idle, Attack, Hit, Death, Victory, Block, Intro) or map them by hand in `model.json` `clips`. **Untested.**
+
+## 3. Convert it
+
+```
+python tools/hd-models/new_native_mod.py MODEL.glb --card 364 --out mods/my-model \
+    --author "Name" --license "CC-BY 4.0" -- --rig generic --root <the hip or body bone> [--clips-from LIB.glb --clips A,B,C]
+```
+
+`--rig auto` finds Unreal and Mixamo names; `generic` needs `--root` (the bone the body hangs from: hips for a humanoid, the pelvis or
+the base of the spine for a dragon). It writes `mods/my-model/` (the package, `mod.json`) and checks it as the game does.
+`--card` is the card whose monster it replaces (more than one is allowed).
+
+## 4. Look at it and tune it by data
+
+Run the field attack and the arena attack and look (needs the disc: `MEMORIES_DISC=<the .bin>`):
+
+```
+python -I tools/hd-models/field_attack.py OUT --setting mod.my-model=1 --scale 2            # a sheet of the field attack
+python -I tools/hd-models/field_attack.py OUT --setting mod.my-model=1 --clip --frames 235   # an mp4
+python -I tools/hd-models/field_attack.py OUT --setting mod.my-model=1 --arena --setting mod.3d-monsters.attack=0 --start 1250 --every 40 --frames 1650
+```
+
+Then change `model.json` (no reconvert) in this order, and only as far as needed:
+
+1. **Idle and act clips**: an upright idle; the right clip per act.
+2. **`scale`** (percent, about the soles) when it is too big or small. A winged dragon is wider than the card: 60 to 70 is normal.
+3. **`strike.attack`**: the frame of each blow, so the swing lands when the defender reacts (check with the effects off:
+   `MEMORIES_MOD_3D_MONSTERS_EFFECTS=0`).
+4. **Root height** (reconvert with `--root-height`) when it floats or sinks.
+5. **`shots`** for camera moves, **`offset`** only as a last resort (it patches a model whose origin is wrong).
+
+`MEMORIES_TRACE=model` gives the event log; `MEMORIES_NATIVE_SKIN_LOG=1` says where the model's axes point on screen.
+
+## 5. Done when (the validation)
+
+- `native_check.py mods/my-model` says 0 errors and 0 warnings.
+- The field attack and the arena attack are captured: the model stands on its card, strikes on the defender's reaction, falls and goes,
+  and nothing vanishes or flickers.
+- No change to the engine was needed. If one was, that is a bug of the pipeline: fix it there, with a test, before the model is "done".
+
+## Worked examples (to fill in, phase I5)
+
+A dragon (non-humanoid) and Goku (humanoid with hair), each from the raw model to the captures above: the exact commands, the
+problems met and their fixes, the pictures. They need the models themselves (a rigged glb each) from their authors.
