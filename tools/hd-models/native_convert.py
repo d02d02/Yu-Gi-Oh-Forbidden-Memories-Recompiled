@@ -2,7 +2,7 @@
 """A rigged glTF / glb -> a native model package the game draws in place of a monster (no disc needed).
 
     native_convert.py MODEL.glb OUT_DIR [--clips all|A,B,...] [--clips-from LIBRARY.glb] [--rig auto|ue|mixamo|generic]
-                      [--root BONE] [--root-height 300 | --height 560 | --scale S] [--texture-max 2048]
+                      [--root BONE] [--height 373 | --scale S | --root-height 300] [--origin-height 159] [--texture-max 2048]
                       [--follow BONE=SOURCE[@FRACTION]] [--keep-root-motion] [--no-pbr] [--name N --author A --license L]
 
 OUT_DIR gets model.hdm (the mesh, skeleton and clips), base.png (+ normal.png, metal_roughness.png when the model has
@@ -18,8 +18,12 @@ What is read:
     out (the game moves the monster) unless --keep-root-motion.
 
 The rig: the root bone (the hips) goes to the origin, the game's body root; glTF's y up becomes the game's y down.
-Its size: by default the root stands --root-height 300 game units above the soles (Black Luster Soldier's hips);
---height sizes the whole model instead, --scale sets game units per glTF unit. model.json "scale" adjusts it later.
+Its size and where it stands (the game's monster class, measured on the disc's Black Luster Soldier, card 364): by default the
+model is made 373 game units tall (--height), and its origin, the point the game puts on the card, is on its vertical axis
+159 units above the soles (--origin-height; BLS's hips) and, horizontally, at the middle of its feet in the idle pose
+(--no-center keeps the hips). So any model, whatever its rig or proportions, stands on its card with its soles on the ground,
+at the size of the game's own monsters. --scale sets game units per glTF unit instead; --root-height H is the older way (the
+root bone is the origin, H above the soles). model.json "scale" adjusts the size later.
 Profiles name the hips and hands: ue (Unreal / Quaternius: pelvis, hand_r), mixamo (Hips, RightHand), generic (--root).
 
 Clips are matched to acts by name (Sword_Attack, Attack, Slash -> attack; Hit, Damage -> hit; Death, Die -> destroyed;
@@ -43,7 +47,10 @@ import gltf_to_hdm as base  # noqa: E402  (its glTF container reader)
 import native_spec as spec  # noqa: E402
 
 FLIP = np.diag([1.0, -1.0, -1.0])  # glTF (y up, facing +z) -> the game's model space (y down)
-ROOT_HEIGHT = 300.0                # Black Luster Soldier's hips above the arena floor, game units
+# The game's monster class, measured on the disc's Black Luster Soldier (tools/hd-models/hmd_export.py 364): 373 game units from
+# the soles to the top of the helmet, the hips (the body root the game places) 159 above the soles.
+STANDARD_HEIGHT = 373.0
+STANDARD_ORIGIN = 159.0
 COMPONENT = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 NORMALIZED = {5120: 127.0, 5121: 255.0, 5122: 32767.0, 5123: 65535.0}
 TYPE_SIZE = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT2": 4, "MAT3": 9, "MAT4": 16}
@@ -496,12 +503,14 @@ def convert(a):
     root_height = float(origin[1]) - low
     if a.scale:
         s = a.scale
-    elif a.height or root_height < 0.1 * stature:
-        if not a.height:
-            notes.append(f"the root bone {names[root]} is at the soles: sized by height instead (--height, default 560)")
-        s = (a.height or 560.0) / max(stature, 1e-9)
+    elif a.root_height:
+        s = a.root_height / max(root_height, 1e-9)   # the older way: the root bone is the origin, this high above the soles
     else:
-        s = a.root_height / root_height
+        s = (a.height or STANDARD_HEIGHT) / max(stature, 1e-9)
+    if not a.root_height:
+        # the origin the game puts on the card: on the body's vertical axis (the root's x and z), origin_height above the soles
+        origin = np.array([origin[0], low + a.origin_height / s, origin[2]])
+        root_height = float(origin[1]) - low
     A = FLIP * s
     b = -(FLIP @ origin) * s
     T = np.eye(4)
@@ -558,8 +567,7 @@ def convert(a):
         children = {p for p in parents if p >= 0}
         hand_names = [k for k in range(nb) if k not in children]
 
-    clip_blobs, strikes = [], []
-    for cname in want:
+    def clip_channels(cname):
         an = anims[cname]
         chans, dur = {}, 0.0
         for ch in an["channels"]:
@@ -570,6 +578,42 @@ def convert(a):
             times = accessor(gc, smp["input"]).reshape(-1)
             chans[(mine, tgt["path"])] = Channel(times, accessor(gc, smp["output"]), tgt["path"], smp.get("interpolation", "LINEAR"))
             dur = max(dur, float(times[-1]))
+        return chans, dur
+
+    def pose_world(chans, t):
+        """The world matrix of every joint of the clip's pose at time t (glTF space)."""
+        trs = {}
+        for i in range(len(nodes)):
+            tt, qq, ss = scene.rest[i]
+            c = chans.get((i, "translation"))
+            tt = c.at(t) if c else tt
+            c = chans.get((i, "rotation"))
+            qq = c.at(t) if c else qq
+            c = chans.get((i, "scale"))
+            ss = c.at(t) if c else ss
+            trs[i] = (tt, qq, ss)
+        wf = scene.world(trs)
+        return {n: wf(n).copy() for n in joints}
+
+    # Where the model stands: the origin the game places on the card is the bind pose's root (the hips), but a clip's pose
+    # does not keep its feet under it (a lunge, a walking stance). The idle pose's feet are put on the origin instead: the
+    # horizontal middle of the foot joints of the idle clip's first frame is taken off every frame of every clip.
+    recenter = np.zeros(3)
+    idle_clip = acts.get("idle")
+    feet = [n for k, n in enumerate(joints) if "foot" in names[k].lower()]  # glTF nodes of the foot joints
+    if idle_clip in anims and len(feet) >= 2 and not a.keep_root_motion and not a.no_center:
+        chans0, _ = clip_channels(idle_clip)
+        W0 = pose_world(chans0, 0.0)
+        mid = np.mean([W0[k][:3, 3] for k in feet], axis=0)
+        recenter = np.array([mid[0] - origin[0], 0.0, mid[2] - origin[2]])
+        notes.append(f"centred on the feet of {idle_clip}: the origin moved {recenter[0] * s:+.1f}, {recenter[2] * s:+.1f} game units "
+                     f"from the hips (--no-center keeps the hips)")
+    elif not a.keep_root_motion and not a.no_center:
+        notes.append("no foot joints to centre on: the origin stays at the hips")
+
+    clip_blobs, strikes = [], []
+    for cname in want:
+        chans, dur = clip_channels(cname)
         frames = int(round(dur * spec.FPS)) + 1
         data = np.zeros((frames, nb, 7), np.float32)
         hands = np.zeros((frames, len(hand_names), 3))
@@ -610,7 +654,7 @@ def convert(a):
                 at_root = Wn[joints[root]][:3, 3]
                 if start is None:
                     start = at_root.copy()
-                travel = np.array([at_root[0] - start[0], 0.0, at_root[2] - start[2]])
+                travel = np.array([at_root[0] - start[0], 0.0, at_root[2] - start[2]]) + recenter
                 for n in joints:
                     Wn[n][:3, 3] -= travel
             Wd = {n: T @ Wn[n] @ Ti for n in joints}
@@ -687,11 +731,13 @@ def main(argv=None):
     ap.add_argument("--clips-from", type=Path, help="take the clips from this glb instead (bones matched by name)")
     ap.add_argument("--rig", choices=["auto", "ue", "mixamo", "generic"], default="auto")
     ap.add_argument("--root", help="the root (hips) bone, for a rig the profiles do not know")
-    ap.add_argument("--root-height", type=float, default=ROOT_HEIGHT, help="game units from the soles to the root (default 300)")
-    ap.add_argument("--height", type=float, help="size the model by its height in game units instead (a humanoid: about 560)")
+    ap.add_argument("--root-height", type=float, default=0.0, help="the older sizing: the root bone is the origin, this many game units above the soles")
+    ap.add_argument("--origin-height", type=float, default=STANDARD_ORIGIN, help="game units from the soles to the origin the game puts on the card (default 159, Black Luster Soldier's hips)")
+    ap.add_argument("--height", type=float, help="size the model by its height in game units (default 373, Black Luster Soldier's)")
     ap.add_argument("--scale", type=float, help="game units per glTF unit, instead of a fit")
     ap.add_argument("--texture-max", type=int, default=spec.TEXTURE_MAX, help="the texture's largest side (default 2048)")
     ap.add_argument("--follow", action="append", help="BONE=SOURCE[@FRACTION]: BONE turns with SOURCE (beyond SOURCE's parent)")
+    ap.add_argument("--no-center", action="store_true", help="keep the hips on the origin (default: the idle pose's feet)")
     ap.add_argument("--keep-root-motion", action="store_true", help="keep the root's horizontal travel in the clips")
     ap.add_argument("--no-pbr", action="store_true", help="leave the normal and metal/roughness maps out")
     ap.add_argument("--name")
@@ -706,7 +752,7 @@ def main(argv=None):
     c = package["converter"]
     print(f"{a.out / 'model.hdm'}: {info['vertices']} vertices, {info['triangles']} triangles, {info['bones']} bones, "
           f"{len(info['clips'])} clips, {info['bytes'] / 1e6:.1f} MB")
-    print(f"rig {c['rig']}, root {c['root']}: {c['height']} game units tall, root {c['root_height']} above the soles")
+    print(f"rig {c['rig']}, root {c['root']}: {c['height']} game units tall, origin {c['root_height']} above the soles")
     for act in spec.ACTS:
         print(f"  {act:9} -> {package['clips'].get(act, '(none)')}")
     if "strike" in package:

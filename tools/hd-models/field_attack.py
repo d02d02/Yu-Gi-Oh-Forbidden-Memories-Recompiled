@@ -25,6 +25,8 @@ ap.add_argument("--filler-column", type=int, default=4, help="where the first tu
 ap.add_argument("--filler-up", action="store_true", help="the first turn's card face up (a 3D model that can stand in the view); face down it is a flat card back")
 ap.add_argument("--attack", default="1,4", help="column of the attacker, column of the target")
 ap.add_argument("--clip", action="store_true", help="every frame of the attack from one run (frames in OUT/clip/bmp), then OUT/clip.mp4 and .gif (make_video.py; needs imageio-ffmpeg)")
+ap.add_argument("--fps", type=int, default=30, help="the clip's frame rate (the field runs at 60, the arena at 30)")
+ap.add_argument("--idle", action="store_true", help="the state after the second card is placed, no attack: the field with its monsters standing (--start/--every/--frames count from it)")
 ap.add_argument("--arena", action="store_true", help="the game's own arena attack (the commit is Square, not Cross; with --setting mod.3d-monsters.attack=0)")
 ap.add_argument("--setting", action="append", default=[], help="NAME=VALUE game setting")
 ap.add_argument("--env", action="append", default=[], help="NAME=VALUE passed to the game")
@@ -61,8 +63,12 @@ if not state.exists():
                         keys = "square"
                 return real_press(keys, *k, **kw)
             g.press = press
-        g._settle = lambda *x, **k: g.save(state)
-        g.attack(column, target)
+        if a.idle:
+            g.step(30)   # the second card has been placed: its monster stands
+            g.save(state)
+        else:
+            g._settle = lambda *x, **k: g.save(state)
+            g.attack(column, target)
 
 if a.clip:
     d = out / "clip" / "bmp"; d.mkdir(parents=True, exist_ok=True)
@@ -72,7 +78,7 @@ if a.clip:
         for _ in range(a.frames + 20):
             g.step(1)
     import subprocess
-    subprocess.run([sys.executable, "-I", str(Path(__file__).resolve().parent / "make_video.py"), str(out / "clip"), str(out / "clip")], check=True)
+    subprocess.run([sys.executable, "-I", str(Path(__file__).resolve().parent / "make_video.py"), str(out / "clip"), str(out / "clip"), "--fps", str(a.fps)], check=True)
     sys.exit(0)
 
 ks = list(range(a.start, a.frames + 1, a.every))

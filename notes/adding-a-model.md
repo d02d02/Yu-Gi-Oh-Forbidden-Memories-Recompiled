@@ -63,7 +63,9 @@ Then change `model.json` (no reconvert) in this order, and only as far as needed
 2. **`scale`** (percent, about the soles) when it is too big or small. A winged dragon is wider than the card: 60 to 70 is normal.
 3. **`strike.attack`**: the frame of each blow, so the swing lands when the defender reacts (check with the effects off:
    `MEMORIES_MOD_3D_MONSTERS_EFFECTS=0`).
-4. **Root height** (reconvert with `--root-height`) when it floats or sinks.
+4. **Origin height** (reconvert with `--origin-height`; default 159, the game's monster class) when it floats or sinks, and `--height`
+   (default 373) for a model that should be bigger or smaller than a standard monster. The converter already makes the model stand on
+   its card with its soles on the ground at the size of the game's own monsters, so this is for exceptions.
 5. **`shots`** for camera moves, **`offset`** only as a last resort (it patches a model whose origin is wrong).
 
 `MEMORIES_TRACE=model` gives the event log; `MEMORIES_NATIVE_SKIN_LOG=1` says where the model's axes point on screen.
