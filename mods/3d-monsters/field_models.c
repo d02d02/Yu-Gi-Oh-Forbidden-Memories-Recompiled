@@ -724,6 +724,7 @@ static void effect_run(void);
  * and the frame of its attack row where the blow lands. A measuring draw is said to be one, so nothing of it is
  * captured. Looked up when the mod starts: on a game without the pass the call is not there and nothing is said. */
 static void (*native_instance)(const NativeInstance *instance);
+static int (*native_field_shot)(NativeFieldShot *shot); /* the camera shots of the models' packages, when the game has them */
 static int blow_frame(const Monster *monster, const ModelSlot *slot);
 
 static void native_say(const Monster *monster, int context)
@@ -2521,6 +2522,44 @@ static int fight_along(void)
     return t <= 0 ? 0 : t >= FIGHT_CHARGE ? MODEL_FIXED_ONE : smooth(t * MODEL_FIXED_ONE / FIGHT_CHARGE);
 }
 
+/* The orbit the camera takes (ViewState_ApplyOrbit), moved by a shot of a native model's package (native_cinematic.h) while
+ * the fighters play the acts it follows: the yaw, pitch and distance of the orbit changed for the one call, and put back, so
+ * what reads them (the tilt of the board, the fight's own camera) sees the camera it asked for; the height is the eye's. */
+static void fight_shot_orbit(void)
+{
+    NativeFieldShot shot;
+    int side, saved_distance = D_800F2848.field_00, saved_angle = D_800F2848.angle, saved_pitch = D_800F2848.field_04;
+    const Monster *attacker = fighter(0);
+    memset(&shot, 0, sizeof(shot));
+    shot.size = (int32_t)sizeof(shot);
+    if (native_field_shot && attacker) {
+        const Monster *defender = attack.record[1] >= 0 ? fighter(1) : NULL;
+        for (side = 0; side < 2; side++) {
+            const Monster *monster = side ? defender : attacker;
+            shot.card[side] = monster ? monster->card : 0;
+            shot.row[side] = attack.row[side];
+            shot.attack_row[side] = monster ? monster->slot.field_DFE + 3 : 0;
+            shot.frame[side] = attack.last[side] >= 0 ? attack.last[side] >> 4 : -1;
+        }
+    }
+    if (!native_field_shot || !attacker || !native_field_shot(&shot)) {
+        ViewState_ApplyOrbit();
+        return;
+    }
+    {
+        int pitch = saved_pitch + (int)(shot.pitch * (float)MODEL_ANGLE_FULL_TURN / 360.0f);
+        D_800F2848.angle = (s16)((saved_angle + (int)(shot.yaw * (float)MODEL_ANGLE_FULL_TURN / 360.0f)) &
+                                 (MODEL_ANGLE_FULL_TURN - 1));
+        D_800F2848.field_04 = (s16)(pitch < 64 ? 64 : pitch > 1100 ? 1100 : pitch);
+        D_800F2848.field_00 = (s16)(saved_distance * shot.distance);
+    }
+    ViewState_ApplyOrbit();
+    D_800F2848.view.vpy -= (s32)shot.height;
+    D_800F2848.field_00 = (s16)saved_distance;
+    D_800F2848.angle = (s16)saved_angle;
+    D_800F2848.field_04 = (s16)saved_pitch;
+}
+
 /* The camera for the next frame: the mat is drawn before this pass, so the
  * monsters this frame have to be seen as the mat was. */
 static void fight_camera(void)
@@ -2541,7 +2580,7 @@ static void fight_camera(void)
     D_800F2848.view.vrx = fight_view.view.vrx + (mid_x - fight_view.view.vrx) * share / MODEL_FIXED_ONE;
     D_800F2848.view.vry = fight_view.view.vry - FIGHT_RISE * share / MODEL_FIXED_ONE;
     D_800F2848.view.vrz = fight_view.view.vrz + (mid_z - fight_view.view.vrz) * share / MODEL_FIXED_ONE;
-    ViewState_ApplyOrbit();
+    fight_shot_orbit();
     fight_moved = 1;
 }
 
@@ -3027,6 +3066,8 @@ int MemoriesModInit(const MemoriesModHost *from, MemoriesMod *mod)
     if (from->api >= 4) { /* symbol arrived in mod API 4 */
         void *found = host->symbol(host, "NativeModel_SetInstance");
         memcpy(&native_instance, &found, sizeof(native_instance)); /* a data pointer to a function pointer, as dlsym */
+        found = host->symbol(host, "NativeModel_FieldShot");
+        memcpy(&native_field_shot, &found, sizeof(native_field_shot));
     }
     mod->frame = draw_frame;
     mod->reset = reset;
