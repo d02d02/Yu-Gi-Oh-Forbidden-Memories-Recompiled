@@ -24,6 +24,7 @@ ap.add_argument("--cards", default="58,364,364,332,683", help="the player's hand
 ap.add_argument("--filler-column", type=int, default=4, help="where the first turn's card stands (column 0 does not take the second card)")
 ap.add_argument("--filler-up", action="store_true", help="the first turn's card face up (a 3D model that can stand in the view); face down it is a flat card back")
 ap.add_argument("--attack", default="1,4", help="column of the attacker, column of the target")
+ap.add_argument("--arena", action="store_true", help="the game's own arena attack (the commit is Square, not Cross; with --setting mod.3d-monsters.attack=0)")
 ap.add_argument("--setting", action="append", default=[], help="NAME=VALUE game setting")
 ap.add_argument("--env", action="append", default=[], help="NAME=VALUE passed to the game")
 ap.add_argument("--exe", default=str(EXE))
@@ -50,6 +51,15 @@ if not state.exists():
         g.end_turn(); g.wait_turn(("hand",))
         rigkit.play_at(g, 0, 1, face_up=True)
         print("field", g.field(), flush=True)
+        if a.arena:
+            crosses, real_press = [], g.press
+            def press(keys, *k, **kw):
+                if keys == "cross":
+                    crosses.append(1)
+                    if len(crosses) == 2:
+                        keys = "square"
+                return real_press(keys, *k, **kw)
+            g.press = press
         g._settle = lambda *x, **k: g.save(state)
         g.attack(column, target)
 
