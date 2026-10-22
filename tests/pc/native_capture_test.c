@@ -140,9 +140,13 @@ int main(void)
     CHECK(d && d->info.context == NATIVE_CONTEXT_ARENA && d->info.key == 1 && d->info.card == 58);
     CHECK(d && d->info.fade == 0 && d->info.contact_frame == -1 && d->info.anim_index == 3);
     NativeModel_SetBattleCards(0, 0);
-    slot_draw(363, 0, -1);
+    slot_draw(363, 0, 3);
     d = last_taken(&count);
     CHECK(d && d->info.card == 0);
+    /* No battle and no packets (a slot a code mod is loading a monster into): nothing to stand for, nothing captured. */
+    CHECK(slot_draw(363, 0, -1) == 0);
+    last_taken(&count);
+    CHECK(count == 0);
 
     /* Left out only when the pass will draw it. */
     NativeModel_BeginSlot(363, 0);
@@ -176,7 +180,7 @@ int main(void)
     d = last_taken(&count);
     CHECK(d && d->info.context == NATIVE_CONTEXT_FIELD && d->info.key == ((NATIVE_CONTEXT_FIELD << 16) | 7));
     CHECK(d && d->info.card == 364 && d->info.fade == 128 && d->info.contact_frame == 75);
-    slot_draw(363, 0, -1);
+    slot_draw(363, 0, 3);
     d = last_taken(&count);
     CHECK(d && d->info.context == NATIVE_CONTEXT_ARENA && d->info.key == 0); /* used once */
 
@@ -226,6 +230,7 @@ int main(void)
             CHECK(entries[5] == ((uint32_t)(uintptr_t)packets & 0x00ffffffu));
             CHECK((packets[1] & 0xffffff00u) == NATIVE_MARKER && entries[0] == 0x00ffffffu);
             D_800FE240 = (uint32_t)(uintptr_t)packets;
+            NativeModel_SetBattleCards(364, 58); /* in a battle a draw with no packets still goes at entry 0 */
             draw = slot_draw(363, 0, -1);
             NativeModel_Link(table, draw);
             CHECK(entries[0] == ((uint32_t)(uintptr_t)packets & 0x00ffffffu));

@@ -173,8 +173,17 @@ void NativeModel_SlotInfo(const NativeSlotInfo *info)
 int NativeModel_EndSlot(void)
 {
     int draw;
+    int empty = NativeModel_Nearest == ~0u; /* kept only while the model's packets are left out: else always */
     NativeModel_Suppress = 0;
     if (!current) return 0;
+    /* The game's own draw of a slot that made no packets and is in no battle (no card): the slot is empty while a code
+     * mod loads a monster into it. There is nothing for the native model to stand for, and with no depth to sort at it
+     * would be drawn over everything. (While the pass is not ready nothing is left out and nothing is drawn natively, so
+     * dropping the capture then costs nothing.) */
+    if (empty && !instance_set && !current->info.card) {
+        current = NULL;
+        return 0;
+    }
     LOG(LOG_MODEL, "evt native f=%u model=%d mesh=%d context=%d key=%d card=%d row=%d clock=%d fade=%d contact=%d entry=%d",
         Memories_PresentedFrames(), (int)current->model, (int)current->mesh_id, (int)current->info.context, (int)current->info.key,
         (int)current->info.card, (int)current->info.anim_index, (int)current->info.anim_frame, (int)current->info.fade,
