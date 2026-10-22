@@ -117,6 +117,15 @@ class ConvertTest(unittest.TestCase):
     def floats(self, data, word, count):
         return struct.unpack_from(f"<{count}f", data, word * 4)
 
+    def test_checker_reads_json_as_the_game_does(self):
+        for text in ('{"a": 1.5}', '{"a": {"b": [2.0]}}', '{"a": 1e3}'):
+            path = self.root / "fraction.json"
+            path.write_text(text)
+            with self.assertRaisesRegex(ValueError, "must be whole"):
+                spec.read_json(path)
+        path.write_text('{"a": [1, -2, "3.5"]}')
+        self.assertEqual(spec.read_json(path), {"a": [1, -2, "3.5"]})
+
     def test_package_without_the_disc(self):
         package, data, info, out = self.convert()
         self.assertEqual(package["model"], "model.hdm")
@@ -124,6 +133,8 @@ class ConvertTest(unittest.TestCase):
                                             "destroyed": "Death01", "win": "Victory", "guard": "Idle"})
         self.assertEqual(package["converter"]["rig"], "ue")
         self.assertEqual(package["converter"]["root"], "pelvis")
+        # the game's JSON reader refuses any fraction, in a key it does not read too: the file must read as the game reads it
+        self.assertEqual(spec.read_json(self.root / "pkg" / "model.json")["converter"]["rig"], "ue")
         self.assertTrue(9 <= package["strike"]["attack"][0] <= 12, package["strike"])  # the arm is fastest at 0.3-0.4 s
         self.assertEqual((info["bones"], len(info["clips"]), info["vertices"]), (6, 5, 51))
         self.assertAlmostEqual(info["high"][1], 300.0, places=3)  # the soles 300 below the hips, y down

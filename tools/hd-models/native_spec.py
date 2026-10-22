@@ -160,6 +160,11 @@ def png_size(path):
     return size
 
 
+def _whole_only(text):
+    raise ValueError(f"a number must be whole (the game's JSON reader takes no fraction or exponent): {text}")
+
+
 def read_json(path):
+    """A JSON file as the game reads it (src/pc/mods/json.c): numbers are whole, anywhere in the file."""
     with open(path, encoding="utf-8") as file:
-        return json.load(file)
+        return json.load(file, parse_float=_whole_only)
