@@ -2346,9 +2346,15 @@ static void native_draw(unsigned id)
     int x0, y0, x1, y1, lit;
     NativeModel_Stats[5]++;
     native_env();
-    if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) return;
+    if (!native_ring_valid[id % NATIVE_RING] || (uint32_t)(d->id & 0xff) != id) {
+        LOG(LOG_MODEL, "evt pass marker=%u refused: no draw of that number (ring holds %d)", id, (int)d->id);
+        return;
+    }
     mesh = NativeModel_MeshById(d->mesh_id);
-    if (!mesh || !mesh->bones || !native_ready()) return;
+    if (!mesh || !mesh->bones || !native_ready()) {
+        LOG(LOG_MODEL, "evt pass marker=%u key=%d refused: mesh %p ready %d", id, (int)d->info.key, (const void *)mesh, mesh ? native_ready() : -1);
+        return;
+    }
     /* The primitives before this model, in order, are in the picture first. */
     flush_runs();
     if (!native_skin_ready() || !(g = native_gl_mesh(mesh))) {
@@ -2398,7 +2404,11 @@ static void native_draw(unsigned id)
         if (x1 > nat.w) x1 = nat.w;
         if (y1 > nat.h) y1 = nat.h;
     }
-    if (x1 <= x0 || y1 <= y0) return;
+    if (x1 <= x0 || y1 <= y0) {
+        LOG(LOG_MODEL, "evt pass marker=%u key=%d refused: empty box %d,%d-%d,%d", id, (int)d->info.key, x0, y0, x1, y1);
+        return;
+    }
+    LOG(LOG_MODEL, "evt pass marker=%u key=%d drawn box %d,%d-%d,%d fresh=%d", id, (int)d->info.key, x0, y0, x1, y1, nat.fresh);
     NativeModel_Stats[6] += mesh->index_count / 3;
 
     /* The model, with depth, into the private target (multisampled when there is one). */

@@ -226,3 +226,10 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
   with a contact sheet; `--native` turns on the `native-test` mod (a package for card 364). Needs `MEMORIES_DISC` set to the .bin and the
   dev tools in `tmp/agent/dev` (see `_paths.py`). The fa-* runs of the earlier session sat at step 2 because of their setup; this setup
   plays the whole attack in about 230 frames (steps 1, 2, then the field). Vanilla sheet: `tmp/agent/fx/van/sheet.png`.
+* 2026-10-22: field attack with the native model, seen here (`tmp/agent/fx/{van,nat,natc}/sheet.png`): both monsters stand on their cards, the
+  attacker crosses, strikes and goes home, the depth is right, no pose mixing. One bug found and fixed (M5 item 1 would have shown it): a
+  monster's packets the drivers make but do not link while a native model draws (`model_polygon_drivers.c`) had no tag word, so the 3D
+  Monsters mod's `stamp_bank` (which walks a monster's packets in memory) read garbage lengths and wrote over the marker packet now and then:
+  the standing monster vanished on some frames and the disc model's glow went with it. The drivers now write the tag's length. Trace lines
+  added (`MEMORIES_TRACE=model`): `evt walk` (the markers the frame's list holds) and `evt pass` (what the GL pass did with each marker).
+  ctest 152/152 here. Still open for M5: the strike's timing against the defender's reaction (stills cannot show it), other monsters, fades.
