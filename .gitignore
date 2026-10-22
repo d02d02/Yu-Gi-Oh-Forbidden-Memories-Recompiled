@@ -24,3 +24,6 @@
 # Tool-generated language caches
 **/__pycache__/
 *.py[cod]
+
+/tools/hd-models/_exe/
+/test-user-bls/
