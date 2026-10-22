@@ -892,10 +892,18 @@ if(BUILD_TESTING)
         target_link_libraries(memories_native_anim_test PRIVATE m)
     endif()
     add_test(NAME pc_native_anim COMMAND memories_native_anim_test)
+    # The camera shots of native models (src/pc/render/native_cinematic.h): when a shot applies, how much, and the orbit.
+    add_executable(memories_native_cinematic_test tests/pc/native_cinematic_test.c src/pc/render/native_cinematic.c)
+    target_include_directories(memories_native_cinematic_test PRIVATE src)
+    if(NOT MSVC)
+        target_compile_options(memories_native_cinematic_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        target_link_libraries(memories_native_cinematic_test PRIVATE m)
+    endif()
+    add_test(NAME pc_native_cinematic COMMAND memories_native_cinematic_test)
     # The native model pass's capture (src/pc/render/native_model.h) with the game stood in for: instances for code
     # mods, when the model's packets are left out, where its marker goes, when the arena camera moves.
     set(memories_native_registry_sources src/pc/render/native_registry.c src/pc/render/native_format.c
-        src/pc/render/native_anim.c src/pc/mods/json.c src/pc/platform/paths.c)
+        src/pc/render/native_anim.c src/pc/render/native_cinematic.c src/pc/mods/json.c src/pc/platform/paths.c)
     add_executable(memories_native_capture_test tests/pc/native_capture_test.c src/pc/render/native_model.c
         ${memories_native_registry_sources})
     target_include_directories(memories_native_capture_test PRIVATE src tests/pc)

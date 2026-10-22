@@ -383,6 +383,58 @@ static void package_offset(Entry *e, const JsonValue *offset)
     }
 }
 
+/* "shots": [{"act": "attack", "from": 0, "to": 60, "yaw": 40, "pitch": 10, "distance": 80, "height": 0, "ease": 8,
+ * "other": false}]: native_cinematic.h. Whole numbers; a shot that cannot be read is noted and left out. */
+static void package_shots(Entry *e, const JsonValue *shots)
+{
+    static const char *const acts[NATIVE_ACT_COUNT] = {"idle", "enter", "attack", "hit", "destroyed", "win", "guard"};
+    const JsonValue *item;
+    int index = 0;
+    if (!shots) return;
+    if (Json_TypeOf(shots) != JSON_ARRAY) {
+        note(e, "\"shots\" is a list: [{\"act\": \"attack\", \"from\": 0, \"to\": 60, \"yaw\": 40}]");
+        return;
+    }
+    for (item = Json_At(shots, 0); item; item = Json_Next(item), index++) {
+        NativeShot shot;
+        const JsonValue *act = Json_Member(item, "act");
+        const char *name = Json_TypeOf(act) == JSON_STRING ? Json_String(act, "") : "";
+        int a;
+        if (e->mesh.shot_count >= NATIVE_MAX_SHOTS) {
+            note(e, "shots: at most %d shots", NATIVE_MAX_SHOTS);
+            break;
+        }
+        if (Json_TypeOf(item) != JSON_OBJECT) {
+            note(e, "shots[%d]: an object with an \"act\", \"from\" and \"to\"", index);
+            continue;
+        }
+        memset(&shot, 0, sizeof(shot));
+        for (a = 0; a < NATIVE_ACT_COUNT && strcmp(name, acts[a]); a++) {
+        }
+        if (a >= NATIVE_ACT_COUNT) {
+            note(e, "shots[%d]: \"act\" is one of idle, enter, attack, hit, destroyed, win, guard", index);
+            continue;
+        }
+        shot.act = (uint8_t)a;
+        shot.other = Json_Bool(Json_Member(item, "other"), 0) ? 1 : 0;
+        shot.from = (int16_t)Json_Number(Json_Member(item, "from"), 0);
+        shot.to = (int16_t)Json_Number(Json_Member(item, "to"), 0);
+        shot.yaw = (int16_t)Json_Number(Json_Member(item, "yaw"), 0);
+        shot.pitch = (int16_t)Json_Number(Json_Member(item, "pitch"), 0);
+        shot.distance = (int16_t)Json_Number(Json_Member(item, "distance"), 100);
+        shot.height = (int16_t)Json_Number(Json_Member(item, "height"), 0);
+        shot.ease = (int16_t)Json_Number(Json_Member(item, "ease"), 0);
+        if (shot.from < 0 || shot.to < shot.from || shot.to > 2000 || shot.yaw < -180 || shot.yaw > 180 || shot.pitch < -60 ||
+            shot.pitch > 60 || shot.distance < 30 || shot.distance > 300 || shot.height < -500 || shot.height > 500 ||
+            shot.ease < 0 || shot.ease > 60) {
+            note(e, "shots[%d]: 0 <= from <= to <= 2000, yaw -180..180, pitch -60..60, distance 30..300 (percent), height -500..500, ease 0..60",
+                 index);
+            continue;
+        }
+        e->mesh.shots[e->mesh.shot_count++] = shot;
+    }
+}
+
 static void package_strike(Entry *e, const JsonValue *strike)
 {
     const JsonValue *frames = Json_Member(strike, "attack"), *value;
@@ -468,7 +520,7 @@ static void forget(Entry *e)
     e->bytes = 0;
 }
 
-static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "offset", "look",
+static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "offset", "shots", "look",
                                            "author", "license", "source", "converter"};
 
 static int load(Entry *e)
@@ -541,6 +593,7 @@ static int load(Entry *e)
         package_clips(e, Json_Member(root, "clips"));
         package_strike(e, Json_Member(root, "strike"));
         package_offset(e, Json_Member(root, "offset"));
+        package_shots(e, Json_Member(root, "shots"));
         if (scale) {
             long percent = Json_TypeOf(scale) == JSON_NUMBER ? Json_Number(scale, -1) : -1;
             if (percent < 10 || percent > 1000) note(e, "\"scale\" is a percentage, 10 to 1000");

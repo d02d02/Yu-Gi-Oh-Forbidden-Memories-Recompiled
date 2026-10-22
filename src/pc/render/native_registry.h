@@ -24,7 +24,7 @@
  * replaces the model file's own texture (so a texture is swapped without converting again); textures above the cap
  * (MEMORIES_NATIVE_TEXTURE_MAX, default 2048) are halved until they fit. "clips" maps acts (NativeAct) to the model's
  * clips (an act left out plays the default names); "strike" lists the attack clip's frames where its blows land;
- * "scale" is in percent, about the soles; "offset": [x, y, z] moves it along its own axes (x right, y down, z forward, game
+ * "shots" are camera moves in the arena (native_cinematic.h); "scale" is in percent, about the soles; "offset": [x, y, z] moves it along its own axes (x right, y down, z forward, game
  * units, whole numbers from -2000 to 2000); "look" is in percent (camera_near in game units, flip_green 0/1) under the
  * mod's settings of the same names, under the environment (MEMORIES_NATIVE_*, MEMORIES_ARENA_CAMERA_*).
  *

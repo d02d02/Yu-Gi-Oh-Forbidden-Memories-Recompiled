@@ -88,6 +88,15 @@ typedef struct NativeDraw {
     NativeSlotInfo info;
 } NativeDraw;
 
+/* A camera shot (native_cinematic.h): while `act` plays (row frames `from` to `to`; of the other monster of the battle when
+ * `other`), the camera is turned `yaw` degrees about its look-at point, raised `pitch` degrees and `height` units, and its
+ * distance made `distance` percent, easing in and out over `ease` frames. */
+#define NATIVE_MAX_SHOTS 8
+typedef struct NativeShot {
+    uint8_t act, other;
+    int16_t from, to, yaw, pitch, distance, height, ease;
+} NativeShot;
+
 /* HDM4: a clip = local translation + rotation (disc space) of every bone, baked at `fps`. */
 #define NATIVE_MAX_CLIPS 16
 #define NATIVE_MAX_BONES 128
@@ -139,6 +148,8 @@ typedef struct NativeMesh {
     uint16_t strike[NATIVE_MAX_STRIKES];
     float scale;                        /* drawn this many times as large, standing where it stood (0: 1) */
     float ground;                       /* the soles' height in the model's space (y down: its largest y), for `scale` */
+    NativeShot shots[NATIVE_MAX_SHOTS]; /* from the package ("shots") */
+    uint8_t shot_count;
     float offset[3];                    /* moved this far in the model's own space (x right, y down, z forward), before `scale` */
     NativeTune tune;
 } NativeMesh;
@@ -178,4 +189,7 @@ int NativeModel_WillDraw(int model, int card);
 /* The arena camera's eye-to-look-at factor for a frame whose battle slots draw model0 and model1 (-1: none): 1 (the
  * game's camera) unless one of them is drawn natively. */
 float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);
+/* The arena camera of a shot of a drawn native model's package (native_cinematic.h): `eye` moved about `look` while the
+ * acts of the battle's two monsters match one; 0 (and `eye` as it was) when none does. */
+int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye[3]);
 #endif

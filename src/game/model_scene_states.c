@@ -61,16 +61,32 @@ static void Model_SetArenaView(GsRVIEW2 *view)
 {
 #ifdef MEMORIES_PC
     extern float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);
+    extern int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye[3]);
     if (D_8009AF94 == 15) {
         s32 model0 = D_800F2C40[0].field_E1F ? (s32)D_800F2C40[0].field_DF8 : -1;
         s32 model1 = D_800F2C40[1].field_E1F ? (s32)D_800F2C40[1].field_DF8 : -1;
         float dx = (float)(view->vpx - view->vrx), dy = (float)(view->vpy - view->vry), dz = (float)(view->vpz - view->vrz);
         float k = NativeModel_ArenaCameraFactor(model0, model1, dx, dy, dz);
+        GsRVIEW2 wide = *view;
+        int moved = 0;
         if (k > 1.0001f || k < 0.9999f) {
-            GsRVIEW2 wide = *view;
             wide.vpx = wide.vrx + (s32)(dx * k);
             wide.vpy = wide.vry + (s32)(dy * k);
             wide.vpz = wide.vrz + (s32)(dz * k);
+            moved = 1;
+        }
+        { /* a shot of a native model's package: the eye moved about the look-at point, on the same copy */
+            float look[3], eye[3];
+            look[0] = (float)wide.vrx; look[1] = (float)wide.vry; look[2] = (float)wide.vrz;
+            eye[0] = (float)wide.vpx; eye[1] = (float)wide.vpy; eye[2] = (float)wide.vpz;
+            if (NativeModel_ArenaShot(model0, model1, look, eye)) {
+                wide.vpx = (s32)eye[0];
+                wide.vpy = (s32)eye[1];
+                wide.vpz = (s32)eye[2];
+                moved = 1;
+            }
+        }
+        if (moved) {
             GsSetRefView2(&wide);
             return;
         }
