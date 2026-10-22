@@ -80,5 +80,24 @@ Then change `model.json` (no reconvert) in this order, and only as far as needed
 
 ## Worked examples (to fill in, phase I5)
 
+### A dragon (non-humanoid), first pass done
+
+Source: a Blender file (`Dragon_Baked_Actions.blend`: one mesh of 19,895 vertices, a 136-bone armature, four actions: idle, fly,
+run, walk; no attack, hit or death). Steps that worked, in order:
+
+1. Get the file out of its archive into a folder of its own (a `.rar` extracts with Windows' `tar.exe`).
+2. Blender 4.5 has no import of the old Blender-Internal materials: the file's textures are lost. Rebuild one material with the colour
+   atlas on the UV layer that matches it (`UV_mirror` here), look at the atlas first.
+3. The game takes at most 128 bones: keep the weighted ones and their parents, and merge the lightest leaf bones' weights into their
+   parents until the count fits (136 -> 120).
+4. Export a glb with the actions (deform bones only, sampled), then `new_native_mod.py MODEL.glb --card N --out mods/x -- --rig generic
+   --root <hips bone> --clips all --height <units>`. A creature big by nature needs `--height`; check it in the Library's model view
+   (open the card, Triangle then Square) before the field.
+5. `model.json` `clips`: map the asset's own names (idle, enter, attack, hit, guard, destroyed, win); an act with no clip plays idle.
+   Changing a clip means the strike frames must be inside it (the game notes it).
+
+Licence: the same terms as the other models of this branch (third-party, fan-made, properly licensed); the author and licence go in
+the package (`--author`, `--license`). Status: plays in the Library; field and arena checks, the size and the attack clip are open.
+
 A dragon (non-humanoid) and Goku (humanoid with hair), each from the raw model to the captures above: the exact commands, the
 problems met and their fixes, the pictures. They need the models themselves (a rigged glb each) from their authors.
