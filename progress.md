@@ -1,7 +1,7 @@
 # Native models: plug-and-play content + 3D Monsters field attack
 
 Branch `feat/native-models-plug-and-play`, from `feat/battle-events-log` at `96cd1c3a`
-(itself `feat/hd-model-bls` + upstream master). Never a PR. Pushed only to this branch.
+(itself `feat/hd-model-bls` + upstream master); rebased onto upstream master (`e64b91f9c`) on 2026-10-22, `native_models` is mod API 19 (history before: `backup/native-pre-rebase`). Never a PR. Pushed only to this branch.
 This file is the action plan the agent follows, and its status board; `history.md` keeps what is done.
 
 ## Objectives and what "done" means
@@ -49,11 +49,11 @@ This file is the action plan the agent follows, and its status board; `history.m
 
 | Milestone | Tag | Item | Result | Fix |
 |---|---|---|---|---|
-| M1 | `milestone/native-m1` (0191bde7) | 1-7 | awaiting | |
-| M2 | `milestone/native-m2` (5cfc2168) | 1-3 | awaiting | |
-| M3 | `milestone/native-m3` (afc069ea) | 1-5 | awaiting | |
-| M4 | `milestone/native-m4` (194aeba1) | 1-8 | items 1 and 8 failed, the rest awaiting | M4-1 `18ac4081` (the converter wrote non-whole numbers the game's JSON reader refuses); M4-8 `876c6c85` (a package named by a Windows path did not find its model.hdm) |
-| M5 | `milestone/native-m5` (d8bb6a29) | 1-7 | awaiting; checked here on the mannequin, all fine after the fixes | M5-1 `e59e543c` (the marker packet overwritten: the monster and the glow dropped out of frames), M5-5 `68c85ac1` (a stray draw at each monster's load); build with them: `milestone/native-m5.1` (ac43731b) |
+| M1 | `milestone/native-m1` (0191bde7) | 1-7 | PASS (the user, 2026-10-22) | |
+| M2 | `milestone/native-m2` (5cfc2168) | 1-3 | PASS (the user, 2026-10-22) | |
+| M3 | `milestone/native-m3` (afc069ea) | 1-5 | PASS (the user, 2026-10-22) | |
+| M4 | `milestone/native-m4` (194aeba1) | 1-8 | items 1 and 8 failed, fixed (M4-1, M4-8); all PASS after (the user, 2026-10-22) | M4-1 `18ac4081` (the converter wrote non-whole numbers the game's JSON reader refuses); M4-8 `876c6c85` (a package named by a Windows path did not find its model.hdm) |
+| M5 | `milestone/native-m5` (d8bb6a29), `m5.1` (ac43731b) | 1-7 | PASS on `milestone/native-m5.1` (the user, 2026-10-22, from videos); the placement of the model on its card PASS after the sizing standard | M5-1 `e59e543c` (the marker packet overwritten: the monster and the glow dropped out of frames), M5-5 `68c85ac1` (a stray draw at each monster's load); build with them: `milestone/native-m5.1` (ac43731b) |
 
 ## Rules for every change
 
@@ -226,13 +226,13 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
 | Phase | State |
 |---|---|
 | M0 setup (branch, plan, build check) | done: game build (12 stubs) + 3D Monsters build pass here; ctest 146/149: `pc_utf8_paths` and `pc_fm_editor_compat` fail because of this branch (A6, A7), `pc_user_dir` fails only because the container runs as root (its chmod test cannot deny root) |
-| A | done (A1-A7), awaiting M1 on the laptop; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
-| B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), awaiting M2; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
-| C | done (C1-C7), awaiting M3; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_capture` new (instances, suppression, marker entry, camera) and `pc_native_anim` extended (acts, per-monster memory), only `pc_user_dir` fails (root container) |
-| D | done (D1, D3, D4 revised; D2, D5-D9), awaiting M4; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_registry` and `pc_native_tools` new (a rigged glb made by the test, converted without the disc, checked, made into a mod, read back by the game's loader), `pc_native_capture` / `pc_native_anim` updated, only `pc_user_dir` fails (root container); registry and capture tests under ASan/UBSan 32+64-bit |
-| E | E1 done, E4 done for the field, in M5; E2/E3 (the arena's contact frames) wait for the measurement on the laptop (M3's event log shows them for BLS) |
-| F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
-| G | planned (waits for M1's camera results: shots build on the arena camera) |
+| A | done (A1-A7), M1 PASS; checks here: game build (12 stubs), ctest 149/150 (`pc_user_dir` = root container), 3D Monsters build, new `pc_native_format` under ASan/UBSan 32+64-bit |
+| B | done (B1 revised, B3, B4, B6; B2/B5 folded into C/D), M2 PASS; checks here: game build (12 stubs), `gl_picture.c` strict (-Wall -Wextra -Werror), ctest 151 with `pc_native_anim` new, only `pc_user_dir` fails (root container) |
+| C | done (C1-C7), M3 PASS; checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_capture` new (instances, suppression, marker entry, camera) and `pc_native_anim` extended (acts, per-monster memory), only `pc_user_dir` fails (root container) |
+| D | done (D1, D3, D4 revised; D2, D5-D9), M4 PASS (fixes M4-1, M4-8); checks here: game build (12 stubs), `gl_picture.c` strict, ctest with `pc_native_registry` and `pc_native_tools` new (a rigged glb made by the test, converted without the disc, checked, made into a mod, read back by the game's loader), `pc_native_capture` / `pc_native_anim` updated, only `pc_user_dir` fails (root container); registry and capture tests under ASan/UBSan 32+64-bit |
+| E | E1 done, E4 done for the field, M5 PASS; E2/E3 (the arena's contact frames) wait for the measurement on the laptop (M3's event log shows them for BLS) |
+| F | F1, F2, F3 (in C), F4 done, M5 PASS (placement and size by the converter's standard instead of F5: `native_convert.py`); F5 (fit to the disc model's bounds) not wanted; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
+| G | done for the camera: `model.json` `shots` in the arena and on the field fight (`native_cinematic.c`, `pc_native_cinematic`, `NativeModel_ArenaShot` / `NativeModel_FieldShot`); no `shots.json` (they live in `model.json`); G3's extra frames on the field and G4 (sounds) not done, nothing needs them yet |
 | H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 done (the Blender scripts hold no path; the capture scripts find the dev tools and the game by `_paths.py`); H3's picker open |
 | I | planned, last: after A-H are validated and stable (see its section); starts with the written procedure, then a dragon and Goku as worked, tested examples
 

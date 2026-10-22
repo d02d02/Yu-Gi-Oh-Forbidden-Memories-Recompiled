@@ -168,3 +168,20 @@ is drawn at the picture's size, so a part of it past the 4:3 edges does not reac
 * The no-disc fit's default root height (300, BLS's) is to be compared with a `rigged_to_hdm4.py` conversion of the same model
   (`native_check.py` prints both models' soles); a first load of a big package happens in the frame that needs it (a hitch).
 * The game's real "3D Monsters" option crash (user report, needs their crash-*.txt) is unrelated and unreproduced.
+
+## 9. Size and placement of a model, and the camera shots (2026-10-22)
+
+* The game places a monster by its body root and sizes it as the disc's Black Luster Soldier (card 364): 373 game units from the
+  soles to the top, the placed point 159 above the soles (measured with `tools/hd-models/hmd_export.py 364`). A native model is
+  made to that standard by `native_convert.py` (`--height`, `--origin-height`; the origin horizontally at the middle of the idle
+  pose's feet, or of the mesh seen from above when there are none, `--no-center`), so it stands on its card with nothing to tune
+  and the engine has no placement code of its own for it. The size of a creature that is big or small by nature is a declaration
+  (`--height`). The mod's `scale` and `offset` (`model.json`) are for what the standard does not fit.
+* Camera shots: `NativeShot` (`model.json` `shots`) are evaluated by `native_cinematic.c` (pure C); the arena applies the move
+  to the copy of the view in `Model_SetArenaView` (`NativeModel_ArenaShot`, after the arena camera factor); the 3D Monsters
+  mod asks `NativeModel_FieldShot` and moves its fight orbit for one `ViewState_ApplyOrbit` call.
+* A bug worth knowing: while a native model is drawn the polygon and outline drivers (`model_polygon_drivers.c`) make the disc
+  model's packets but do not link them; their tag word must still hold the length, because the 3D Monsters mod walks a
+  monster's packets in memory (`stamp_bank`).
+* Trace lines (`MEMORIES_TRACE=model`): `evt native` (a captured draw), `evt walk` (the markers a frame's list holds), `evt
+  pass` (what the GL pass did with a marker).

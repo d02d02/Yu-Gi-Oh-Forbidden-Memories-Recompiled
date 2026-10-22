@@ -73,3 +73,22 @@
   package or file inside the mod and present, cards, disc model, setting, duplicates, the 64-entry limit); test
   `pc_fm_editor_native_models`.
 
+* Checks of the phases on the laptop (the user, 2026-10-22): M1 to M7 all PASS (M5 and M7 from videos made here with
+  `tools/hd-models/field_attack.py --clip`; the mannequin stands in for Black Luster Soldier).
+* Fixes found on the way: M4-1 (the converter wrote fractions the game's JSON reader refuses), M4-8 (a Windows path to a
+  package), M5-1 (a monster's unlinked packets had no tag length: the 3D Monsters mod's `stamp_bank` wrote over the native
+  marker, so the model and the disc model's glow dropped out of some frames), M5-5 (a stray native draw while a monster
+  loads).
+* Phase G, the camera: `shots` in `model.json` (yaw, pitch, distance, height, eased, while a monster or the other one plays
+  an act) in the arena (`NativeModel_ArenaShot` on the copy of the arena view) and on the field fight
+  (`NativeModel_FieldShot`, the mod's orbit); `native_cinematic.c`, tested.
+* `offset` in `model.json` (a nudge along the model's axes), kept optional: the placement problem it was made for was not an
+  offset.
+* Placement and size from first principles: measured on the disc Black Luster Soldier (373 game units tall, hips 159 above
+  the soles); the converter now makes every model to that standard (`--height`, `--origin-height`, the idle pose's feet
+  centred, `--no-center`); the size of a creature that is big or small by nature is declared with `--height`.
+* Tools: `tools/hd-models/field_attack.py` (the field attack, the arena attack, a still of the field with `--idle`, an mp4 with
+  `--clip`), `_paths.py` (no workspace layout assumed), a rigged angel from the Blender scripts (parked: its raised arm and
+  sword).
+* Rebased onto upstream/master: mod API 19 for `native_models` (upstream took 17, duelist busts, and 18, frame styles).
+* Phase I started: `notes/adding-a-model.md`, the draft of the procedure to add a new model.
