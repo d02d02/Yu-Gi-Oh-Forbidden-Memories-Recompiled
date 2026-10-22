@@ -6,14 +6,13 @@ STATEDIR = a folder holding attack.state (made by attack_window_gpu.py; build-sp
 """
 import argparse, sys, time
 from pathlib import Path
-HACK = Path(__file__).resolve().parents[3]
-DEV = HACK / "Yu-Gi-Oh-Forbidden-Memories-Recompiled-dev" / "tools" / "pc"
+sys.path.insert(0, str(Path(__file__).resolve().parent)); from _paths import HACK, DEV, EXE, STATE
 sys.path.insert(0, str(DEV)); sys.path.insert(0, str(DEV / "rigs"))
 import yfm_control as yc   # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("statedir"); ap.add_argument("--native", default=""); ap.add_argument("--scale", type=int, default=2)
 ap.add_argument("--seconds", type=float, default=60); ap.add_argument("--speed", type=float, default=100, help="percent of real time"); ap.add_argument("--env", action="append", default=[])
-ap.add_argument("--exe", default=str(HACK / "shared/tools/hd-models/_exe/memories-pc.exe"))
+ap.add_argument("--exe", default=str(EXE))
 a = ap.parse_args()
 sd = Path(a.statedir).resolve(); state = sd / "attack.state"
 env = {}

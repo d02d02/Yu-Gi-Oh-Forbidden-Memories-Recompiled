@@ -25,5 +25,5 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `camera_distance_from_log.py` | eye-to-look-at distance per frame from a `cam` log (see its docstring) |
 | `play-bls.ps1` | start the BLS test duel (Test scenes mod linked + rebuild needed); `-Attack 0` = the game's own arena attack |
 
-Paths: several scripts locate the dev checkout's `tools/pc` and the disc image relative to a workspace layout (`hacking/<checkout>/...`); pass `--exe`, `--disc` or edit the constants at their top.
+Paths: the capture scripts (`attack_*.py`, `watch_attack.py`, `save_moment.py`) take `yfm_control.py` and `rigs/` from origin/dev's `tools/pc` and the game from `tmp/pc/game32/memories-pc.exe` (see `_paths.py`); `YGO_DEV_TOOLS` and `YGO_EXE` override, `--exe` too. `attack_clip.py --state` still defaults to the old workspace's saved state.
 Assets (models, textures, the Quaternius pack) are NOT in the repo: the Quaternius Universal Animation Library is CC0; the AI-made angel's licence is unknown (private test asset).
