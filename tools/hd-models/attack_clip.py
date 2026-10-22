@@ -4,15 +4,14 @@
 FRAMES_DIR: where the raw BMP frames go (keep it OUT of OneDrive: hundreds of MB). Then: make_video.py FRAMES_DIR OUT_PREFIX."""
 import argparse, sys
 from pathlib import Path
-HACK = Path(__file__).resolve().parents[3]
-DEV = HACK / "Yu-Gi-Oh-Forbidden-Memories-Recompiled-dev" / "tools" / "pc"
+sys.path.insert(0, str(Path(__file__).resolve().parent)); from _paths import HACK, DEV, EXE, STATE
 sys.path.insert(0, str(DEV)); sys.path.insert(0, str(DEV / "rigs"))
 import yfm_control as yc   # noqa: E402
 ap = argparse.ArgumentParser(); ap.add_argument("frames"); ap.add_argument("--native", default="")
 ap.add_argument("--from", dest="k1", type=int, default=900); ap.add_argument("--to", dest="k2", type=int, default=1140)
 ap.add_argument("--scale", type=int, default=4)
-ap.add_argument("--state", default=str(HACK / "shared/hd-model-assets/attack-win/attack.state"))
-ap.add_argument("--exe", default=str(HACK / "shared/tools/hd-models/_exe/memories-pc.exe"))
+ap.add_argument("--state", default=str(STATE))
+ap.add_argument("--exe", default=str(EXE))
 a = ap.parse_args()
 out = Path(a.frames).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 0, "mod.2d-monsters": 0, "mod.camera-pin": 1, "internal_scale": a.scale}

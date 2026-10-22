@@ -218,4 +218,4 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
 | E | E1 done, E4 done for the field, in M5; E2/E3 (the arena's contact frames) wait for the measurement on the laptop (M3's event log shows them for BLS) |
 | F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
 | G | planned (waits for M1's camera results: shots build on the arena camera) |
-| H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 and H3's picker open |
+| H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 done (the Blender scripts hold no path; the capture scripts find the dev tools and the game by `_paths.py`); H3's picker open |

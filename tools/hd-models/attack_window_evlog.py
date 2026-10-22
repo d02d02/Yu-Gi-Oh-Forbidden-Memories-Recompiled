@@ -9,8 +9,7 @@ The state is saved at the attack's commit; a second, windowed game loads it and 
 import argparse, ctypes, ctypes.wintypes as wt, sys, time
 from pathlib import Path
 
-HACK = Path(__file__).resolve().parents[3]
-DEV = HACK / "Yu-Gi-Oh-Forbidden-Memories-Recompiled-dev" / "tools" / "pc"
+sys.path.insert(0, str(Path(__file__).resolve().parent)); from _paths import HACK, DEV, EXE, STATE
 sys.path.insert(0, str(DEV)); sys.path.insert(0, str(DEV / "rigs"))
 import yfm_control as yc   # noqa: E402
 import rigkit              # noqa: E402
@@ -19,7 +18,7 @@ from PIL import ImageGrab  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("out"); ap.add_argument("--native", default=""); ap.add_argument("--scale", type=int, default=4)
 ap.add_argument("--start", type=int, default=0); ap.add_argument("--every", type=int, default=15); ap.add_argument("--frames", type=int, default=300)
-ap.add_argument("--exe", default=str(HACK / "shared/tools/hd-models/_exe/memories-pc.exe"))
+ap.add_argument("--exe", default=str(EXE))
 a = ap.parse_args()
 out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 0, "mod.2d-monsters": 0, "mod.camera-pin": 1}
