@@ -185,13 +185,16 @@ void NativeModel_SlotInfo(const NativeSlotInfo *info)
 int NativeModel_EndSlot(void)
 {
     int draw;
-    int empty = NativeModel_Nearest == ~0u; /* kept only while the model's packets are left out: else always */
+    int empty = NativeModel_Nearest == ~0u; /* no packet kept; with a part drawn the slot holds a model anyway */
+    int k;
     NativeModel_Suppress = 0;
     if (!current) return 0;
-    /* The game's own draw of a slot that made no packets and is in no battle (no card): the slot is empty while a code
-     * mod loads a monster into it. There is nothing for the native model to stand for, and with no depth to sort at it
-     * would be drawn over everything. (While the pass is not ready nothing is left out and nothing is drawn natively, so
-     * dropping the capture then costs nothing.) */
+    for (k = 0; k < NATIVE_MAX_PARTS; k++)
+        if (current->parts[k].used) empty = 0;
+    /* The game's own draw of a slot that drew no part and is in no battle (no card): the slot is empty while a code
+     * mod loads a monster into it. There is nothing for the native model to stand for. (Not "no packet was kept": the
+     * packets are kept only once the pass is ready, and the first draw is what makes it ready; the Library's model
+     * view, which has no battle card, would never show a native model.) */
     if (empty && !instance_set && !current->info.card) {
         current = NULL;
         return 0;

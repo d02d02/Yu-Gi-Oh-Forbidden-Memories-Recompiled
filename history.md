@@ -93,3 +93,4 @@
 * Rebased onto upstream/master: mod API 19 for `native_models` (upstream took 17, duelist busts, and 18, frame styles).
 * Phase I started: `notes/adding-a-model.md`, the draft of the procedure to add a new model.
 * H3: FM Editor "Native models" tab (`native_models_tab.py`, editing in `native_models.py`): add a package (copied into `models/<folder>/`), set its cards, remove; tests in `test_native_models.py` (the tab test needs Tk, skipped here).
+* H1: the Library's model view shows the native model of the card (it did not: a slot with no battle card and no packet kept was dropped as "empty" before the pass could become ready; now a slot that draws a part is a model). Checked in the real window on card 364 (`pc_native_capture` extended).

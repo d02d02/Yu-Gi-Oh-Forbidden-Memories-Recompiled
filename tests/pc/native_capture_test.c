@@ -147,6 +147,15 @@ int main(void)
     CHECK(slot_draw(363, 0, -1) == 0);
     last_taken(&count);
     CHECK(count == 0);
+    /* The Library's model view: no battle card, and the pass is not ready yet (so nothing is left out): a slot that draws
+     * a part is a model and is captured, which is what makes the pass ready. */
+    NativeModel_GlReady = 0;
+    NativeModel_BeginSlot(363, 0);
+    NativeModel_Part(0);
+    CHECK(NativeModel_EndSlot() > 0);
+    last_taken(&count);
+    CHECK(count == 1);
+    NativeModel_GlReady = 1;
 
     /* Left out only when the pass will draw it. */
     NativeModel_BeginSlot(363, 0);

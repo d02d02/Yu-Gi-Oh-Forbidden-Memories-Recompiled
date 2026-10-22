@@ -46,7 +46,7 @@ timing. No C, no disc and no Blender script is needed: a rigged glTF goes in, a 
 
 At most 64 entries in all the mods. A model is read when a slot first needs it, not at start. When two mods have a model for the same card the
 later mod's is drawn; a model that cannot be used is a note beside its mod in the Mods window, and the earlier mod's model (else the disc model)
-is drawn. With the card unknown (the Library's model view) an entry for a card stands for that card's disc model. A mod with native models
+is drawn. The Library's model view (no battle, so the card is unknown) shows the native model too: an entry for a card stands for that card's disc model (at Internal 2x or more). A mod with native models
 needs a restart to change.
 
 ## The package: `model.json`
