@@ -64,7 +64,8 @@ Then change `model.json` (no reconvert) in this order, and only as far as needed
 3. **`strike.attack`**: the frame of each blow, so the swing lands when the defender reacts (check with the effects off:
    `MEMORIES_MOD_3D_MONSTERS_EFFECTS=0`).
 4. **Origin height** (reconvert with `--origin-height`; default 159, the game's monster class) when it floats or sinks, and `--height`
-   (default 373) for a model that should be bigger or smaller than a standard monster. The converter already makes the model stand on
+   (default 373) for a model that should be bigger or smaller than a standard monster: **say the size of a non-humanoid** (a dragon
+   900, an imp 200); the default is only right for a humanoid of standard-monster size. The converter already makes the model stand on
    its card with its soles on the ground at the size of the game's own monsters, so this is for exceptions.
 5. **`shots`** for camera moves, **`offset`** only as a last resort (it patches a model whose origin is wrong).
 
