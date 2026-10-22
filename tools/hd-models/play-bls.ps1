@@ -48,10 +48,15 @@ $lines = @("internal_scale=$Scale", 'show_hud=0', 'fullscreen=0', 'mod.test-scen
 $lines += $off | ForEach-Object { "mod.$_=0" }
 $lines += $Mods | ForEach-Object { "mod.$_=1" }
 $lines += 'mod.duel-links-2d-arts=0', 'mod.2d-monsters=0', 'mod.camera-pin=0', 'mod.kuriboh=0', 'mod.kuriboh-hd=0'
+# No HD pack on this machine (no shared\mods-data\assets-hd): run without it instead of failing.
+if (-not $NoHd -and -not (Test-Path "$shared\mods-data\assets-hd")) {
+    Write-Warning "no HD pack at $shared\mods-data\assets-hd: running without it (-NoHd)"
+    $NoHd = [switch]::Present
+}
 # The Forbidden Memories HD pack: only assets-hd is linked (your single copy in shared\mods-data), with the settings of your real profile.
 $lines += "mod.forbidden-memories-hd=$(if ($NoHd) { 0 } else { 1 })"
 if (-not $NoHd) {
-    $lines += Get-Content "$shared\user\settings.txt" | Where-Object { $_ -like 'mod.forbidden-memories-hd.*' }
+    if (Test-Path "$shared\user\settings.txt") { $lines += Get-Content "$shared\user\settings.txt" | Where-Object { $_ -like 'mod.forbidden-memories-hd.*' } }
     New-Item -ItemType Directory -Force -Path "$user\mods" | Out-Null
     if (-not (Test-Path "$user\mods\assets-hd")) {
         New-Item -ItemType Junction -Path "$user\mods\assets-hd" -Target "$shared\mods-data\assets-hd" | Out-Null

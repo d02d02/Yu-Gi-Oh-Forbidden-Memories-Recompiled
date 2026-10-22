@@ -2,7 +2,7 @@
 """A rigged glTF / glb -> a native model package the game draws in place of a monster (no disc needed).
 
     native_convert.py MODEL.glb OUT_DIR [--clips all|A,B,...] [--clips-from LIBRARY.glb] [--rig auto|ue|mixamo|generic]
-                      [--root BONE] [--height 373 | --scale S | --root-height 300] [--origin-height 159] [--texture-max 2048]
+                      [--root BONE] [--height 373 | --extent W | --scale S | --root-height 300] [--origin-height 159] [--texture-max 2048]
                       [--follow BONE=SOURCE[@FRACTION]] [--keep-root-motion] [--no-pbr] [--name N --author A --license L]
 
 OUT_DIR gets model.hdm (the mesh, skeleton and clips), base.png (+ normal.png, metal_roughness.png when the model has
@@ -22,7 +22,7 @@ Its size and where it stands (the game's monster class, measured on the disc's B
 model is made 373 game units tall (--height), and its origin, the point the game puts on the card, is on its vertical axis
 159 units above the soles (--origin-height; BLS's hips) and, horizontally, at the middle of its feet in the idle pose
 (--no-center keeps the hips). So any model, whatever its rig or proportions, stands on its card with its soles on the ground,
-at the size of the game's own monsters. --scale sets game units per glTF unit instead; --root-height H is the older way (the
+at the size of the game's own monsters. --extent W fits the largest side of the bounding box (a dragon's wingspan) to W instead. --scale sets game units per glTF unit instead; --root-height H is the older way (the
 root bone is the origin, H above the soles). model.json "scale" adjusts the size later.
 Profiles name the hips and hands: ue (Unreal / Quaternius: pelvis, hand_r), mixamo (Hips, RightHand), generic (--root).
 
@@ -501,13 +501,16 @@ def convert(a):
     low, high = float(pos[:, 1].min()), float(pos[:, 1].max())
     stature = high - low
     root_height = float(origin[1]) - low
+    extent = float(max(np.ptp(pos[:, 0]), np.ptp(pos[:, 1]), np.ptp(pos[:, 2])))   # the largest side of the bounding box
     if a.scale:
         s = a.scale
+    elif a.extent:
+        s = a.extent / max(extent, 1e-9)             # a creature fitted by its widest side (wings, length) instead of its height
     elif a.root_height:
         s = a.root_height / max(root_height, 1e-9)   # the older way: the root bone is the origin, this high above the soles
     else:
         s = (a.height or STANDARD_HEIGHT) / max(stature, 1e-9)
-    if not a.height and not a.scale and not a.root_height:
+    if not a.height and not a.scale and not a.root_height and not a.extent:
         notes.append(f"size: {STANDARD_HEIGHT:.0f} game units tall, the standard monster's (Black Luster Soldier). A creature that "
                      f"is big or small by nature needs its size said: --height (e.g. 900 for a dragon, 200 for an imp)")
     if not a.root_height:
@@ -741,6 +744,8 @@ def main(argv=None):
     ap.add_argument("--root-height", type=float, default=0.0, help="the older sizing: the root bone is the origin, this many game units above the soles")
     ap.add_argument("--origin-height", type=float, default=STANDARD_ORIGIN, help="game units from the soles to the origin the game puts on the card (default 159, Black Luster Soldier's hips)")
     ap.add_argument("--height", type=float, help="size the model by its height in game units (default 373, Black Luster Soldier's)")
+    ap.add_argument("--extent", type=float, help="size the model by its largest bounding-box side (wingspan, length or height) in game units: "
+                    "for a creature that is wider than it is tall (a dragon)")
     ap.add_argument("--scale", type=float, help="game units per glTF unit, instead of a fit")
     ap.add_argument("--texture-max", type=int, default=spec.TEXTURE_MAX, help="the texture's largest side (default 2048)")
     ap.add_argument("--follow", action="append", help="BONE=SOURCE[@FRACTION]: BONE turns with SOURCE (beyond SOURCE's parent)")
