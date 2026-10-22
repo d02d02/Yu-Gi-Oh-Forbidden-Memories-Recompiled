@@ -52,7 +52,7 @@ This file is the action plan the agent follows, and its status board; `history.m
 | M1 | `milestone/native-m1` (0191bde7) | 1-7 | awaiting | |
 | M2 | `milestone/native-m2` (5cfc2168) | 1-3 | awaiting | |
 | M3 | `milestone/native-m3` (afc069ea) | 1-5 | awaiting | |
-| M4 | `milestone/native-m4` (194aeba1) | 1-8 | awaiting | |
+| M4 | `milestone/native-m4` (194aeba1) | 1-8 | items 1 and 8 failed, the rest awaiting | M4-1 `18ac4081` (the converter wrote non-whole numbers the game's JSON reader refuses); M4-8 `876c6c85` (a package named by a Windows path did not find its model.hdm) |
 | M5 | `milestone/native-m5` (d8bb6a29) | 1-7 | awaiting | |
 
 ## Rules for every change
