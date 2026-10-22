@@ -512,7 +512,9 @@ def validate(project: Project) -> list:
         out.append(Issue(level, "Guardian Stars", where, message))
     _check_packs(project, out)
     for level, where, message in tower.check(project.other.get("tower"), lambda name: roster.named(project, name),
-                                             lambda name: project.resolve(name)):
+                                             lambda name: project.resolve(name),
+                                             lambda name: roster.bust_of(project, roster.named(project, name)),
+                                             lambda name: roster.shows_bust(project, roster.named(project, name))):
         out.append(Issue(level, "Tower", where, message))
     fixed_decks.check(project, out)
     roster.check(project, out)
@@ -612,12 +614,10 @@ def shipped_folder():
     editor's own program, beside the game files the port was last pointed at
     (disc-path.txt, in the game's folder or its game/ folder), or the source
     tree's mods/. None when none of them is there."""
-    import sys
     from pathlib import Path
     from . import disc
     places = []
-    program = Path(sys.executable if getattr(sys, "frozen", False) else (sys.argv[0] or ".")).resolve().parent
-    places.append(program / "mods")
+    places.append(disc.program_dir() / "mods")
     try:
         text = (disc.user_dir() / "disc-path.txt").read_text(encoding="utf-8", errors="replace").strip()
         if text:

@@ -1,7 +1,7 @@
 #ifndef MEMORIES_MOD_TYPES_H
 #define MEMORIES_MOD_TYPES_H
-#define MEMORIES_MOD_API 17
-/* API 17: "native_models" names HDM4 model files that replace a monster's battle model (src/pc/render/native_model.c,
+#define MEMORIES_MOD_API 19
+/* API 19: "native_models" names HDM4 model files that replace a monster's battle model (src/pc/render/native_model.c,
  * notes/native-models.md); no host entry. */
 /* API 15: card_types names the existing type ids and declares monster ids
  * 24-255, with optional per-custom-type icons. It has no host entry: cards
@@ -14,7 +14,11 @@
  * API 13 does the same for "limits": {"card_drops": n}, a lock on the cards
  * a won duel deals (notes/card-drops.md); API 14 for the tower: a mod's
  * "tower", a duelist's "tower_only" and "unlock" "tower", a menu item's
- * action "tower". */
+ * action "tower"; API 17 for a duelist's "bust" and "replace_bust" and a
+ * tower story's "expression" by name; API 18 for the card frames' keys
+ * (card_layout's default_styles, a frame style's hand, images, library_icon
+ * and own parts, atk_label/dfd_label/type_label, a part's hide or color, and
+ * a card's frame_style). */
 /* API 3: before hooks may alter arguments/result, or set handled to replace
  * the operation (including cancellation). Highest priority runs first;
  * equal priorities follow registration/load order. After hooks observe the

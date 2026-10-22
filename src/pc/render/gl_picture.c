@@ -240,9 +240,11 @@ static const SoftGpuRecorder recorder = {record_gp0, record_load, record_move, r
 /* What the replays cost the GPU beyond the primitives, summed over 120 of
  * them for MEMORIES_TRACE=frames: multisample resolves, other blits and
  * copies, quads drawn to copy pictures in, and draw calls, with the pixels
- * each touched. */
+ * each touched; and what goes up from the CPU: VRAM whole after each
+ * replay (upload_vram) and the texture pack's two maps whenever they
+ * changed (sync_pack), as counts: the log turns them into bytes. */
 static struct {
-    unsigned resolves, blits, copies, quads, draws;
+    unsigned resolves, blits, copies, quads, draws, vram_uploads, map_uploads;
     double resolve_px, blit_px, copy_px, quad_px;
 } stats;
 static int scale;                 /* of the picture in the framebuffer, 0 before the first resync */
@@ -2767,6 +2769,7 @@ static void sync_pack(void)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SOFT_GPU_WIDTH, SOFT_GPU_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_INT,
                     place_map);
     gl_ActiveTexture(GL_TEXTURE0);
+    stats.map_uploads++;
 }
 
 /* An image side as the texture has it: the driver's largest at most. */
@@ -3220,6 +3223,7 @@ static void upload_vram(void)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SOFT_GPU_WIDTH, SOFT_GPU_HEIGHT, GL_RED_INTEGER, GL_UNSIGNED_SHORT,
                     SoftGpu_Vram());
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stats.vram_uploads++;
 }
 
 /* The state words, then VRAM whole into its texture and the picture. At a
@@ -3453,6 +3457,10 @@ int GlPicture_Replay(void)
                 scale, samples, stats.resolves / 120.0, stats.resolve_px / 120e6, stats.blits / 120.0,
                 stats.blit_px / 120e6, stats.copies / 120.0, stats.copy_px / 120e6, stats.quads / 120.0,
                 stats.quad_px / 120e6, stats.draws / 120.0);
+            /* VRAM is 1024 x 512 16-bit words; the maps 16 and 32 bits a word. */
+            LOG(LOG_FRAMES, "OpenGL picture uploads per replay: VRAM %.2f MB, texture pack maps %.2f MB (%u in 120)",
+                stats.vram_uploads * (SOFT_GPU_WIDTH * SOFT_GPU_HEIGHT * 2.0) / 120e6,
+                stats.map_uploads * (SOFT_GPU_WIDTH * SOFT_GPU_HEIGHT * 6.0) / 120e6, stats.map_uploads);
             memset(&stats, 0, sizeof(stats));
             replays = total_us = 0;
         }
@@ -3589,6 +3597,52 @@ int GlPicture_Read(int x, int y, int w, int h, uint32_t *out)
         for (i = 0; i < w; i++) {
             const uint8_t *p = rgba + ((size_t)j * w + i) * 4;
             out[(size_t)j * w + i] = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+        }
+    }
+    free(rgba);
+    return 1;
+}
+
+int GlPicture_ReadShown(unsigned wide_texture, int x, int y, int w, int h, uint32_t *out)
+{
+    GLuint read = 0;
+    int from_w = 0, from_h = 0, t, i, j, x0, y0, x1, y1;
+    uint8_t *rgba;
+    if (!on || scale < 2 || w <= 0 || h <= 0 || !out) return 0;
+    if (!wide_texture) {
+        read = picture_fbo;
+        from_w = SOFT_GPU_WIDTH * scale;
+        from_h = SOFT_GPU_HEIGHT * scale;
+        picture_resolve_pixels(x, y, w, h);
+    }
+    for (t = 0; !read && t < WIDE_TARGETS; t++) {
+        if (wide[t].fbo && wide[t].texture == wide_texture) {
+            wide_resolve(&wide[t]);
+            read = wide[t].fbo;
+            from_w = wide[t].width;
+            from_h = wide[t].height;
+        }
+    }
+    if (!read) return 0;
+    /* What lies inside the texture; past its edges the presenter's clamp to
+     * edge shows the edge pixels, so the picture saved has them too. */
+    x0 = x < 0 ? 0 : x;
+    y0 = y < 0 ? 0 : y;
+    x1 = x + w < from_w ? x + w : from_w;
+    y1 = y + h < from_h ? y + h : from_h;
+    if (x1 <= x0 || y1 <= y0) return 0;
+    rgba = malloc((size_t)(x1 - x0) * (size_t)(y1 - y0) * 4);
+    if (!rgba) return 0;
+    gl_BindFramebuffer(GL_READ_FRAMEBUFFER, read);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glReadPixels(x0, y0, x1 - x0, y1 - y0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    gl_BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    for (j = 0; j < h; j++) {
+        int sy = y + j < y0 ? y0 : y + j >= y1 ? y1 - 1 : y + j;
+        for (i = 0; i < w; i++) {
+            int sx = x + i < x0 ? x0 : x + i >= x1 ? x1 - 1 : x + i;
+            const uint8_t *p = rgba + ((size_t)(sy - y0) * (size_t)(x1 - x0) + (size_t)(sx - x0)) * 4;
+            out[(size_t)j * (size_t)w + (size_t)i] = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
         }
     }
     free(rgba);

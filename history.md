@@ -17,7 +17,7 @@
     the attack clip (no time warp yet: only row 3 of Black Luster Soldier is measured).
   - A5: the test switch defaults to model 363 (was 364, card 365's model); the pass reads its switches once.
   - A6: `native_model.c` goes through `pc/compat/fs.h` (`pc_utf8_paths`).
-  - A7: FM Editor knows API 17 and `native_models` (`pc_fm_editor_compat`); modding.md lists the key.
+  - A7: FM Editor knows API 17 and `native_models` (`pc_fm_editor_compat`; API 19 after merging upstream's 17 and 18); modding.md lists the key.
   - The converter refuses more than 16 clips (the game's limit) instead of writing a file the game refuses.
 * Phase B (factoring):
   - B3: `src/pc/render/native_anim.c`: the director (`NativeAnim_Choose`) and the pose (`NativeAnim_Rows`: clip sampling,

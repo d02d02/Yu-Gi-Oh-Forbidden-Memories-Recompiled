@@ -4,8 +4,8 @@ A mod is a directory, not part of the game executable. The release ships its
 own mods that way, and anyone else's mod is installed the same way: drop the
 directory in, restart, apply it in **Game > Mods**. On Android, where there
 is no folder to drop it in, **Import mod...** in the Mods panel takes the
-mod's `.zip` through the system's file picker
-([Mod manager](mods-window.md)).
+mod's `.zip` through the system's file picker, and **Remove** deletes one
+that is off or does not load any more ([Mod manager](mods-window.md)).
 
 ## Where mods live
 
@@ -121,7 +121,9 @@ checked as well, when it starts.
 | 14 | the release after v0.3.0 | `tower`; a duelist's `tower_only`, or `unlock` `tower`; a menu item's action `tower` ([Tower mode](tower-mode.md)) |
 | 15 | the release after v0.3.0 | `card_types`: renamed retail types, new monster types and their per-type icons |
 | 16 | the release after v0.3.0 | mod-defined card attributes (`attributes`) |
-| 17 | the release after v0.3.0 | `native_models`: a monster's battle model replaced by a modern skinned model ([Native models](native-models.md)) |
+| 17 | the release after v0.3.0 | a duelist's `bust` or `replace_bust`; a tower story's `"expression"` by name ([More duelists](more-duelists.md#bust--the-large-character)) |
+| 18 | the release after v0.3.0 | the card frames' keys ([Frame styles](#frame-styles-and-the-rules-that-pick-them)): a card's `frame_style`; `card_layout`'s `default_styles`, `atk_label`, `dfd_label` and `type_label`; in a `frame_styles` entry `hand`, `hand_image`, `field_image`, `field_back_image`, `back_image`, `library_icon`, `full_bleed`, `atk_label`, `dfd_label`, `type_label`, `digits`, or a part of its own (`title`, `stars`, `attribute`, `spell`, `art`, `atk`, `def`); a `hide`, `hidden`, `show` or `color` on a card part; `digits`' own `atk` and `def` |
+| 19 | the release after v0.3.0 | `native_models`: a monster's battle model replaced by a modern skinned model ([Native models](native-models.md)) |
 
 The FM Editor writes `min_api` on save as the lowest one of these that has
 everything the mod uses, never lowering one written higher, and its Mod
@@ -455,6 +457,30 @@ squeezed to fit rather than cropped. With the OpenGL renderer an image
 wider or taller than the driver's largest texture (`GL_MAX_TEXTURE_SIZE`,
 16384 or 32768 on most) is averaged down to that size, with a line on the
 console, rather than drawn black.
+
+A pack's PNG is read when the game first uploads the words it covers, or
+first draws them through its palette, and is given to them before the next
+frame, as it always was. The reading itself happens on three threads, side
+by side, and the main thread waits only for what that frame asked for; when
+an image is given to the first entry of some words (the head), the other
+entries of the same words (their other palettes) are read ahead, before the
+game draws them, since a screen typically draws its sheets through those
+palettes later, all at once. Entries naming the same PNG with the same
+size and crop share one read. A read ahead is not used until the game asks
+for it, so nothing drawn changes, only when the frame has to wait. What is
+read ahead and not yet used is kept up to 192 MB (96 MB on Android, 48 MB in
+a 32-bit build); `MEMORIES_PACK_READ_AHEAD=<megabytes>` sets that, 0 reads
+nothing ahead.
+Every image the game has used stays in memory while the pack is applied:
+4 MB for a 1024x1024 PNG. With the Forbidden Memories HD pack at Internal 4x
+(the mod-3d-monsters replay, Windows), entering the Build Deck held one frame
+213 ms and a duel's first frame 120 ms when the PNGs were read one after
+another on the main thread (413-523 ms on a Snapdragon 888 phone); read
+this way the longest wait is 22 ms, for the Build Deck's own sheets, which
+come up the frame they are wanted, and every wait of the replay adds up
+to 124 ms instead of 609. A sheet drawn through many palettes is the
+costly case: each palette is its own PNG of the whole sheet, decoded and
+kept whole.
 
 In the scaled picture (Internal 2x and up) a pixel's alpha is how much it
 covers: below 8 it is transparent, and anything less than opaque is mixed
@@ -958,14 +984,9 @@ some of them out, with a `"card_layout"` object, no code needed:
         "pink":   {"image": "anime_frame_trap.png",    "hand_color": "pink"},
         "orange": {"image": "anime_frame_orange.png",  "hand_color": "orange"}
     },
-    "frame_for": [
-        {"class": "ritual_spell",   "style": "green"},
-        {"class": "effect_monster", "style": "orange"},
-        {"class": "spell",          "style": "green"},
-        {"class": "equip",          "style": "green"},
-        {"class": "trap",           "style": "pink"},
-        {"class": "monster",        "style": "gold"}
-    ],
+    "default_styles": {
+        "kinds": {"monster": "gold", "magic": "green", "equip": "green", "ritual": "green", "trap": "pink"}
+    },
     "default_style": "gold",
     "art": {"x": 3, "y": 3, "width": 134, "height": 139},
     "attribute": {"x": 114, "y": 149},
@@ -1076,6 +1097,12 @@ half-finished look. The description box is always shown -- its own
 backdrop panel is on screen either way, so there is nothing to gain by
 leaving its text out.
 
+For `art` specifically, once an `art` object is present, its omitted fields
+use retail's art rectangle (`x: 19`, `y: 50`, `width: 102`, `height: 96`).
+This makes a position-only override such as `"art": {"y": 84}` valid: it
+keeps the retail size and X position while moving the picture down. Leave
+the whole `art` object out to keep the unmodified retail art draw path.
+
 ### Frame styles and the rules that pick them
 
 A card is drawn in a frame **style**: a picture and the color its small card
@@ -1083,7 +1110,7 @@ wears in the hand, together, so the card view and the hand can never
 disagree. Three keys say it:
 
 - `frame_styles`: name -> `{"image", "hand_image", "field_image", "field_back_image", "back_image",
-  "library_icon", "hand_color", "width", "height", "full_bleed"}`.
+  "library_icon", "hand_color", "hand", "width", "height", "full_bleed"}`.
   `image` is relative to the mod's directory, as a `title` mod's pictures
   are, drawn as one textured quad behind everything else, at `width`/`height`
   (140x196 with neither given). A frame may be smaller, but its dimensions
@@ -1099,30 +1126,58 @@ disagree. Three keys say it:
   is that color wears.
   `hand_image`, when present, is a PNG reduced to the 52x60 sprite for that
   style's flat duel-hand and flat field-card frame. Its artwork is drawn under the game's own card
-  art, stats and markers. It is also the 3D field card's frame unless the
-  style gives `field_image` (the same 52x60 size); with neither, the 3D field
-  card uses `hand_color`.
-  `field_back_image` (52x60) is the face-down card's back in the hand and on
-  the field; `back_image` is the back the card viewer shows while a card
-  turns, stretched to the style's `width`/`height` (254 at most each). Without
-  them the retail card back is drawn.
+  art, stats and markers. `field_image` independently replaces the face-up
+  3D field-card frame (the same 52x60 size); without it, that card keeps its
+  retail image. `field_back_image` (52x60) replaces the face-down back in the
+  hand and on the field. A hand card that is raised, flipped or played turns
+  and scales with the game's own projection, and so do these two pictures
+  and the `hand` overlays below. `back_image` is the card back the card
+  viewer shows: the side the card opens on, until it has turned to its
+  front (only the back -- the front stays the style's `image`, or retail's
+  plate without one or with `full_bleed` off). The picture is reduced to
+  the style's `width`/`height` (the frame box above, so 140x196 at most),
+  and the viewer keeps retail's own 144x200 card back on screen -- its
+  size, slide and turn -- with each part of it showing the same part of the
+  picture.
+  Without those images, the corresponding retail card back is drawn.
+  Its optional `hand` object independently places the overlays on that same
+  52x60 card: `art`, `atk`, `def`, `atk_label` and `dfd_label`. Each accepts
+  `x`, `y`, `width`, `height` and `hide` just like the larger card-viewer
+  elements. Coordinates are kept within -128 to 128 and dimensions within
+  1 to 128, so malformed JSON cannot wrap the duel renderer's geometry.
+  Five-digit values draw five cells across; keep `x + 5 * width` inside the
+  52-pixel card when the row must not extend past its edge. `atk_label` and `dfd_label` are the hand's sword and shield
+  markers, not the literal `ATK`/`DFD` text used by the big card. Leave the
+  whole object out to keep the retail hand draw path exactly as it is.
+
+  ```json
+  "hand": {
+    "art":       {"x": 6,  "y": 6,  "width": 40, "height": 32},
+    "atk_label": {"x": 5,  "y": 40, "width": 8,  "height": 8},
+    "atk":       {"x": 14, "y": 40, "width": 8,  "height": 8},
+    "dfd_label": {"x": 5,  "y": 48, "width": 8,  "height": 8},
+    "def":       {"x": 14, "y": 48, "width": 8,  "height": 8}
+  }
+  ```
   `library_icon` is a PNG reduced to the Library grid's 12x14
   cell; without it, the grid uses the style's `hand_color` palette row.
   `full_bleed` defaults on for a style with an `image`; set it to `false`
   for a palette-only fallback style, so cards that do not select a custom
   image keep the retail full-card frame.
-- A card entry's `"frame_style"` may name any style directly. It wins over
-  its six-color `"frame"`, then the rules below; this lets a cards mod opt
-  into a new frame without using a tag as an implementation detail. `null`
-  clears an inherited named style.
+- A card entry's `"frame_style"` may name any style directly. It is the
+  strongest choice; the full order is explicit card style, printed type,
+  kind, a style named for the card's six-color `"frame"`, the first
+  `frame_for` rule that applies, `default_style`, then retail. This lets a
+  cards mod opt into a new frame without using a tag as an implementation
+  detail. `null` clears an inherited named style.
 - `frame_for`: a list of rules, the first that applies to a card wins. A rule
   says `"style"` and, to limit it, any of `"class"` (what the card is, below),
   `"tag"` (one of the card's [`tags`](more-cards.md#tags)) and `"setting"` (a
   `bool` the mod declares: the rule counts only while it is on, which is how a
   player gets a sub-option in the Mods window). A rule that names none applies
-  to every card.
-- `default_styles`: defaults for cards that have no explicit `frame_style`,
-  no matching color-named style and no `frame_for` rule. Its optional
+  to every card. Released layouts (Forbidden Memories HD) use these rules;
+  `default_styles` below wins over them.
+- `default_styles`: defaults for cards that have no explicit card style. Its optional
   `kinds` object assigns a style to `monster`, `effect_monster`, `magic`
   (also accepted as `spell`), `equip`, `ritual` (also `ritual_spell`) or
   `trap`. `monster` includes ordinary and effect monsters unless the latter
@@ -1139,8 +1194,8 @@ disagree. Three keys say it:
   }
   ```
 
-- `default_style`: the style of a card no rule picks (`gold` if left out).
-  It is the final fallback after `default_styles`.
+- `default_style`: the style of a card no more-specific assignment picks. It
+  is the final mod fallback after `default_styles`; omit it to keep retail.
 
 The class of a card is worked out by the engine from its type and its
 `monster_effects`, never written by a mod: `monster`, `effect_monster`,
@@ -1151,15 +1206,12 @@ and DEF.
 
 Forbidden Memories HD follows the anime: a ritual spell is **green**, in the card
 view and in the hand. Give the build a ritual picture (`--anime-frame-ritual`)
-and it adds the style `blue` and the sub-option "Ritual spells: own frame" (off).
-To keep ritual spells blue by default, put that rule's `"setting"` on and
-declare its `default` as `1`, or delete the rule above it. A mod that adds
-god monsters tags them (`"tags": ["god"]`) and adds a style and a rule for the
-tag, before the class rules:
+and assign its `blue` style through `default_styles.kinds.ritual`. A mod that
+adds god monsters can assign its named style directly in that card's entry:
 
 ```json
 "frame_styles": { "god": {"image": "god_frame.png", "hand_color": "purple"} },
-"frame_for": [ {"tag": "god", "style": "god"} ]
+"cards": [ {"replace": 1, "frame_style": "god"} ]
 ```
 
 An older layout with a `frame` per kind (`monster`, `magic`, `trap`, `ritual`,
@@ -1235,8 +1287,27 @@ retail's own constants, byte for byte. The frame texture is decoded once
 into a VRAM bank by `src/pc/cards/card_layout_art.c`, the same shape
 `src/pc/cards/star_icons.c` and `src/pc/text/glyphs.c` use for theirs,
 re-decoding whenever `CardLayout_FramePath` answers a different file --
-which a kind change already does, nothing further to invalidate. The
-manifest key itself is checked by `tests/pc/card_layout_test.c`.
+which a kind change already does.
+
+**What a reload refreshes.** The pictures are kept by path, and a path says
+nothing of the file behind it. Turning a mod off and on again in the Mods
+window (Apply each time: an Apply that changes nothing is not a reload)
+drops everything `card_layout_art.c` kept of them -- the decoded frames, the
+hand/field/back/Library/caption sprites, the digit strip and the texture
+pack's decoded PNGs it kept unused, spares of earlier styles included
+(`TexturePack_BankImagesForgetSpare`) -- and the next draw reads the files
+again (`CardLayoutArt_Clear`, which every cell function runs by itself when
+`Mods_Changes` has moved). Turning *any* mod on or off counts, not only a
+`card_layout` one, and resets these caches once; the next hand or duel after
+it decodes the styles on screen again, a one-time hitch. So editing `frames/*.png` in place and switching
+the mod off and on shows the new pictures with no restart; editing them
+while the mod stays on shows them at the next launch or reload, and with no
+`card_layout` mod nothing is ever dropped. The card viewer's `back_image`
+keeps one HD sprite at a time, so going from a style with a small back to one
+with a larger back and returning shows each style's own picture over its
+whole box. The manifest key itself is checked by
+`tests/pc/card_layout_test.c`; the pictures' lifetime by
+`tests/pc/card_layout_art_test.c`.
 
 ## The duel's pictures
 
@@ -1884,7 +1955,8 @@ by `build_mod.py`:
 |---|---|---|
 | `i386` | `<library>.o` | the 32-bit Linux and Windows games |
 | `x86_64-windows` | `<library>.x86_64-windows.o` | the 64-bit Windows game (`-windows-x64.zip`) |
-| `aarch64` | `<library>.aarch64.o` | the arm64 Android game |
+| `aarch64-translated` | `<library>.aarch64-translated.o` | the Android app (the translated arm64 game; see [Android code mods](#android-code-mods-aarch64-translated)) |
+| `aarch64` | `<library>.aarch64.o` | the fixed-memory arm64 Android game (v0.3.0 and before; now only `build_game32.py --android-memory fixed`); built only with `--target aarch64` |
 | `macos` | `<library>.dylib` | the macOS ARM64 game; built only with `--target macos` (see [Native macOS ARM64 code mods](#native-macos-arm64-code-mods)) |
 
 The `i386` object runs on both 32-bit games: both are 32-bit x86 code with
@@ -1894,11 +1966,14 @@ reads the file with its own loader
 the system's, so the container is the same too. The 64-bit Windows game
 reads its x86-64 object with the same loader (ELF64, the Windows x64
 calling convention); one that has only the 32-bit object stays off there
-with "needs a 64-bit build of this mod" in the Mods window; the arm64
-Android game reads its AArch64 object the same way, and one without it
-stays off with "needs an Android build of this mod". Both notes end with
-how to make the missing object: rebuild the mod with `build_mod.py` using
-clang ([Building one](#building-one)). A mod ships
+with "needs a 64-bit build of this mod" in the Mods window; the Android app
+reads its `aarch64-translated` object the same way, and one without it
+stays off with "needs an Android build of this mod" (or, when the mod has
+only the old `.aarch64.o` of the fixed-memory game, "was built for the
+fixed-memory Android game: rebuild this mod"). The notes end with how to
+make the missing object: rebuild the mod with `build_mod.py`
+([Building one](#building-one)), or with nothing installed, the SDK's
+`build-mod.bat` ([One click](#one-click-build-a-mod-with-nothing-installed)). A mod ships
 whichever objects it has beside its `mod.json`; `"library": "card-tweaks"`
 (or `"card-tweaks.o"`) names all of them, and `"libraries": {"x86_64-windows":
 "other.o"}` names one target's file outright. Mod authors supporting every
@@ -1935,7 +2010,7 @@ the player's settings file as `mod.<id>.<key>`, and read from
 `MEMORIES_MOD_<ID>_<KEY>` first when that is set; a key is letters, digits,
 `_` and `-`, and `order` is the manager's), `disc_file_start`/
 `disc_read`, `pad`, and from mod API 2 `now_us` (a clock) and `map_fixed`
-(memory at an address the mod chooses, as 3D Monsters' model arenas need). API 4 adds `hook`/`unhook`/`symbol`, below; API 5 adds `duelist_id`, which resolves an added duelist's identity to the id it has this run as `card_id` does for a card. API 7 adds `card_notes` and `card_tag`, a card's [notes](more-cards.md#notes-on-a-card) and the `<tag: value>` tags in them. API 8 adds `limit`, the numbers the game caps and its other values as the mods' `limits` set them ([Gameplay tables](gameplay-tables.md#values-atk-def-lp-starchips-and-more)): `host->limit(host, "attack")` is 9999 without such a mod, `host->limit(host, "deck_copies")` 3. API 9 adds `menu_item`, the name of an item of the title's menus, and the event `MEMORIES_EVENT_MENU` ([The title's menus](#the-titles-menus)). API 10 adds the event `MEMORIES_EVENT_MONSTER`: a monster summoned, flipped, at its owner's draw, in a battle, destroyed or destroying the monster it battled, for every monster, with `handled` to skip a card's own `monster_effects` ([Monster effects](more-cards.md#monster-effects)). API 11 adds no entry or event; it marks the mod.json features a game of API 10 leaves out ([Which game a mod needs](#which-game-a-mod-needs)). API 12 adds `sound_add`, `sound_play` and `sound_free`, sounds of the mod's own: `sound_add` copies signed 16-bit PCM at any rate and channel count and returns a handle, and `sound_play(host, sound, volume, pan)` plays it once on the channels the audio replacement mixes the game's replaced sound effects on ([Audio](#audio-songs-voices-and-sounds-from-files)), under the player's sound-effect volume, restarting it if it is still playing, as a game sound effect takes its own voice again. Both work only while the mod is applied, not from `MemoriesModInit`: the host frees a mod's sounds when it is turned off, so a mod adds them when it needs them, or in `applied(1)`. 3D Monsters plays its fighters' arena sounds this way (`fight_sounds.c`). API 14 adds no entry or event either; it marks the [tower](tower-mode.md)'s mod.json features.
+(memory at an address the mod chooses, as 3D Monsters' model arenas need). API 4 adds `hook`/`unhook`/`symbol`, below; API 5 adds `duelist_id`, which resolves an added duelist's identity to the id it has this run as `card_id` does for a card. API 7 adds `card_notes` and `card_tag`, a card's [notes](more-cards.md#notes-on-a-card) and the `<tag: value>` tags in them. API 8 adds `limit`, the numbers the game caps and its other values as the mods' `limits` set them ([Gameplay tables](gameplay-tables.md#values-atk-def-lp-starchips-and-more)): `host->limit(host, "attack")` is 9999 without such a mod, `host->limit(host, "deck_copies")` 3. API 9 adds `menu_item`, the name of an item of the title's menus, and the event `MEMORIES_EVENT_MENU` ([The title's menus](#the-titles-menus)). API 10 adds the event `MEMORIES_EVENT_MONSTER`: a monster summoned, flipped, at its owner's draw, in a battle, destroyed or destroying the monster it battled, for every monster, with `handled` to skip a card's own `monster_effects` ([Monster effects](more-cards.md#monster-effects)). API 11 adds no entry or event; it marks the mod.json features a game of API 10 leaves out ([Which game a mod needs](#which-game-a-mod-needs)). API 12 adds `sound_add`, `sound_play` and `sound_free`, sounds of the mod's own: `sound_add` copies signed 16-bit PCM at any rate and channel count and returns a handle, and `sound_play(host, sound, volume, pan)` plays it once on the channels the audio replacement mixes the game's replaced sound effects on ([Audio](#audio-songs-voices-and-sounds-from-files)), under the player's sound-effect volume, restarting it if it is still playing, as a game sound effect takes its own voice again. Both work only while the mod is applied, not from `MemoriesModInit`: the host frees a mod's sounds when it is turned off, so a mod adds them when it needs them, or in `applied(1)`. 3D Monsters plays its fighters' arena sounds this way (`fight_sounds.c`). API 14 adds no entry or event either; it marks the [tower](tower-mode.md)'s mod.json features, API 17 a duelist's [bust](more-duelists.md#bust--the-large-character), and API 18 the [card frames](#frame-styles-and-the-rules-that-pick-them)'s keys.
 A mod that uses an entry newer than API 1 should refuse to start when
 `host->api` is older.
 
@@ -2023,11 +2098,109 @@ same with no mod hooking anything (the smoke screenshots are unchanged).
   `srand`, which give the same numbers on Linux and Windows and leave the
   game's own random numbers (and so its duels) alone.
 
+### One click: build a mod with nothing installed
+
+No Python and no compiler? The release's `sdk` folder has a script that
+fetches what it needs once and builds every object your mod needs, the
+Android one included.
+
+**Windows.** 64-bit Windows 10 version 1803 (April 2018) or newer, or 11.
+Unpack the release and open its `sdk` folder. Drag your mod's
+folder (the one with `mod.json` and the `.c` files) onto `build-mod.bat`.
+Or double-click `build-mod.bat`, drag the folder into the window when it
+asks, and press Enter. When it ends, its last lines say which objects
+(`<library>.o`, `<library>.x86_64-windows.o`,
+`<library>.aarch64-translated.o`) were built, next to your mod's files and
+ready to play or to send, and which were not, and why. The window waits for a
+key when it was opened by a double-click. A release downloaded with a browser
+carries its mark of coming from the internet, and Windows SmartScreen may ask
+once when you start `build-mod.bat` ("More info", then "Run anyway"); the
+zip's *Properties*, *Unblock* before unpacking avoids the question. Windows 11
+for ARM runs the x64 downloads through its own emulation (not tested). If the
+folder you unpacked into has accents or another alphabet in its path, or a very
+long one, move it to something like `C:\yfm-sdk`: `tar` cannot unpack there.
+
+**Linux.** `sdk/build-mod.sh my-mod`. It needs `python3` (3.8 or newer),
+`curl` or `wget`, and `tar` with `xz`, on x86-64 with glibc 2.34 or newer and
+the libstdc++ of GCC 11 or newer (Ubuntu 22.04, Debian 12, Fedora 35 or
+newer): llvm-mingw's Linux build is made on Ubuntu 22.04 and its `clang`
+asks for exactly that (read from the version names in the program, not run
+on older systems). On Debian 11 or Ubuntu 20.04 the script says that `clang`
+does not start; use a clang 23 of your own through `MEMORIES_SDK_TOOLCHAIN`.
+
+**The first run downloads, once.** The files go into `sdk/toolchain/` beside
+the script, and nothing is installed or changed anywhere else on the
+computer (no registry, no PATH). Delete the folder to remove them; the next
+run fetches them again. After the first run it works offline.
+
+| What | Size | From | Windows | Linux |
+|---|---|---|---|---|
+| llvm-mingw 20260922 (clang, `ld.lld`, `llvm-objcopy`: the toolchain the game is built with) | 191 MB Windows (750 MB unpacked), 84 MB Linux (630 MB unpacked) | github.com/mstorsjo/llvm-mingw | yes | yes |
+| Python 3.14.8, the embeddable package | 13 MB | python.org | yes | no (your `python3`) |
+
+Each download is checked against a SHA-256 written in the script itself
+(and in `sdk/toolchain-pins.json`, which says the same) before it is unpacked,
+and unpacked with the programs Windows and Linux come with (`curl`, `tar` and
+`certutil` on Windows; `curl`, `tar` and `sha256sum` on Linux). The scripts
+are plain text. They run no PowerShell, decode nothing and download one file
+for each tool; the antivirus program that dislikes an unsigned `clang.exe`
+or `python.exe` after the download is the one to tell that you trust it
+(both are the projects' own releases, and the hash proves it).
+
+**If the hash is wrong** the script says `the SHA-256 of the download is
+wrong`, prints both hashes and the address, deletes the file and unpacks
+nothing. Run it again: a download cut short or changed on the way shows up
+like this. If it repeats, do not use the file; download it from the address
+in a browser and put it in `sdk/toolchain/downloads/` (the next run checks it
+and uses it), or use your own tools (below), and tell us. Offline, the same
+folder is where a file copied from another computer goes. Some company
+proxies and firewalls inspect HTTPS and either change the file (the hash
+catches that) or make `curl` stop at its certificate or revocation checks
+before a byte arrives: the script only accepts `https` addresses and does
+not switch those checks off, so the answer there is the browser download, or
+asking whoever runs the network.
+
+**Your own tools** (nothing is downloaded for what you name):
+
+| Variable | Meaning |
+|---|---|
+| `MEMORIES_SDK_PYTHON` | the Python to run `build_mod.py` with (any 3.8 or newer) |
+| `MEMORIES_SDK_TOOLCHAIN` | a folder with `clang`, `ld.lld` and `llvm-objcopy` in it, or in its `bin` (a llvm-mingw you unpacked yourself) |
+| `MEMORIES_SDK_NOPAUSE` | `1`: do not wait for a key at the end (a script that starts the `.bat`, or a terminal that runs it through `cmd /c`, would wait too) |
+
+A clang from your Linux distribution (`sudo apt install clang lld llvm`)
+builds the `i386` and `x86_64-windows` objects but not the Android one:
+the SDK's guest pass is built against LLVM 23 and the clang that writes the
+IR must be of the same LLVM major ([Android code
+mods](#android-code-mods-aarch64-translated)). The script's own download is
+llvm-mingw's clang 23, which does it.
+
+Anything after the folder goes to `build_mod.py`
+(`build-mod.bat my-mod --target i386`; `--out` keeps the objects elsewhere),
+and `build-mod.bat --setup` only fetches the tools, then stops. Running
+`build_mod.py` yourself, as below, is the same build.
+
+*For the SDK's maintainers.* The pins are in `tools/pc/sdk/toolchain-pins.json`
+and written again in the two scripts (a batch file cannot read JSON);
+`test_sdk_launchers.py` keeps them the same and `test_build_mod_toolchain.py`
+keeps them the toolchain the game is built with (`fetch_tools.py`,
+`build_win32_deps.py`). The Windows Python is the embeddable package, which
+starts in isolated mode (`python3xx._pth`): the script's folder is not on
+`sys.path`, so `build_mod.py` puts its own folder there before it imports
+its siblings, and the launcher leaves the `._pth` as it came. `package.py`
+ships the three files in every desktop SDK (`test_package.py` requires
+them), and the release workflow's `sdk-one-click` job runs each launcher on
+the packed SDK on a clean runner with only the operating system on PATH
+(`tools/pc/check_one_click.py` checks what came out); `build-mod.bat` also
+goes to VirusTotal with the shipped programs
+([pc-release.md](pc-release.md#virustotal)).
+
 ### Building one
 
 ```sh
-python3 tools/pc/build_mod.py my-mod            # my-mod/<library>.o, .x86_64-windows.o, .aarch64.o
+python3 tools/pc/build_mod.py my-mod            # my-mod/<library>.o, .x86_64-windows.o, .aarch64-translated.o
 python3 tools/pc/build_mod.py my-mod --target i386   # one target only
+python3 tools/pc/build_mod.py my-mod --target aarch64-translated   # the Android app's only
 ```
 
 `build_mod.py` compiles every `.c` in the directory and merges them into one
@@ -2041,13 +2214,16 @@ What it needs:
 
 | Targets | Tools |
 |---|---|
-| all three | clang, with `ld.lld` beside it or on PATH, and `llvm-objcopy` (beside clang, beside the file a `clang` link points to, or on PATH) |
+| `i386`, `x86_64-windows` | clang, with `ld.lld` beside it or on PATH, and `llvm-objcopy` (beside clang, beside the file a `clang` link points to, or on PATH) |
+| `aarch64-translated` | the same, with a clang **of the same LLVM as the guest pass**, `memories-guest-ir`, which a release's SDK carries (built for llvm-mingw's clang 23: [Android code mods](#android-code-mods-aarch64-translated)); left out with what is missing when not named |
 | `i386` only | the above, or on Linux gcc with 32-bit support |
 
-The simplest way to have all three is the toolchain the game itself is built
-with, [llvm-mingw 20260922](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922):
+The simplest way to have the i386 and x86_64-windows objects is the
+toolchain the game itself is built with, [llvm-mingw 20260922](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922):
 on Windows `llvm-mingw-20260922-ucrt-x86_64.zip` (its clang builds the Linux
-and Android object formats too), on Linux x86-64
+object format too; it is clang 23, which the guest pass in the SDK is built
+for, so it also builds the Android object: [Android code
+mods](#android-code-mods-aarch64-translated)), on Linux x86-64
 `llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz`. Unpack it and put its
 `bin` folder on PATH, or set `MEMORIES_MOD_CC` to its `clang`. On Linux the
 distribution's packages do as well: `clang`, `lld` and `llvm` (which has
@@ -2332,6 +2508,90 @@ Existing x86 objects do not run on ARM64; other source mods still need
 compilation and individual validation. The optional `test_arm64_life_points.py` runner checks separate
 player/opponent LP, campaign/free-duel scope, both sound timings, sound
 disabled and fresh-process save-state replay against a supplied source mod.
+
+## Android code mods (aarch64-translated)
+
+The Android app's game is the translated one (since 2026-10, [pc-build.md,
+"Android arm64"](pc-build.md#android-arm64)): guest memory has no fixed host
+address, so a mod's code goes through the same guest pass as the game's
+own, as on macOS, and comes out as an ELF object the game's own loader
+reads (`<library>.aarch64-translated.o`; an Android app cannot load a
+library from the mods folder). `build_mod.py` builds it by default with
+the other two objects, or alone:
+
+```sh
+python3 tools/pc/build_mod.py my-mod --target aarch64-translated
+```
+
+Each `.c` goes to LLVM IR at `-O0` with the translated game's flags
+(`--target=aarch64-linux-android24`, `MEMORIES_TRANSLATED`, `-fwrapv`,
+`-ffp-contract=off`, freestanding, the SDK's C library), its names are
+renamed as the game's are (the game's aliases, `rand`/`srand` to the mods'
+own generator, the C library calls that take pointers to the runtime's
+wrappers), the game functions it calls are checked against the game's
+`mod_signatures.json`, and the guest pass translates it with the game's
+pinned data (`mod_translation.json`) and a registration routine for the
+mod's globals. The units are compiled at `-O2 -fPIC` and merged with
+`MemoriesModRegisterGlobals` and `MemoriesModUnregisterGlobals`, which the
+loader calls before `MemoriesModInit` and when it frees the mod. The C
+library lends the pointer-free math directly; everything else comes from
+the game's export table.
+
+What it needs, besides `ld.lld` and `llvm-objcopy`:
+
+* **A clang of the same LLVM as the guest pass.** The clang writes the IR the
+  pass reads and compiles the IR the pass writes back, and LLVM reads the IR
+  of its own version or an older one, never a newer: the pass cannot read a
+  newer clang's IR, and an older clang cannot be counted on to read the
+  pass's. Only the same LLVM does both. A release's SDK carries a pass built
+  against LLVM 23, the LLVM of its toolchain's clang (llvm-mingw 20260922):
+  that clang, and no other, goes with it (the Android NDK r29's clang 21 does
+  not, nor does a distribution's 18). A pass built from a source checkout is
+  built against the game's own LLVM 21.1.8 and wants a clang 21: the NDK's
+  (`build_mod.py` takes it when `ANDROID_NDK_ROOT` or `ANDROID_NDK_HOME` names
+  one), not llvm-mingw's 23. `MEMORIES_MOD_CC` names the compiler outright.
+  `memories-guest-ir --llvm-major` prints which LLVM a pass is built against.
+  At your own risk, `MEMORIES_MOD_ALLOW_OTHER_CLANG=1` also takes an older
+  clang (never a newer), with a warning, for a modder who knows their clang
+  reads what the pass writes; the pass's own LLVM is still preferred. Apple's
+  clang numbers its versions its own way, so `build_mod.py` cannot compare
+  it: it tries it, and if the IR does not parse it says so and points to
+  Homebrew's LLVM clang.
+* **The guest pass**, `memories-guest-ir`. Every release's SDK carries it in
+  its `tools` folder (`memories-guest-ir.exe` in the Windows SDK), where
+  `build_mod.py` looks: a Windows modder needs the SDK and its llvm-mingw
+  (the toolchain above) and nothing to build. The game itself is still
+  translated with LLVM 21; the game and a mod meet through the game's
+  tables (below), not through a compiler version. In a source checkout it
+  is built with `python tools/pc/llvm_guest.py`, which prints the file's
+  path (it fetches the official LLVM 21.1.8 release on Linux and macOS; on
+  Windows `MEMORIES_GUEST_LLVM` names an LLVM 21.1.8 build and
+  `MEMORIES_GUEST_CXX` its C++ compiler); `MEMORIES_GUEST_IR` names any
+  pass. In a checkout, `--target aarch64-translated` builds it when LLVM 21
+  is already there; no mod build downloads anything.
+* **The game's tables**: `mod_translation.json` and `mod_signatures.json`
+  with the export list, from the Android game build
+  (`tmp/pc/android-arm64-v8a`, or `--game`) or the SDK, which carries them
+  in every release.
+
+Without one of them, a build that does not name the target leaves the
+Android object out and says which is missing; one that names it stops
+there. A mod made for the fixed-memory Android game (`.aarch64.o`) is
+refused by the app with "was built for the fixed-memory Android game:
+rebuild this mod", also when renamed: the object's `.memories.abi` tag
+names its target.
+
+A mod that stores the address of one of its own functions in a 4-byte
+game slot (a callback table, a field of a game record) is not refused at
+load: the game stops when the store runs, with "unregistered native pointer
+cannot fit guest storage", as on macOS. Its functions are host code above
+4 GB, and only the game's own have guest addresses. Replace or wrap a game
+function through the hooks API instead ([Replacing or wrapping a game
+function](#replacing-or-wrapping-a-game-function-api-4)), and keep the
+mod's own callbacks in the mod's own (8-byte) pointers. The rules of [Native macOS ARM64 code
+mods](#native-macos-arm64-code-mods) hold here too: the game's annotated
+headers for guest records, no constructors, TLS or assembly. The loader
+puts the object above 4 GB, where no host address passes for a guest one.
 
 ## Palette ramps
 

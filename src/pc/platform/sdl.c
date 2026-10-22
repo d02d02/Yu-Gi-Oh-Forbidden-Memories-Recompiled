@@ -62,6 +62,7 @@
 #endif
 #include <SDL3/SDL_opengl.h>
 #include "pc/render/gl_picture.h"
+#include "pc/render/texture_pack.h"
 #include "pc/compat/signal.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -157,6 +158,11 @@ static long test_copy_fail_at = -2;
 static int menu_dirty;
 static void save_window_image(void);
 static int window_shot_pending;
+/* The picture the last present showed from the OpenGL pass's textures
+ * (valid), which F12 reads back when asked, and not per frame: what area of
+ * the picture, or of which widescreen target's texture (0: the picture's).
+ * Cleared when a frame is shown from picture_pixels instead. */
+static struct { int valid; unsigned texture; int x, y, w, h; } pass_shown;
 
 /* Window pixels per density-independent pixel where the screen is touched
  * (Android: the display's densityDpi / 160, as the system has it now; SDL's
@@ -574,6 +580,51 @@ static uint64_t real_now_us(void)
     return (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
 }
 
+/* MEMORIES_TRACE=frames (Debug > Trace > Frames; logcat on Android): where
+ * a shown frame's present goes, over 120 of them, beside libetc.c's game
+ * and present and gl_picture.c's replay: the events and the menu (pump),
+ * the picture into the window's texture (the OpenGL picture's copy, or the
+ * software picture's upload), and the swap, which waits while the GPU is
+ * behind, or for the display with vsync on. Untimed while the channel is
+ * off. */
+enum { PHASE_EVENTS, PHASE_COPY, PHASE_SWAP, PHASES };
+static struct { uint64_t total[PHASES]; unsigned max[PHASES], frames; } phases;
+
+static uint64_t phase_start(void) { return Log_Enabled(LOG_FRAMES) ? real_now_us() : 0; }
+
+static void phase_end(int phase, uint64_t started)
+{
+    unsigned us;
+    if (!started) return;
+    us = (unsigned)(real_now_us() - started);
+    phases.total[phase] += us;
+    if (us > phases.max[phase]) phases.max[phase] = us;
+}
+
+static void phases_shown(void)
+{
+    static int counting; /* the channel was on at the last frame */
+    unsigned images, image_us, image_max;
+    if (!Log_Enabled(LOG_FRAMES)) {
+        counting = 0;
+        return;
+    }
+    if (!counting) { /* turned on just now: count from here, not from the launch */
+        counting = 1;
+        memset(&phases, 0, sizeof(phases));
+        TexturePack_ReadStats(&images, &image_us, &image_max);
+        return;
+    }
+    if (++phases.frames < 120) return;
+    TexturePack_ReadStats(&images, &image_us, &image_max);
+    LOG(LOG_FRAMES, "present phases per shown frame: events %u us, copy %u us, swap %u us (max %u, %u, %u); "
+        "texture pack: %u images read in %u us (longest %u us)",
+        (unsigned)(phases.total[PHASE_EVENTS] / 120), (unsigned)(phases.total[PHASE_COPY] / 120),
+        (unsigned)(phases.total[PHASE_SWAP] / 120), phases.max[PHASE_EVENTS], phases.max[PHASE_COPY],
+        phases.max[PHASE_SWAP], images, image_us, image_max);
+    memset(&phases, 0, sizeof(phases));
+}
+
 /* XWayland reports no refresh rate for the current or desktop mode, but its
  * fullscreen mode list has them: take the fastest at the desktop's size.
  * Unknown (0) makes the "display refresh" cap show every game frame and
@@ -725,6 +776,27 @@ static void save_window_image(void)
 
 int HERE(Platform_CopyText)(const char *text) { return SDL_SetClipboardText(text); }
 
+/* F12 when the last present showed the OpenGL pass's picture: it lives in
+ * GPU textures, and picture_pixels holds nothing of it. */
+static void save_pass_picture(void)
+{
+    SDL_Surface *surface;
+    char path[1024];
+    uint32_t *pixels = malloc((size_t)pass_shown.w * (size_t)pass_shown.h * 4);
+    int read;
+    if (!pixels) return;
+    es_enter();
+    read = GlPicture_ReadShown(pass_shown.texture, pass_shown.x, pass_shown.y, pass_shown.w, pass_shown.h, pixels);
+    es_leave();
+    if (!read) {
+        fprintf(stderr, "memories-pc: screenshot: the OpenGL picture shown is gone\n");
+    } else if (screenshot_path(path, sizeof(path), "bmp")) {
+        surface = SDL_CreateSurfaceFrom(pass_shown.w, pass_shown.h, SDL_PIXELFORMAT_XRGB8888, pixels, pass_shown.w * 4);
+        save_surface(surface, path); /* the surface does not own the pixels */
+    }
+    free(pixels);
+}
+
 void Platform_Screenshot(int window_image)
 {
     SDL_Surface *surface;
@@ -734,6 +806,10 @@ void Platform_Screenshot(int window_image)
         /* Taken by the next show(), before its swap or present: after a
          * present the renderer's back buffer holds nothing defined. */
         window_shot_pending = 1;
+        return;
+    }
+    if (pass_shown.valid) {
+        save_pass_picture();
         return;
     }
     if (!screenshot_path(path, sizeof(path), "bmp")) return;
@@ -1428,9 +1504,13 @@ static int es_copy_shown(void)
         es_shown_h = h;
     }
     to = (GLuint)SDL_GetNumberProperty(SDL_GetTextureProperties(es_shown), SDL_PROP_TEXTURE_OPENGLES2_TEXTURE_NUMBER, 0);
-    es_enter();
-    ok = GlPicture_CopyInto(from, gl_pass_rect[0], gl_pass_rect[1], w, h, to);
-    es_leave();
+    {
+        uint64_t started = phase_start();
+        es_enter();
+        ok = GlPicture_CopyInto(from, gl_pass_rect[0], gl_pass_rect[1], w, h, to);
+        es_leave();
+        phase_end(PHASE_COPY, started);
+    }
     return ok;
 }
 
@@ -1455,6 +1535,7 @@ static int es_take_frame(void)
     if (!es_shown_last) {
         fprintf(stderr, "memories-pc: the OpenGL picture cannot be shown; the software GPU draws it\n");
         es_picture = 0;
+        pass_shown.valid = 0;
         es_enter(); /* its names are deleted in the renderer's context */
         GlPicture_Stop();
         es_leave();
@@ -1581,8 +1662,13 @@ static void show(void)
             save_window_image(); /* the back buffer holds this frame until the swap */
         }
         apply_swap_interval();
-        SDL_GL_SwapWindow(window);
+        {
+            uint64_t started = phase_start();
+            SDL_GL_SwapWindow(window);
+            phase_end(PHASE_SWAP, started);
+        }
         if (swap_interval == 1) Platform_NotifyPresent(real_now_us(), 1);
+        phases_shown();
         return;
     }
     if (!renderer || !picture || !overlay) return;
@@ -1607,8 +1693,13 @@ static void show(void)
         if (screenshot_path(path, sizeof(path), "bmp")) save_surface(SDL_RenderReadPixels(renderer, NULL), path);
     }
     apply_swap_interval();
-    SDL_RenderPresent(renderer);
+    {
+        uint64_t started = phase_start();
+        SDL_RenderPresent(renderer);
+        phase_end(PHASE_SWAP, started);
+    }
     if (swap_interval == 1) Platform_NotifyPresent(real_now_us(), 1);
+    phases_shown();
 }
 
 /* Repaint the menu where it was and where it is, and upload that much of
@@ -2254,6 +2345,7 @@ static void reset_renderer(void)
     SDL_DestroyRenderer(renderer); /* and the textures */
     picture = overlay = es_shown = NULL;
     es_shown_last = 0;
+    pass_shown.valid = 0;
     picture_w = picture_h = 0;
     if (es_wanted) ask_for_es3();
     if (test_reset_fails) SDL_setenv_unsafe("MEMORIES_GL_PICTURE", "0", 1); /* the pass does not start again */
@@ -2266,6 +2358,7 @@ static void reset_renderer(void)
     if (!es_picture) { /* off, or not started again: the software GPU draws the picture */
         es_enter();
         GlPicture_Stop();
+        pass_shown.valid = 0;
         es_leave();
     }
     Menu_SetHdPicture(es_picture);
@@ -2493,7 +2586,11 @@ static int pumped; /* this frame's pump ran already: the OpenGL pass could not s
 static void begin_present(int w, int h, int at_scale)
 {
     if (pumped) pumped = 0;
-    else pump(); /* before the frame, so its input and menu state are current */
+    else { /* before the frame, so its input and menu state are current */
+        uint64_t started = phase_start();
+        pump();
+        phase_end(PHASE_EVENTS, started);
+    }
 #ifdef SDL_PLATFORM_ANDROID
     java_test_pump(current_frame);
 #endif
@@ -2522,6 +2619,7 @@ static void begin_present(int w, int h, int at_scale)
 /* After the picture's pixels are in place: to the texture and the window. */
 static void finish_present(int w, int h)
 {
+    uint64_t started = phase_start();
     if (use_gl) {
         glBindTexture(GL_TEXTURE_2D, gl_picture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, picture_pixels);
@@ -2529,6 +2627,8 @@ static void finish_present(int w, int h)
         SDL_UpdateTexture(picture, NULL, picture_pixels, w * 4);
         es_shown_last = 0; /* this one shows instead of the pass's */
     }
+    phase_end(PHASE_COPY, started);
+    pass_shown.valid = 0; /* F12 saves picture_pixels, which this frame filled */
     compose_menu_if_changed();
     show();
 }
@@ -2555,6 +2655,12 @@ int HERE(Platform_PresentPicture)(const uint32_t *pixels, int stride, int x, int
             pumped = 1;
             return 0;
         }
+        pass_shown.valid = 1;
+        pass_shown.texture = 0;
+        pass_shown.x = x;
+        pass_shown.y = y;
+        pass_shown.w = w;
+        pass_shown.h = h;
         compose_menu_if_changed();
         show();
         gl_pass_shown = 0;
@@ -2635,6 +2741,11 @@ int HERE(Platform_PresentWidePicture)(int x, int y, int w, int h, int wide_w, in
         pumped = 1;
         return 0;
     }
+    pass_shown.valid = 1;
+    pass_shown.texture = texture;
+    pass_shown.x = pass_shown.y = 0;
+    pass_shown.w = pw;
+    pass_shown.h = h * at_scale;
     compose_menu_if_changed();
     show();
     gl_pass_shown = 0;

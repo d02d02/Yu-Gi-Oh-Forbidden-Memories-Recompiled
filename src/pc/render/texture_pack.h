@@ -39,6 +39,18 @@ void TexturePack_Unload(void);
 /* Once a frame, on the main thread: reads what uploads asked for (an
  * upload can come from the interrupt tick, where reading is not safe). */
 void TexturePack_Service(void);
+/* The images it gave since the last call (PNGs the frame they are given in
+ * waits for), the microseconds that took in all, and the longest one
+ * service took; then counts again from 0. For MEMORIES_TRACE=frames (sdl.c). */
+void TexturePack_ReadStats(unsigned *images, unsigned *us, unsigned *max_us);
+/* The pack's images are read on other threads (texture_pack.c, Decode),
+ * and still given before the next frame to what asked for them. How many
+ * Services gave an image read for them then, read ahead, or already read
+ * for another entry of the same PNG; and the threads started (0 until a
+ * pack's image is first wanted). */
+void TexturePack_DecodeStats(unsigned *now, unsigned *ahead, unsigned *shared, int *threads);
+/* Until no read is waiting or under way (tests). */
+void TexturePack_DecodeSettle(void);
 
 /* An image the port makes instead of reading it from the disc: a mod
  * card's art (cards.c), whose bytes art.c makes from the mod's PNG at the
@@ -92,9 +104,16 @@ int TexturePack_BankEntryLevelFor(int entry, int scale);
 int TexturePack_BankKeyLive(unsigned key);
 unsigned TexturePack_BankGeneration(void);
 enum { TEXTURE_BANK_OWNER_STARS = 1, TEXTURE_BANK_OWNER_LAYOUT_FRAME, TEXTURE_BANK_OWNER_LAYOUT_DIGITS,
-       TEXTURE_BANK_OWNER_DUEL_UI, TEXTURE_BANK_OWNER_TYPE_ICONS, TEXTURE_BANK_OWNER_ATTRIBUTE_ICONS };
+       TEXTURE_BANK_OWNER_DUEL_UI, TEXTURE_BANK_OWNER_TYPE_ICONS, TEXTURE_BANK_OWNER_ATTRIBUTE_ICONS,
+       TEXTURE_BANK_OWNER_LAYOUT_BACK };
 void TexturePack_BankSpritesUseOwner(unsigned owner);
 void TexturePack_BankSpritesClear(unsigned owner);
+/* Drops every decoded PNG (and cached failure) the bank sprites kept that no
+ * sprite shows any more -- the spares BANK_SPARE keeps for a picture soon
+ * wanted again, however they came to be unused -- so a PNG changed on disk is
+ * read again when next placed.  Images a sprite still shows are left alone,
+ * so clear the owners' sprites first. */
+void TexturePack_BankImagesForgetSpare(void);
 
 /* For a renderer that samples the pack's images itself, at their own
  * resolution (gl_picture.c). The entry (its index + 1) whose image replaces

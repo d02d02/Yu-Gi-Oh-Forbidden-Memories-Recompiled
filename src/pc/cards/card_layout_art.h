@@ -34,9 +34,8 @@ int CardLayoutArt_FrameTile(int col, int row, int *tpage, int *clut, int *w, int
 int CardLayoutArt_HandFrameCell(int card_id, int *tpage, int *u, int *v, int *clut, int *w, int *h);
 
 /* The current style's optional 52x60 texture for the 3D duel-field card
- * quad (func_80015EF4's POLY_GT4; card_layout.h's CardLayout_FieldFramePath,
- * which falls back to the hand frame). 0 leaves retail's Cards_FrameColor
- * palette-row recolor in place. */
+ * quad (func_80015EF4's POLY_GT4; card_layout.h's CardLayout_FieldFramePath).
+ * 0 leaves retail's Cards_FrameColor palette-row recolor in place. */
 int CardLayoutArt_FieldFrameCell(int card_id, int *tpage, int *u, int *v, int *clut, int *w, int *h);
 
 /* The current style's optional 52x60 face-down texture for the flat hand/
@@ -49,12 +48,12 @@ int CardLayoutArt_FieldBackCell(int card_id, int *tpage, int *u, int *v, int *cl
  * to the style's own "width" x "height". *w/*h on success describe that
  * replacement texture's source dimensions; the renderer maps each retail
  * turning-sheet part into them while retaining the retail geometry that
- * drives the turn animation. (card_layout_art.c's
- * BACK_MAX_SIDE caps each axis at 254, one short of POLY_FT4's own u8 UV
- * span limit to leave room for the padded edge this file's cells all keep
- * against the PS1 GPU's last-texel-drop quirk; a style whose box is bigger
- * gets neither this -- a logged note instead, and retail's own swirl
- * stays). 0 leaves retail's own swirl sprite alone. */
+ * drives the turn animation. (The style box is already capped at 140x196,
+ * card_layout.c's CARD_LAYOUT_FRAME_MAX_W/H; card_layout_art.c's
+ * BACK_MAX_SIDE, 254 an axis -- one short of POLY_FT4's own u8 UV span, for
+ * the padded edge this file's cells all keep against the PS1 GPU's
+ * last-texel-drop quirk -- is a guard behind that.) 0 leaves retail's own
+ * swirl sprite alone. */
 int CardLayoutArt_BackCell(int card_id, int *tpage, int *u, int *v, int *clut, int *w, int *h);
 
 /* The current style's optional 12x14 Library-grid cell. */
@@ -94,5 +93,11 @@ int CardLayoutArt_TitleCell(int source_tpage, int source_u, int source_v, int so
  * tens to hundreds of milliseconds) is paid off screen, not on the frame a
  * card first draws. */
 void CardLayoutArt_Prewarm(void);
+
+/* Drops every picture this file kept by path (decoded pixels, HD registrations,
+ * the texture pack's decoded PNGs) so the next draw reads them again.  Each cell
+ * function does it by itself when a mod has gone on or off since its last call
+ * (Mods_Changes); public for the test. */
+void CardLayoutArt_Clear(void);
 
 #endif
