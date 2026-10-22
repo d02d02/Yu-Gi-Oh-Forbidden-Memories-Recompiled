@@ -168,8 +168,8 @@ class FeatureTest(unittest.TestCase):
     def test_api_16_attributes(self):
         self.assertEqual(self.needs({"attributes": {"attributes": [{"id": 8, "name": "Metal"}]}}), 16)
 
-    def test_api_17_native_models(self):
-        self.assertEqual(self.needs({"native_models": [{"model": 363, "file": "angel.hdm"}]}), 17)
+    def test_api_19_native_models(self):
+        self.assertEqual(self.needs({"native_models": [{"model": 363, "file": "angel.hdm"}]}), 19)
 
     def test_monster_effect_filter_on_a_custom_type(self):
         # monster_effects.c filter(): a declared monster type filters, 255
