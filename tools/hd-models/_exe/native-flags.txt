@@ -1,0 +1,17 @@
+-std=gnu11
+-O2
+-g
+-Wall
+-fno-omit-frame-pointer
+-fno-strict-aliasing
+-DMEMORIES_PC
+-D_LANGUAGE_C
+-DLANGUAGE_C
+-Isrc
+-Itmp/pc/win32-deps/sdl/include
+-Itmp/pc/win32-deps/include
+-Itmp/pc/win32-deps/include/freetype2
+-mno-ms-bitfields
+-gcodeview
+-mretpoline-external-thunk
+-DMEMORIES_TEST_HOOKS

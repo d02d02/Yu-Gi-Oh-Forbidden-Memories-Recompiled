@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "name": "Black Dragon",
+  "model": "model.hdm",
+  "textures": {
+    "base": "base.png"
+  },
+  "clips": {
+    "idle": "Idel_New",
+    "enter": "Fly_New",
+    "attack": "Run_New",
+    "hit": "Idel_New",
+    "guard": "Idel_New",
+    "destroyed": "Idel_New",
+    "win": "Fly_New"
+  },
+  "strike": {
+    "attack": [
+      13,
+      48,
+      71,
+      146
+    ]
+  },
+  "author": "3DHaupt.com",
+  "license": "unknown",
+  "source": "dragon.glb",
+  "converter": {
+    "tool": "native_convert.py",
+    "rig": "generic",
+    "root": "pelvic_2",
+    "game_units_per_gltf_unit": "19.5978",
+    "height": "600.0",
+    "root_height": "159.0"
+  }
+}

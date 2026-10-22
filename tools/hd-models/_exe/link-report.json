@@ -1,0 +1,40 @@
+{
+ "game_units": 610,
+ "pinned_data_symbols": 771,
+ "stubbed": {
+  "outside_resident_image": [
+   "Psx_close",
+   "Psx_exit",
+   "Psx_lseek",
+   "Psx_open",
+   "Psx_read",
+   "Psx_write",
+   "func_800158C8",
+   "func_80021EA4",
+   "func_8004EB9C",
+   "func_80065B24",
+   "func_80065BFC",
+   "func_80066574"
+  ],
+  "sdk_asm": [
+   "GsGetTimInfo",
+   "InitCARD",
+   "PCclose",
+   "PClseek",
+   "PCopen",
+   "PCread",
+   "StartCARD",
+   "_bu_init",
+   "_card_clear",
+   "_card_info",
+   "_card_load",
+   "_card_read",
+   "_card_status",
+   "_card_wait",
+   "_card_write",
+   "_new_card",
+   "firstfile",
+   "nextfile"
+  ]
+ }
+}

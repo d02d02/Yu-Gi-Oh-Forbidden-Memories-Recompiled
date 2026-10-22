@@ -9,7 +9,7 @@ this branch built with `python tools/pc/build_game32.py`, with the Test scenes a
 ```powershell
 cd <checkout>
 .\tools\hd-models\play-bls.ps1 -Repo . -NativeModel .\examples\native-models\mannequin\model.json              # the field attack: the mannequin on BLS's card
-.\tools\hd-models\play-bls.ps1 -Repo . -NativeModel .\examples\native-models\mannequin\model.json -Attack 0     # the arena attack (Internal 2x)
+.\tools\hd-models\play-bls.ps1 -Repo . -NativeModel .\examples\native-models\mannequin\model.json -Attack 0     # monsters just stand on the field (no attack); the arena attack is field_attack.py --arena (below)
 .\tools\hd-models\play-bls.ps1 -Repo . -NativeModel .\examples\native-models\mannequin\model.json -NativeId -2  # every monster a mannequin
 ```
 
@@ -40,3 +40,7 @@ gives the card one. Tell me whether the native model should show there by defaul
 python tools\hd-models\new_native_mod.py .\examples\native-models\mannequin\... (a glb) --card 364 --out <game>\mods\my-model
 ```
 then apply it in Mods, restart, Internal 2x or more. See `notes/adding-a-model.md`.
+
+## Tested on the desktop (2026-10-22): the commands above ran; with `-Shot` they wrote a picture (mannequin and dragon on the field, both standing)
+
+The arena attack (a real window, a sheet of frames): `$env:MEMORIES_DISC=...; python -I tools\hd-models\field_attack.py OUT --arena --setting mod.3d-monsters.attack=0 --env MEMORIES_NATIVE_MODEL=<model.json> --env MEMORIES_NATIVE_MODEL_ID=363`.
