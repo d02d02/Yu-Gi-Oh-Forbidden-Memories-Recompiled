@@ -153,6 +153,10 @@ def check_package(path, report, where=None):
     scale = package.get("scale")
     if scale is not None and (not isinstance(scale, int) or not 10 <= scale <= 1000):
         report.warn(where, "\"scale\" is a percentage, 10 to 1000")
+    offset = package.get("offset")
+    if offset is not None and not (isinstance(offset, list) and len(offset) == 3 and
+                                   all(isinstance(v, int) and not isinstance(v, bool) and -2000 <= v <= 2000 for v in offset)):
+        report.warn(where, "\"offset\" is [x, y, z]: whole numbers from -2000 to 2000 (x right, y down, z forward)")
     look = package.get("look", {})
     if not isinstance(look, dict):
         report.warn(where, "\"look\" is an object: {\"ambient\": 20, \"light_gain\": 100}")
@@ -170,6 +174,8 @@ def check_package(path, report, where=None):
     print("  textures: " + ", ".join(f"{k} {v}" for k, v in shown.items()))
     if isinstance(scale, int) and 10 <= scale <= 1000 and scale != 100:
         print(f"  drawn at {scale}% about its soles")
+    if isinstance(offset, list) and offset != [0, 0, 0]:
+        print(f"  moved by {offset} (x right, y down, z forward)")
     return total
 
 

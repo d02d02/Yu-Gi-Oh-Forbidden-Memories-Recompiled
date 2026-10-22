@@ -336,6 +336,19 @@ int main(void)
         CHECK(near(bone_row(0, 1)[1] * 10.0f + bone_row(0, 1)[3], 10.0f));
     }
 
+    /* A package's offset moves it along its own axes, whatever the scale. */
+    {
+        static NativeMesh moved;
+        moved = mesh;
+        moved.offset[0] = 30.0f;
+        moved.offset[2] = -20.0f;
+        pose_mesh(400, 0x40000, 0, &moved);
+        CHECK(near(bone_row(0, 0)[3], 30.0f) && near(bone_row(0, 2)[3], 980.0f));
+        moved.scale = 2.0f;
+        pose_mesh(400, 0x40000, 0, &moved);
+        CHECK(near(bone_row(0, 0)[3], 30.0f) && near(bone_row(0, 2)[3], 980.0f));
+    }
+
     if (failures) {
         fprintf(stderr, "native_anim_test: %d failed\n", failures);
         return 1;

@@ -180,6 +180,12 @@ void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeCl
                              ws[r * 3 + 2] * (float)in->root_tr[2]) + (float)in->ws_tr[r];
         }
     }
+    if (mesh->offset[0] != 0.0f || mesh->offset[1] != 0.0f || mesh->offset[2] != 0.0f) {
+        /* The package's offset, along the model's own axes (before the scale: the same distance at any scale). */
+        for (r = 0; r < 3; r++) {
+            rv[r * 4 + 3] += rv[r * 4] * mesh->offset[0] + rv[r * 4 + 1] * mesh->offset[1] + rv[r * 4 + 2] * mesh->offset[2];
+        }
+    }
     if (mesh->scale > 0.0f && mesh->scale != 1.0f) {
         /* The package's scale, about the soles (the model's largest y): rv x (s, translated by (0, ground (1 - s), 0)). */
         const float s = mesh->scale, lift = mesh->ground * (1.0f - s);
@@ -198,6 +204,7 @@ void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeCl
                     in->ws_tr[0], in->ws_tr[1], in->ws_tr[2], rv[3], rv[7], rv[11], p1->used, p1->tr[0], p1->tr[1], p1->tr[2],
                     p1->rot[0], p1->rot[1], p1->rot[2], p1->rot[3], p1->rot[4], p1->rot[5], p1->rot[6], p1->rot[7], p1->rot[8],
                     d->ofx >> 16, d->h);
+            fprintf(stderr, "skin: rv axes (screen x, y, z per model x | y | z): %.2f %.2f %.2f | %.2f %.2f %.2f | %.2f %.2f %.2f\n", rv[0], rv[4], rv[8], rv[1], rv[5], rv[9], rv[2], rv[6], rv[10]);
         }
     }
     /* The clip's local pose (linear between the baked frames, rotation nlerp), then a short cross-fade when the game's
