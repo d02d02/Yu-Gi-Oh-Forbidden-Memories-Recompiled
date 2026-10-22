@@ -202,7 +202,15 @@ static uint32_t *read_whole(const char *path, long *size)
 static int in_package(const Entry *e, const char *name, char *out, size_t size)
 {
     const char *slash = strrchr(e->path, '/');
-    int folder = slash ? (int)(slash - e->path) : 0;
+    int folder;
+#ifdef _WIN32
+    /* a path typed or resolved on Windows (MEMORIES_NATIVE_MODEL, a command line) has backslashes */
+    {
+        const char *back = strrchr(e->path, '\\');
+        if (back && (!slash || back > slash)) slash = back;
+    }
+#endif
+    folder = slash ? (int)(slash - e->path) : 0;
     if (!Paths_Contained(name)) return 0;
     if (!slash) return snprintf(out, size, "%s", name) < (int)size;
     return snprintf(out, size, "%.*s/%s", folder, e->path, name) < (int)size;
