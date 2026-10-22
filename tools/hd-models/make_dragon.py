@@ -6,7 +6,7 @@
 DRAGON_FOLDER is the extracted download (it holds blender/Dragon_Baked_Actions.blend and blender/textures/).
 Blender 4.5 exports a glb (blender/export_dragon_blend.py: the skeleton cut to 120 bones, one material from the colour atlas),
 native_convert.py makes OUT_PACKAGE (model.json, model.hdm, base.png) and its clips are mapped: idle Idel_New, enter and win
-Fly_New, attack Run_New, hit/guard/destroyed Idel_New (the asset has no others). Not committed anywhere: its licence is unknown."""
+Fly_New, attack Run_New, hit/guard/destroyed Idel_New (the asset has no others). Licence CC0 (the user, 2026-10-22)."""
 import argparse, json, os, subprocess, sys
 from pathlib import Path
 
@@ -23,7 +23,7 @@ env = dict(os.environ, OUT=str(glb), TEX=str(tex))
 subprocess.run([a.blender, "-b", str(blend), "--python", str(here / "blender" / "export_dragon_blend.py")], env=env, check=True)
 subprocess.run([sys.executable, "-I", str(here / "native_convert.py"), str(glb), str(out), "--rig", "generic", "--root", "pelvic_2",
                 "--clips", "all", "--height", str(a.height), "--name", "Black Dragon", "--author", "3DHaupt.com",
-                "--license", "unknown"], check=True)
+                "--license", "CC0"], check=True)
 mj = out / "model.json"; m = json.loads(mj.read_text())
 m["clips"] = {"idle": "Idel_New", "enter": "Fly_New", "attack": "Run_New", "hit": "Idel_New", "guard": "Idel_New",
               "destroyed": "Idel_New", "win": "Fly_New"}

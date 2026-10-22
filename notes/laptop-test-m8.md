@@ -13,7 +13,7 @@ cd <checkout>
 .\tools\hd-models\play-bls.ps1 -Repo . -NativeModel .\examples\native-models\mannequin\model.json -NativeId -2  # every monster a mannequin
 ```
 
-## 2. The dragon (not in the repo: its licence is unknown)
+## 2. The dragon (CC0, built from your download: not committed, 20 MB)
 
 Download "Black Dragon" (the Drive link you sent, `27-blender.rar`) and extract it into an empty folder (`tar -xf 27-blender.rar -C C:\dragon`).
 Blender 4.5 must be installed (`--blender PATH` if it is not in `C:\Program Files\Blender Foundation\Blender 4.5`).
