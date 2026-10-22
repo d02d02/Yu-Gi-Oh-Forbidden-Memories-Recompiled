@@ -157,6 +157,25 @@ def check_package(path, report, where=None):
     if offset is not None and not (isinstance(offset, list) and len(offset) == 3 and
                                    all(isinstance(v, int) and not isinstance(v, bool) and -2000 <= v <= 2000 for v in offset)):
         report.warn(where, "\"offset\" is [x, y, z]: whole numbers from -2000 to 2000 (x right, y down, z forward)")
+    shots = package.get("shots")
+    if shots is not None:
+        if not isinstance(shots, list):
+            report.warn(where, "\"shots\" is a list: [{\"act\": \"attack\", \"from\": 0, \"to\": 60, \"yaw\": 40}]")
+        else:
+            if len(shots) > spec.MAX_SHOTS:
+                report.warn(where, f"shots: at most {spec.MAX_SHOTS} shots")
+            for i, shot in enumerate(shots[:spec.MAX_SHOTS]):
+                if not isinstance(shot, dict) or shot.get("act") not in spec.ACTS:
+                    report.warn(where, f"shots[{i}]: an object whose \"act\" is one of {', '.join(spec.ACTS)}")
+                    continue
+                bad = [k for k, (lo, hi) in spec.SHOT_RANGES.items()
+                       if k in shot and not (isinstance(shot[k], int) and not isinstance(shot[k], bool) and lo <= shot[k] <= hi)]
+                if bad or shot.get("to", 0) < shot.get("from", 0):
+                    report.warn(where, f"shots[{i}]: {', '.join(bad) or 'to < from'} out of range (whole numbers; "
+                                       + ", ".join(f"{k} {lo}..{hi}" for k, (lo, hi) in spec.SHOT_RANGES.items()) + ")")
+                else:
+                    print(f"  shot {i}: {shot['act']}{' (the other monster)' if shot.get('other') else ''} "
+                          f"frames {shot.get('from', 0)}-{shot.get('to', 0)}")
     look = package.get("look", {})
     if not isinstance(look, dict):
         report.warn(where, "\"look\" is an object: {\"ambient\": 20, \"light_gain\": 100}")

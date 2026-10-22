@@ -10,6 +10,9 @@ from pathlib import Path
 MAX_BONES = 128
 MAX_CLIPS = 16
 MAX_SIDE = 16384          # NATIVE_FORMAT_MAX_SIDE
+MAX_SHOTS = 8              # NATIVE_MAX_SHOTS
+SHOT_RANGES = {"from": (0, 2000), "to": (0, 2000), "yaw": (-180, 180), "pitch": (-60, 60), "distance": (30, 300),
+               "height": (-500, 500), "ease": (0, 60)}
 MAX_STRIKES = 4           # NATIVE_MAX_STRIKES
 REGISTRY_MAX = 64         # NATIVE_REGISTRY_MAX: entries in all the mods
 REGISTRY_CARDS = 64       # NATIVE_REGISTRY_CARDS: cards per entry
@@ -21,7 +24,7 @@ ACTS = ("idle", "enter", "attack", "hit", "destroyed", "win", "guard")   # Nativ
 # The runtime's clip names for an act model.json does not map (NativeAnim_ActClip).
 DEFAULT_CLIPS = {"idle": "Sword_Idle", "enter": "Idle_Loop", "attack": "Sword_Attack", "hit": "Hit_Chest", "destroyed": "Death01",
                  "win": "Sword_Idle", "guard": "Sword_Idle"}
-PACKAGE_KEYS = ("format", "name", "model", "textures", "clips", "strike", "scale", "offset", "look", "author", "license", "source", "converter")
+PACKAGE_KEYS = ("format", "name", "model", "textures", "clips", "strike", "scale", "offset", "shots", "look", "author", "license", "source", "converter")
 TEXTURE_KEYS = ("base", "normal", "metal_roughness")
 LOOK_KEYS = ("camera_near", "camera_keep", "camera_scale", "ambient", "light_gain", "normal_strength", "highlight", "flip_green")
 

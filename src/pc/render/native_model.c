@@ -1,6 +1,8 @@
 /* Native model pass: the capture side (see native_model.h). */
 #include "pc/render/native_model.h"
 #include "pc/render/native_registry.h"
+#include "pc/render/native_anim.h"
+#include "pc/render/native_cinematic.h"
 #include "pc/render/soft_gpu.h"
 #include "pc/compat/fs.h"
 #include "pc/compat/gte.h"
@@ -70,10 +72,16 @@ void NativeModel_SetInstance(const NativeInstance *in)
     pending_set = 1;
 }
 
+/* What each arena slot last played (the game's own draws): the act and the frame of its row, for the camera's shots. */
+static struct {
+    int act, frame; /* frame < 0: not drawn since the battle began */
+} arena_play[2] = {{0, -1}, {0, -1}};
+
 void NativeModel_SetBattleCards(int card0, int card1)
 {
     battle_card[0] = card0;
     battle_card[1] = card1;
+    arena_play[0].frame = arena_play[1].frame = -1; /* a new battle: nothing played yet */
 }
 
 void NativeModel_BeginSlot(int model, int slot)
@@ -153,6 +161,10 @@ void NativeModel_SlotInfo(const NativeSlotInfo *info)
 {
     NativeSlotInfo *out;
     if (!current || !info) return;
+    if (!instance_set && info->slot >= 0 && info->slot < 2) {
+        arena_play[info->slot].act = (int)NativeAnim_Act(info->anim_index, info->attack_row);
+        arena_play[info->slot].frame = info->anim_frame >> 4;
+    }
     out = &current->info;
     *out = *info;
     if (instance_set) { /* a code mod's monster: its own key space per context, so it never shares the arena's state */
@@ -273,4 +285,32 @@ float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, 
     if (!mesh) return 1.0f;
     d = sqrtf(dx * dx + dy * dy + dz * dz);
     return d > 1.0f ? arena_camera_distance(&mesh->tune, d) / d : 1.0f;
+}
+
+/* The arena camera's shot: of the two monsters (the attacker's, then the defender's) drawn natively, the strongest shot of
+ * their packages that matches what the battle's two monsters are playing. */
+int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye[3])
+{
+    int s;
+    float best = 0.0f;
+    NativeCamera camera, chosen;
+    chosen.yaw = chosen.pitch = chosen.height = 0.0f;
+    chosen.distance = 1.0f;
+    for (s = 0; s < 2; s++) {
+        int model = s ? model1 : model0;
+        const NativeMesh *mesh;
+        float w;
+        if (arena_play[s].frame < 0 || !NativeModel_WillDraw(model, battle_card[s])) continue;
+        mesh = NativeRegistry_Mesh(NativeRegistry_Find(model, battle_card[s]));
+        if (!mesh || !mesh->shot_count) continue;
+        w = NativeCinematic_Pick(mesh->shots, mesh->shot_count, arena_play[s].act, arena_play[s].frame, arena_play[1 - s].act,
+                                 arena_play[1 - s].frame, &camera);
+        if (w > best) {
+            best = w;
+            chosen = camera;
+        }
+    }
+    if (best <= 0.0f) return 0;
+    NativeCinematic_Orbit(look, eye, &chosen, eye);
+    return 1;
 }
