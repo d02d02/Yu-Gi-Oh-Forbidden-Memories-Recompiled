@@ -4,6 +4,7 @@
 #
 #   .\play-bls.ps1                                  # Black Luster Soldier (364) on your first zone, five Kuriboh (58) opposite, attack on the field, 2x
 #   .\play-bls.ps1 -Cards '364,0,0,0,0,374,0,0,0,0' -Scale 2
+#   .\play-bls.ps1 -Mods dragon_mod -Cards '400,0,0,0,0,722,0,0,0,0'   # a mod's native models (by mod id) instead of -NativeModel
 #   .\play-bls.ps1 -Attack 0                        # no attack presentation (monsters just stand on the field)
 #   .\play-bls.ps1 -Shot C:\temp\bls.ppm            # no play: reach the scene, dump one picture, exit by itself (max -TimeoutS seconds)
 #   .\play-bls.ps1 -Repo ..\..\..\Yu-Gi-Oh-Forbidden-Memories-Recompiled-hd-model-bls   # another build (needs the test-scenes mod linked in it)
@@ -17,6 +18,7 @@ param(
     [string]$Shot = '',
     [int]$ShotFrame = 2400,
     [switch]$NoHd,
+    [string[]]$Mods = @(),       # more mods to switch on, by mod id (a native_models mod from the build's mods folder: dragon_mod, native-test, ...)
     [string]$Log = '',           # save the game's messages (stderr) to this file
     [string]$NativeModel = '',   # a model.hdm or a package's model.json: drawn for model -NativeId (-2: every monster), over every mod's
     [int]$NativeId = 363,        # model id = card id - 1 (BLS: card 364, model 363)
@@ -41,9 +43,10 @@ robocopy "$build\mods" "$priv\mods" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 $user = "$shared\test-user-bls"
 New-Item -ItemType Directory -Force -Path $user | Out-Null
 $off = Get-ChildItem "$build\mods" -Directory | ForEach-Object { $_.Name } |
-    Where-Object { $_ -notin 'test-scenes', '3d-monsters' }
+    Where-Object { $_ -notin 'test-scenes', '3d-monsters' } | Where-Object { $_ -notin $Mods }
 $lines = @("internal_scale=$Scale", 'show_hud=0', 'fullscreen=0', 'mod.test-scenes=1', 'mod.3d-monsters=1', "mod.3d-monsters.attack=$Attack")
 $lines += $off | ForEach-Object { "mod.$_=0" }
+$lines += $Mods | ForEach-Object { "mod.$_=1" }
 $lines += 'mod.duel-links-2d-arts=0', 'mod.2d-monsters=0', 'mod.camera-pin=0', 'mod.kuriboh=0', 'mod.kuriboh-hd=0'
 # The Forbidden Memories HD pack: only assets-hd is linked (your single copy in shared\mods-data), with the settings of your real profile.
 $lines += "mod.forbidden-memories-hd=$(if ($NoHd) { 0 } else { 1 })"
