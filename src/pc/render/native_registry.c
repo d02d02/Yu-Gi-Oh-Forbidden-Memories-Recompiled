@@ -362,6 +362,27 @@ static void package_clips(Entry *e, const JsonValue *clips)
     }
 }
 
+/* "offset": [x, y, z], whole numbers in the model's space (game units): where the model stands, moved along its own axes. */
+static void package_offset(Entry *e, const JsonValue *offset)
+{
+    const JsonValue *value;
+    int i = 0;
+    if (!offset) return;
+    if (Json_TypeOf(offset) != JSON_ARRAY || Json_Count(offset) != 3) {
+        note(e, "\"offset\" is [x, y, z]: whole numbers in the model's units (x right, y down, z forward)");
+        return;
+    }
+    for (value = Json_At(offset, 0); value; value = Json_Next(value), i++) {
+        long n = Json_TypeOf(value) == JSON_NUMBER ? Json_Number(value, 1000000) : 1000000;
+        if (n < -2000 || n > 2000) {
+            note(e, "\"offset\" is [x, y, z]: whole numbers from -2000 to 2000");
+            e->mesh.offset[0] = e->mesh.offset[1] = e->mesh.offset[2] = 0.0f;
+            return;
+        }
+        e->mesh.offset[i] = (float)n;
+    }
+}
+
 static void package_strike(Entry *e, const JsonValue *strike)
 {
     const JsonValue *frames = Json_Member(strike, "attack"), *value;
@@ -447,7 +468,7 @@ static void forget(Entry *e)
     e->bytes = 0;
 }
 
-static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "look",
+static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "offset", "look",
                                            "author", "license", "source", "converter"};
 
 static int load(Entry *e)
@@ -519,6 +540,7 @@ static int load(Entry *e)
         package_texture(e, textures, 2, "metal_roughness", room > e->bytes ? room - e->bytes : 0);
         package_clips(e, Json_Member(root, "clips"));
         package_strike(e, Json_Member(root, "strike"));
+        package_offset(e, Json_Member(root, "offset"));
         if (scale) {
             long percent = Json_TypeOf(scale) == JSON_NUMBER ? Json_Number(scale, -1) : -1;
             if (percent < 10 || percent > 1000) note(e, "\"scale\" is a percentage, 10 to 1000");

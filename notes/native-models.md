@@ -75,6 +75,7 @@ What `native_convert.py` writes, every member but `model` optional; files are na
 | `clips` | the clip each act plays (acts below); an act left out plays the default name, else the first clip |
 | `strike` | the attack clip's frames where its blows land (at most 4): where the game knows when the blow lands (3D Monsters on the field), the attack clip is time-warped so the first one lands then |
 | `scale` | percent, about the soles (110 = a tenth taller, feet where they were) |
+| `offset` | `[x, y, z]`, whole numbers in game units: moves the model along its own axes (x right, y down, z forward), the same at any `scale`. To nudge where it stands on its card. The axes are the model's own, so they turn with it: for the attacker on the field's camera, -x is toward the viewer and +z to the left (`[-60, 0, 40]` moves it about a card's width fraction forward and left); check with `MEMORIES_NATIVE_SKIN_LOG=1` (the `rv axes` line says where each model axis points on screen) |
 | `look` | the model's light and camera (below), in percent (`camera_near` in game units, `flip_green` 0 or 1) |
 | `name`, `author`, `license`, `source`, `converter` | for people; the game does not read them |
 

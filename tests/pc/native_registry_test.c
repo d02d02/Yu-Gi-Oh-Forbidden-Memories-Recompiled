@@ -246,7 +246,7 @@ int main(int argc, char **argv)
     write_text("a/pkg/model.json",
                "{\"format\": 1, \"model\": \"m.hdm\", \"textures\": {\"base\": \"base.png\", \"normal\": \"n.png\"},"
                " \"clips\": {\"attack\": \"Swing\", \"idle\": \"Idle\", \"dance\": \"Idle\", \"hit\": \"Nope\"},"
-               " \"strike\": {\"attack\": [3, 7]}, \"scale\": 150, \"look\": {\"ambient\": 40}, \"author\": \"t\", \"extra\": 1}");
+               " \"strike\": {\"attack\": [3, 7]}, \"scale\": 150, \"offset\": [10, 0, -5], \"look\": {\"ambient\": 40}, \"author\": \"t\", \"extra\": 1}");
     write_text("a/pkg/big.json", "{\"model\": \"m.hdm\", \"textures\": {\"base\": \"big.png\"}}");
     write_text("a/pkg/strike.json", "{\"model\": \"m.hdm\", \"clips\": {\"attack\": \"Idle\"}, \"strike\": {\"attack\": [1, 5]}}");
     write_text("a/bad/model.json", "{\"format\": 2, \"model\": \"m.hdm\"}");
@@ -291,6 +291,7 @@ int main(int argc, char **argv)
         CHECK(mesh->act_clip[NATIVE_ACT_ATTACK] == 2 && mesh->act_clip[NATIVE_ACT_IDLE] == 1 && !mesh->act_clip[NATIVE_ACT_HIT]);
         CHECK(mesh->strike_count == 2 && mesh->strike[0] == 3 && mesh->strike[1] == 7);
         CHECK(near(mesh->scale, 1.5f) && near(mesh->tune.ambient, 0.4f) && near(mesh->tune.light_gain, 1.0f));
+        CHECK(near(mesh->offset[0], 10.0f) && near(mesh->offset[1], 0.0f) && near(mesh->offset[2], -5.0f));
     }
     CHECK(noted("clips: \"dance\" is not an act") && noted("clips.hit: the model has no clip \"Nope\""));
     CHECK(noted("model.json: \"extra\" is not read") && !noted("\"author\" is not read"));

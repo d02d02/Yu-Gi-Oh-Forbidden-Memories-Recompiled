@@ -21,7 +21,7 @@ ACTS = ("idle", "enter", "attack", "hit", "destroyed", "win", "guard")   # Nativ
 # The runtime's clip names for an act model.json does not map (NativeAnim_ActClip).
 DEFAULT_CLIPS = {"idle": "Sword_Idle", "enter": "Idle_Loop", "attack": "Sword_Attack", "hit": "Hit_Chest", "destroyed": "Death01",
                  "win": "Sword_Idle", "guard": "Sword_Idle"}
-PACKAGE_KEYS = ("format", "name", "model", "textures", "clips", "strike", "scale", "look", "author", "license", "source", "converter")
+PACKAGE_KEYS = ("format", "name", "model", "textures", "clips", "strike", "scale", "offset", "look", "author", "license", "source", "converter")
 TEXTURE_KEYS = ("base", "normal", "metal_roughness")
 LOOK_KEYS = ("camera_near", "camera_keep", "camera_scale", "ambient", "light_gain", "normal_strength", "highlight", "flip_green")
 

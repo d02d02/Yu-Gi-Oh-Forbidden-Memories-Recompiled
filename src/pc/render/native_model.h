@@ -139,6 +139,7 @@ typedef struct NativeMesh {
     uint16_t strike[NATIVE_MAX_STRIKES];
     float scale;                        /* drawn this many times as large, standing where it stood (0: 1) */
     float ground;                       /* the soles' height in the model's space (y down: its largest y), for `scale` */
+    float offset[3];                    /* moved this far in the model's own space (x right, y down, z forward), before `scale` */
     NativeTune tune;
 } NativeMesh;
 
