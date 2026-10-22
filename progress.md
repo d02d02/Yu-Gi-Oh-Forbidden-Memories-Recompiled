@@ -219,3 +219,10 @@ so the angel comes in through the test switch: `-NativeModel <the M4 package>\mo
 | F | F1, F2 (read), F3 (in C), F4 done, in M5; F5 waits for M5's pictures; checks here: game build (12 stubs) with the 3D Monsters mod, `native_anim.c` strict, ctest with `pc_native_anim` extended (fallbacks, the warp on a contact frame, guardian star 2, the arena unchanged), only `pc_user_dir` fails (root container) |
 | G | planned (waits for M1's camera results: shots build on the arena camera) |
 | H | H3's checks done (`pc_fm_editor_native_models`); H1 waits for M3 item 4; H2 done (the Blender scripts hold no path; the capture scripts find the dev tools and the game by `_paths.py`); H3's picker open |
+
+## Local log (this machine, Windows; newest last)
+
+* 2026-10-22: `tools/hd-models/field_attack.py` (new): the field attack (3D Monsters attack=2) in a real GL window, one frame per run,
+  with a contact sheet; `--native` turns on the `native-test` mod (a package for card 364). Needs `MEMORIES_DISC` set to the .bin and the
+  dev tools in `tmp/agent/dev` (see `_paths.py`). The fa-* runs of the earlier session sat at step 2 because of their setup; this setup
+  plays the whole attack in about 230 frames (steps 1, 2, then the field). Vanilla sheet: `tmp/agent/fx/van/sheet.png`.
