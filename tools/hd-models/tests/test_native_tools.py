@@ -137,8 +137,8 @@ class ConvertTest(unittest.TestCase):
         self.assertEqual(spec.read_json(self.root / "pkg" / "model.json")["converter"]["rig"], "ue")
         self.assertTrue(9 <= package["strike"]["attack"][0] <= 12, package["strike"])  # the arm is fastest at 0.3-0.4 s
         self.assertEqual((info["bones"], len(info["clips"]), info["vertices"]), (6, 5, 51))
-        self.assertAlmostEqual(info["high"][1], 300.0, places=3)  # the soles 300 below the hips, y down
-        self.assertAlmostEqual(info["low"][1], -225.0, places=3)  # the sword's tip, 0.75 m above the hips
+        self.assertAlmostEqual(info["high"][1], 159.0, places=3)  # the soles 159 below the origin (Black Luster Soldier's hips), y down
+        self.assertAlmostEqual(info["low"][1], -214.0, places=3)  # the sword's tip: the whole model is 373 tall (159 + 214)
         # the walk's 1 m of travel taken out: the root (pelvis, no joint above it) ends where it stood at rest
         walk = next(c for c in info["clips"] if c["name"] == "Walk")
         idle = next(c for c in info["clips"] if c["name"] == "Idle")
@@ -197,7 +197,7 @@ class ConvertTest(unittest.TestCase):
         self.assertEqual((fields["vertices"], fields["bones"], fields["clips"]), ("51", "6", "5"))
         self.assertEqual((fields["attack"], fields["idle"]), ("2", "1"))  # clip index + 1: Sword_Attack, Idle
         self.assertEqual(fields["strikes"], "1")
-        self.assertEqual(float(fields["ground"]), 300.0)
+        self.assertEqual(float(fields["ground"]), 159.0)
         size = Image.open(mod / "models/knight/base.png").size
         self.assertEqual(fields["texture"], f"{size[0]}x{size[1]}")
 

@@ -130,17 +130,21 @@ credits and a picture below Internal 2x keep exactly the console's camera.
 | textures | one set per model: several materials are packed into one texture by the converter |
 | memory | 512 MB for all the native models read (`MEMORIES_NATIVE_BUDGET_MB`): the game is a 32-bit program. A model past it is not read |
 
-Size and placement: the model's root bone (the hips) stands where the monster's body root is, facing as it faces; the converter makes the
-clips in place (the game moves the monster). By default the hips stand 300 game units above the soles (Black Luster Soldier's);
-`--root-height`, `--height` (the whole model, a humanoid is about 560) or `--scale` change that, and `scale` in `model.json` adjusts it
-afterwards.
+Size and placement: the game places a monster by its body root and sizes it as the disc's Black Luster Soldier (BLS) is sized: 373 game
+units from the soles to the top, with the placed point 159 above the soles. The converter makes every model to that standard, whatever its
+rig or proportions: the model is scaled to 373 tall (`--height`), and its origin, the point the game puts on the card, is on its vertical
+axis 159 above its soles (`--origin-height`) and, horizontally, at the middle of its feet in the idle pose (`--no-center` keeps the hips).
+So a model stands on its card with its soles on the ground at the size of the game's own monsters, with nothing to tune. The clips are made
+in place (the game moves the monster). `--scale` (game units per glTF unit) and `--root-height` (the older way: the root bone is the origin,
+that high above the soles) are there for the cases the standard does not fit; `scale` in `model.json` makes it bigger or smaller afterwards
+(a dragon that should tower over the others: 150).
 
 ## Troubleshooting
 
 | What you see | Why, and what to do |
 |---|---|
 | the disc model, not yours | Internal 1x (the native pass needs 2x or more); the mod not applied or not restarted; a note beside the mod in the Mods window says what was refused. `native_check.py` gives the same reasons offline |
-| floating or sunk | the root height: convert again with a larger `--root-height` when it floats (the soles go lower), a smaller one when it sinks (`scale` keeps the soles where they are) |
+| floating or sunk | the origin height: convert again with `--origin-height` (the soles' distance below the origin, 159 by default): a larger one lowers the soles (it floats less), a smaller one raises them |
 | too big or too small | `scale` in `model.json` (percent, about the soles) |
 | the wrong animation in a moment of the battle | that act's clip in `clips` |
 | the blow lands early or late | `strike.attack` (the attack clip's frame of each blow) |
