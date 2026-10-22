@@ -507,6 +507,9 @@ def convert(a):
         s = a.root_height / max(root_height, 1e-9)   # the older way: the root bone is the origin, this high above the soles
     else:
         s = (a.height or STANDARD_HEIGHT) / max(stature, 1e-9)
+    if not a.height and not a.scale and not a.root_height:
+        notes.append(f"size: {STANDARD_HEIGHT:.0f} game units tall, the standard monster's (Black Luster Soldier). A creature that "
+                     f"is big or small by nature needs its size said: --height (e.g. 900 for a dragon, 200 for an imp)")
     if not a.root_height:
         # the origin the game puts on the card: on the body's vertical axis (the root's x and z), origin_height above the soles
         origin = np.array([origin[0], low + a.origin_height / s, origin[2]])
@@ -609,7 +612,11 @@ def convert(a):
         notes.append(f"centred on the feet of {idle_clip}: the origin moved {recenter[0] * s:+.1f}, {recenter[2] * s:+.1f} game units "
                      f"from the hips (--no-center keeps the hips)")
     elif not a.keep_root_motion and not a.no_center:
-        notes.append("no foot joints to centre on: the origin stays at the hips")
+        # no feet to go by (a dragon, a blob, a serpent): the middle of the mesh in the bind pose, seen from above
+        mid = (pos[:, [0, 2]].min(axis=0) + pos[:, [0, 2]].max(axis=0)) / 2
+        recenter = np.array([mid[0] - origin[0], 0.0, mid[1] - origin[2]])
+        notes.append(f"no pair of foot joints: centred on the middle of the mesh seen from above: the origin moved "
+                     f"{recenter[0] * s:+.1f}, {recenter[2] * s:+.1f} game units from the root (--no-center keeps the root)")
 
     clip_blobs, strikes = [], []
     for cname in want:

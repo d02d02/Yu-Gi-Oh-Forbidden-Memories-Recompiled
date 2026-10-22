@@ -134,7 +134,7 @@ Size and placement: the game places a monster by its body root and sizes it as t
 units from the soles to the top, with the placed point 159 above the soles. The converter makes every model to that standard, whatever its
 rig or proportions: the model is scaled to 373 tall (`--height`), and its origin, the point the game puts on the card, is on its vertical
 axis 159 above its soles (`--origin-height`) and, horizontally, at the middle of its feet in the idle pose (`--no-center` keeps the hips).
-So a model stands on its card with its soles on the ground at the size of the game's own monsters, with nothing to tune. The clips are made
+So a model stands on its card with its soles on the ground. **The size is a declaration, not a guess**: 373 is the size of a standard monster, right for a humanoid; a creature that is big or small by nature (a dragon, an imp) must say how big it is with `--height` (900 for a dragon: its soles stay on the ground, only the size changes). Without feet (no pair of foot joints) the origin is the middle of the mesh seen from above. The clips are made
 in place (the game moves the monster). `--scale` (game units per glTF unit) and `--root-height` (the older way: the root bone is the origin,
 that high above the soles) are there for the cases the standard does not fit; `scale` in `model.json` makes it bigger or smaller afterwards
 (a dragon that should tower over the others: 150).
