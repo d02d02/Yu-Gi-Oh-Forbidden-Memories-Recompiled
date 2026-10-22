@@ -673,7 +673,9 @@ def convert(a):
                     "converter": {"tool": "native_convert.py", "rig": rig, "root": names[root],
                                   "game_units_per_gltf_unit": round(s, 4), "height": round(stature * s, 1),
                                   "root_height": round(root_height * s, 1)}})
-    (a.out / "model.json").write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    # the game's JSON reader takes whole numbers only, in every key it skips too: the converter's fractions go in as text
+    written = dict(package, converter={k: (str(v) if isinstance(v, float) else v) for k, v in package["converter"].items()})
+    (a.out / "model.json").write_text(json.dumps(written, indent=2) + "\n", encoding="utf-8")
     return package, info, notes
 
 
