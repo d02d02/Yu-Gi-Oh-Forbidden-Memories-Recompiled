@@ -247,6 +247,7 @@ The tabs, left to right:
 | [Guardian Stars](#guardian-stars) | the stars' names and icons, new stars 11 to 15, every matchup |
 | [Packs](#packs) | card packs sold for starchips on the Password screen |
 | [Tower](#tower) | a run of duels in the title's second menu: floors, rules, rewards, story, when it opens, duelists of the tower's alone |
+| [Native models](#native-models) | which cards play a model of the mod's own (a converter's package) in the battle |
 | [Mod info](#mod-info) | the mod's id, name, version, author, description and settings |
 | [Conflicts](#conflicts) | what the game would refuse, and where other installed mods change the same things |
 
@@ -1198,6 +1199,10 @@ bust does not have among them (the floor's `opponent` checked against that
 floor's duelist), a number past the bust's, and a name too long. A tower needs mod API 14 (17 with a story's
 bust expression: by name, or a number past 3), which Mod info then shows and the save writes as `min_api`. What the form
 cannot show (a key of a later game) is kept as written.
+
+### Native models
+
+A mod's `native_models` (mod API 19): which cards play a rigged 3D model of the mod's own in the battle instead of the disc's. **Add package...** takes the `model.json` a converter made (`tools/hd-models/new_native_mod.py`), copies it with the model and PNGs beside it into the mod under `models/<folder>/` and adds an entry; type the cards it plays for (ids, commas or spaces; Black Luster Soldier is 364) and press **Apply**. **Remove** drops the entry and its copied files. The author, licence and source from `model.json` show under the card list. Checks (missing file, unknown card, a card named twice) are listed under Conflicts. The game needs Internal 2x or more and a restart.
 
 ### Mod info
 
