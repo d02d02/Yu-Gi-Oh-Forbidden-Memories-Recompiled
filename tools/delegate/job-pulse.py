@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Live monitor for a delegated job: prints ONE line per event, nothing otherwise. Costs no model tokens while it runs.
 
-    job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=900] [--verbose]
+    job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=1800] [--verbose] [--exit-on-alert] [--kill-idle MIN]
 
 Default output is terse: ALERT lines (act now: ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER with zero successes) and
-progress lines (START, ITEM). Everything else (SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS, single PROVIDER) only with --verbose.
+progress lines (START, ITEM). --exit-on-alert exits on the first ALERT (exit 3; END exits 0) so a background command wakes the supervisor; --kill-idle MIN
+kills the job's hung `opencode run` after MIN idle minutes. Every event is also appended to ~/work/<id>.pulse.log.
+Everything else (SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS, single PROVIDER) only with --verbose.
 
 Events (grep-able prefix):
   SESSION     a new iteration (OpenCode session) started
@@ -34,7 +36,7 @@ job = sys.argv[1]
 arg = lambda k, d: float(sys.argv[sys.argv.index(k) + 1]) if k in sys.argv else d
 idle_s = arg("--idle", 4) * 60
 every = arg("--every", 20)
-iter_timeout = arg("--iter-timeout", 900)
+iter_timeout = arg("--iter-timeout", 1800)
 W = os.path.expanduser(f"~/work/{job}")
 LL = "/mnt/c/Users/mda/llm-router"
 db = sqlite3.connect(os.path.expanduser("~/.local/share/opencode/opencode.db"))
@@ -44,12 +46,36 @@ except sqlite3.Error:
     ledger = None
 primed = False  # the first pass only records history silently
 VERBOSE = "--verbose" in sys.argv
+EXIT_ON_ALERT = "--exit-on-alert" in sys.argv
+kill_idle_s = arg("--kill-idle", 0) * 60
+LOGF = os.path.expanduser(f"~/work/{job}.pulse.log")
 bad_windows = 0
 
 
 def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --verbose)
-    if primed and (lvl >= 1 or VERBOSE):
-        print(f"[{job} {time.strftime('%H:%M:%S')}] {msg}", flush=True)
+    if not primed:
+        return
+    line = f"[{job} {time.strftime('%H:%M:%S')}] {msg}"
+    with open(LOGF, "a", encoding="utf-8") as f:  # the full event log is always kept, whatever is printed
+        f.write(line + "\n")
+    if lvl >= 1 or VERBOSE:
+        print(line, flush=True)
+    if lvl >= 2 and EXIT_ON_ALERT:
+        sys.exit(0 if " END " in line else 3)  # the exit wakes a plain background command, no Monitor re-arm needed
+
+
+def kill_hung_call():
+    """Kill this job's `opencode run` so the loop starts a fresh session; returns how many were killed."""
+    n = 0
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            try:
+                if os.readlink(f"/proc/{pid}/cwd") == W and b"opencode" in open(f"/proc/{pid}/cmdline", "rb").read():
+                    os.kill(int(pid), 15)
+                    n += 1
+            except OSError:
+                pass
+    return n
 
 
 def alive():
@@ -168,9 +194,13 @@ while True:
         ledger_since = time.time()
     if not alive():
         state = "DONE" if os.path.exists(f"{W}/RALPH_DONE") else "BLOCKED" if os.path.exists(f"{W}/BLOCKED") else "STOPPED"
-        say(f"END {state}; items {it[0]} done/{it[1]} left, commits {cm}, tokens in {tok_in:,} out {tok_out:,}", 2)
+        per = f", {tok_in // it[0]:,} in per item" if it[0] else ""
+        say(f"END {state}; items {it[0]} done/{it[1]} left, commits {cm}, tokens in {tok_in:,} out {tok_out:,}{per}", 2)
         break
     if time.time() - last_activity > idle_s and time.time() - last_idle_say > idle_s:
         say(f"IDLE {int((time.time() - last_activity) / 60)} min with the loop alive (rate limit sleep or hung model call)", 2)
         last_idle_say = time.time()
+    if kill_idle_s and time.time() - last_activity > kill_idle_s:
+        say(f"KILLED {kill_hung_call()} opencode process(es) idle for {int(kill_idle_s / 60)} min; the loop starts a fresh session", 2)
+        last_activity = time.time()
     time.sleep(every)
