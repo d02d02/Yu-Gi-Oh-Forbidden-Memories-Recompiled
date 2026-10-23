@@ -11,6 +11,7 @@ from .editing import RECOVERY_CHOICES, Editing, recovery_label
 from . import build_info, card_links, history, recovery, screen, zoom
 from .art_tab import ArtTab
 from .native_models_tab import NativeModelsTab
+from .studio_tab import StudioTab
 from .map_tab import MapTab
 from .values_tab import ValuesTab
 from .guardian_stars_tab import GuardianStarsTab
@@ -94,10 +95,11 @@ class App(Editing, tk.Tk):
         self.packs = PacksTab(self.notebook, self)
         self.tower = TowerTab(self.notebook, self)
         self.native = NativeModelsTab(self.notebook, self)
+        self.studio = StudioTab(self.notebook, self)
         self.info = ModInfoTab(self.notebook, self)
         self.conflicts = ConflictsTab(self.notebook, self)
         self.tabs = [self.cards, self.art, self.fusions, self.equips, self.rituals, self.duelists, self.ui,
-                     self.starter, self.map, self.values, self.stars, self.packs, self.tower, self.native, self.info,
+                     self.starter, self.map, self.values, self.stars, self.packs, self.tower, self.native, self.studio, self.info,
                      self.conflicts]
         self.status = ttk.Label(self, relief="sunken", anchor="w", padding=(6, 2))
         self.status.pack(fill="x", side="bottom", before=self.notebook)
