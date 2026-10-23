@@ -24,3 +24,6 @@ Not measured yet: card footprint and arena camera shots. Both need engine work (
 Finding: the phase script is the same for every attacker (same phases, same frame counts, opening orbit 1799, wide shot 1199), but the close-shot distance depends on the monster: phase 5/6 = 462 (card 364), 959 (card 1), 708 (card 12), 507 (card 250), 651 (card 600). So the camera reference is per monster class, not global. Rebuild with `measure_reference.py` + `build_camera.py`.
 
 Card footprint: no footprint exists in the arena camera or draw logs; the field slot geometry is a separate (field-view) measurement, still open.
+
+## Per-card camera and classes (`arena_camera_all.json`, `classes.json`)
+`arena_camera_all.json`: distance range per camera phase for 620 cards. The close-shot distance (phase 5) takes 129 distinct values from 462 to 967: it is a **per-monster** value, not a class value. Height does not predict it (correlation 0.13), so `classes.json` (height buckets of 50, one representative each, median attack-row length and contact frame) is a convenience grouping only; use the per-card data for anything exact. What drives the camera distance is not yet identified (not the model height).
