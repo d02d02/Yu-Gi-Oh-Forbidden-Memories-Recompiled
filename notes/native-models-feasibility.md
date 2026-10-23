@@ -182,7 +182,7 @@ turns green when its gate passes. Design points:
 1. **The viewport is the real engine.** The FM Editor is Tk (`tools/pc/fm_editor`), which cannot render the game's shader, skinning, lights and
    cameras faithfully. The studio should drive a headless/windowed engine "viewer" process over the existing control channel (`yfm_control`
    already exists), and show its window or frames inside or beside the editor. What you see is then what the game does. A three.js viewport
-   would be a second renderer that will disagree with the game; if used, it is for stages S1-S3 only. **Decision needed.**
+   would be a second renderer that will disagree with the game; if used, it is for stages S1-S3 only. **Decided (user, 2026-10-23): the real engine.**
 2. **One recipe file** (`recipe.json`) holds every choice from S0 to S9: classification, bone map, size, mappings, time maps, look, licence.
    The converter takes `glb + recipe -> package`, byte-identical each time. Today the choices are spread over CLI flags, `model.json` and
    Blender scripts. The recipe is the first thing to build, with or without a GUI, because the CLI and the studio both read it.
