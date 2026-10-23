@@ -295,11 +295,82 @@ stretch      0.9x       1.6x           0.7x
 **Gate**: atlas builds and previews textured.
 **Needs**: E1 (load and replace), E3/E7 for the preview, atlas builder returns data (C1). To confirm: what the engine draws for emissive and vertex colour (read `gl_picture.c`, not read yet).
 
-## 5. Outlined stages (to detail next)
+### S7 Look
 
-| Stage | Detail still needed |
-|---|---|
-| S7 Look | lighting compare against BLS, camera shot editor (field/arena shots) |
-| S8 Validate | scripted run list, contact sheet/video outputs, pass criteria |
-| S9 Package | build progress, native_check output, byte-identity check, where the package lands |
-| Cross-stage | recipe versioning, undo/redo scope, multi-card use, Blender round trip, error screens (crash of the engine process, missing disc) |
+**Job**: make the model sit in the game's light and frame it in the field and arena camera shots.
+**Viewport**: engine, camera = the shot being edited (field or arena tab above the viewport). Overlays: BLS ghost, safe frame (the visible area), near-plane clip indicator.
+**Compare**: split view *(new, E8)*: left native, right the disc's BLS playing the same act under the same light; a slider moves the divider. If the disc is absent, the compare is hidden and a note says why.
+
+**Knobs**
+| Knob | Control | Auto |
+|---|---|---|
+| Ambient `[look.ambient]` | number + slider | the BLS value |
+| Light gain `[look.light_gain]` | number + slider | the BLS value |
+| Tint `[look.tint]` | colour swatch + hex | none |
+| Field shot `[shots.field]` | height, distance, yaw numbers; "Frame model" button | computed from the fitted size |
+| Arena shot `[shots.arena]` | same | same |
+| Per-act shot overrides `[shots.<act>]` | add row: act, height, distance, yaw | none |
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S7.brightness` | warn when mean luminance differs from the BLS under the same light by > 15% | "Adjust light gain or ambient." |
+| `S7.framing` | fail when any part of the model is outside the safe frame in its idle or attack | "Raise the distance or lower the height." |
+| `S7.near-plane` | fail when the near plane cuts the model in the arena shot | "Increase distance." |
+| `S7.ghost-scale` | info: model height vs BLS ghost | "" |
+
+**Gate**: framed in both shots, nothing clipped.
+**Needs**: E4 camera presets from numbers, E8 compare, C6 writes `look` and `shots` into `model.json` (hand-edited today).
+
+### S8 In-context validation
+
+**Job**: see every act in the real scenes and record that it was seen.
+**Layout**: a **run list** replaces the knob column: Library turntable, Field attack, Arena attack, Each act in turn (idle, enter, attack, hit, destroyed, win, guard). Each row has a status (`not run`, `running`, `seen`, `problem`), a Run button and, once run, a thumbnail strip (contact sheet). Selecting a row plays it in the viewport.
+**Interaction**: after a run, the person marks the row `Looks right` or `Report a problem`; a problem asks for one choice from a short list (wrong size, wrong timing, clipping, pose pop, wrong look) and jumps to the stage that owns it (S4, S6, S5, S5, S7). Marks are stored in the recipe with the package hash they refer to.
+**Knobs**: contact sheet on/off, video on/off (short capture), disc required toggle (greyed when no disc).
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S8.coverage` | fail if any act or scene has not been run | "Run the remaining rows." |
+| `S8.problem` | fail if any row is marked problem | "Open the stage named on the row." |
+| `S8.stale-run` | warn if a run is older than the last change to an earlier stage | "Run it again." |
+| `S8.disc` | info when scenes need the disc and none is set | "Library turntable only; set MEMORIES_DISC for field and arena." |
+
+**Gate**: all rows seen, none a problem, no stale run.
+**Needs**: scripted scene runs (today `field_attack.py` and the Library capture recipe in `progress.md`, desktop only), E1, E3, E7. This stage is where the disc becomes mandatory for field and arena.
+
+### S9 Package
+
+**Job**: write the package and prove it.
+**Layout**: a **build panel**: the build summary (name, size, triangles, bones, clips, texture memory against the budget), the output path, and a log. One button: Build package. During the build a progress bar polled from the subprocess; no other control is enabled except Cancel.
+**Knobs**: package name `[pkg.name]` (default from the model name, validated as a folder name), write `mod.json` entry `[pkg.write_mod]`, card ids (carried from S0, editable here), overwrite existing (asked by a dialog naming the folder).
+
+**Checks** (run after the build)
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S9.native_check` | fail on any error from `native_check` (shown with its text) | "Open the stage named in the message." |
+| `S9.identical` | fail if a second build differs byte-for-byte | "Report this: the recipe is not deterministic." |
+| `S9.budget` | warn near the 512 MB native-model total, fail over | "Lower the atlas or triangle count." |
+| `S9.provenance` | fail if author, licence or source are missing in the package | "Fill S0." |
+
+**Result**: a summary with the package path, `Open in Library` (jumps the game to card), `Export report`, and `Add to another card`.
+**Needs**: C7 byte-identical output, C1 entry; `native_check` returning findings as data (today it prints).
+
+## 5. Cross-stage behaviour
+
+* **Recipe file**: `recipe.json` next to the source (or in the model's folder), with `schema` and `studio` versions at the top. Opening an older recipe runs a migration and shows a banner listing what changed; opening a newer one is refused with a message naming the version needed.
+* **Autosave**: every knob change writes the recipe (debounced); the header shows `saved` / `unsaved` / `error`. Build never runs on an unsaved recipe.
+* **Undo/redo**: per recipe, a linear history of knob changes (each entry = one knob or one reset), Ctrl+Z / Ctrl+Y, shown as a list in a small history panel. Viewport gestures that edit (drag origin, drag time-map point) commit one entry on release. Undo does not re-run stages: it restores values and marks affected stages `stale`.
+* **Multi-card use**: a model has a list of card ids; each card can have its own `scale`/`offset` override (the two `model.json` fields); everything else is shared. Variants (palette swaps) are separate models that point to the same source and differ in S3.
+* **Blender round trip**: button in the header and in S1/S5. The studio writes the current source to a work folder, launches Blender with it, shows a modal-free banner "Waiting for Blender" with Cancel. On return it re-reads the file; S1 and S2 re-run; later stages go stale; the banner reports changed counts. If Blender does not return a file or fails, the recipe is untouched.
+* **Errors**: each has a screen state with a recovery:
+  | Situation | Behaviour |
+  |---|---|
+  | Engine process fails to start or dies | viewport shows "The game window closed" with Restart; recipe and checks unaffected; engine stages cannot be passed until it returns |
+  | No disc | S0-S3 work in full; S4+ run with a stored reference where it exists, and engine stages that need the disc show a clear message; S8 field and arena rows are disabled |
+  | Source file moved or deleted | banner "Source not found" with Locate file; recipe kept |
+  | Converter/subprocess error | the stage shows the message and the log tail; nothing is marked pass |
+  | Recipe unreadable | the editor offers the last autosave backup |
+* **Keyboard**: Alt+Up/Down moves between stages, `/` focuses search where there is one, Space plays/pauses, Left/Right step a frame, Escape closes the slide-over.
+* **Accessibility**: colour is never the only state signal (glyph + text on every dot); all knobs reachable by Tab in reading order; viewport gestures all have a knob equivalent.

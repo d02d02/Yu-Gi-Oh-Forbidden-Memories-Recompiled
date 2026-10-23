@@ -8,7 +8,7 @@ Status 2026-10-23: structure drafted, **nothing built**. The three-view structur
 | File | Holds | State |
 |---|---|---|
 | `decisions.md` | decisions taken, UX rules adopted, what is out of scope | v1 |
-| `studio-view.md` | the Studio screen: anatomy, state model, interaction rules, per-stage detail | S0-S6 detailed; S7-S9 and cross-stage outlined |
+| `studio-view.md` | the Studio screen: anatomy, state model, interaction rules, per-stage detail | S0-S9 and cross-stage behaviour detailed (first full pass) |
 | `models-view.md` | the Models list (entry point, first run, multi-card, provenance) | outline + questions |
 | `flow-presets.md` | per-category flow and presets (C1-C8 x S0-S9) | matrix + questions |
 | `tk-mapping.md` | how the web wireframes translate to Tk widgets and the editor's limits | v1 |
