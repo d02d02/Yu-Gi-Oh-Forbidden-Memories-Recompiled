@@ -7,10 +7,11 @@ Per card it runs attack_window_evlog.py (MEMORIES_TRACE=model), reads the `evt d
 attacker's slot: every row seen with its length (`len=`), and the attacker's clock (`frame=`) in its attack row (3 or 4) when the
 defender's row first becomes a reaction row (5, 6, 8) = the contact frame. MEMORIES_DISC must be an absolute path.
 """
-import argparse, json, re, subprocess, sys
+import argparse, json, re, shutil, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 DRAW = re.compile(r"evt draw f=(\d+) slot=(\d+) model=(-?\d+) row=(-?\d+) prev=(-?\d+) state=(-?\d+) frame=(-?\d+) len=(-?\d+)")
 REACTION = (5, 6, 8)
 ATTACK = (3, 4)
@@ -54,6 +55,7 @@ def main() -> int:
     ap.add_argument("--work", type=Path, default=Path("tmp/agent/sm0"))
     ap.add_argument("--frames", type=int, default=1500)
     ap.add_argument("--every", type=int, default=1)
+    ap.add_argument("--clean", action="store_true", help="keep only the parsed result (rows, contact, camera phases) and delete each card's work dir")
     a = ap.parse_args()
     result = json.loads(a.out.read_text()) if a.out.exists() else {}
     for card in [int(c) for c in a.cards.split(",")]:
@@ -67,7 +69,11 @@ def main() -> int:
         if done.returncode or not log.exists():
             result[str(card)] = {"error": (done.stderr or done.stdout)[-300:]}
         else:
-            result[str(card)] = parse(log.read_text(errors="replace"))
+            text = log.read_text(errors="replace")
+            result[str(card)] = parse(text)
+            result[str(card)]["camera"] = __import__("build_camera").phases(text)
+        if a.clean:
+            shutil.rmtree(work, ignore_errors=True)
         print(card, json.dumps(result[str(card)].get("contact") or result[str(card)].get("error")), flush=True)
         a.out.write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
     return 0
