@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Live monitor for a delegated job: prints ONE line per event, nothing otherwise. Costs no model tokens while it runs.
 
-    job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=900]
+    job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=900] [--verbose]
+
+Default output is terse: ALERT lines (act now: ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER x3 in a row) and
+progress lines (START, ITEM). Everything else (SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS, single PROVIDER) only with --verbose.
 
 Events (grep-able prefix):
   SESSION     a new iteration (OpenCode session) started
@@ -40,10 +43,12 @@ try:
 except sqlite3.Error:
     ledger = None
 primed = False  # the first pass only records history silently
+VERBOSE = "--verbose" in sys.argv
+bad_windows = 0
 
 
-def say(msg):
-    if primed:
+def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --verbose)
+    if primed and (lvl >= 1 or VERBOSE):
         print(f"[{job} {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
@@ -108,7 +113,7 @@ while True:
                     if "aborted" in err:
                         aborts[sid] += 1
                         if aborts[sid] == 3:
-                            say("ABORT-RUN 3 aborted calls in one session: broken tool calls from the model")
+                            say("ABORT-RUN 3 aborted calls in one session: broken tool calls from the model", 2)
                 elif tool == "bash":
                     out = str(st.get("output", ""))
                     if any(k in out for k in ("FAILED", "Traceback", "AssertionError", "FAIL:")):
@@ -117,7 +122,7 @@ while True:
                 elif tool == "edit":
                     edits[(sid, tgt)] += 1
                     if edits[(sid, tgt)] == 4:
-                        say(f"STUCK-LOOP 4 edits of {tgt.split('/')[-1]} in one session")
+                        say(f"STUCK-LOOP 4 edits of {tgt.split('/')[-1]} in one session", 2)
                 elif tool == "read":
                     reads[(sid, tgt)] += 1
                     if reads[(sid, tgt)] == 3:
@@ -133,7 +138,7 @@ while True:
                 last_activity = time.time()
     it, cm = items(), commits()
     if it != last_items:
-        say(f"ITEM {it[0]} done/{it[1]} left")
+        say(f"ITEM {it[0]} done/{it[1]} left", 1)
         last_items = it
     if cm != last_commits:
         say(f"COMMIT total {cm}")
@@ -147,21 +152,24 @@ while True:
         age = time.time() - seen_sessions[sid]
         if age > 0.8 * iter_timeout and sid not in warned and alive():
             warned.add(sid)
-            say(f"TIMEOUT-NEAR session {len(seen_sessions)} is {int(age)} s old (limit {int(iter_timeout)} s); uncommitted work will be killed")
+            say(f"TIMEOUT-NEAR session {len(seen_sessions)} is {int(age)} s old (limit {int(iter_timeout)} s); uncommitted work will be killed", 2)
     n, why = ledger_failures(ledger_since)
     if n >= 3:
-        say(f"PROVIDER {n} failed router calls in the last window, last: {why}")
+        bad_windows += 1
+        say(f"PROVIDER {n} failed router calls, last: {why}", 2 if bad_windows >= 3 else 0)  # 3 bad windows in a row = alert
         ledger_since = time.time()
+    elif time.time() - ledger_since > 300:
+        bad_windows, ledger_since = 0, time.time()
     if not primed:
         primed = True
-        say(f"START {len(seen_sessions)} sessions so far, items {it[0]} done/{it[1]} left, commits {cm}")
+        say(f"START {len(seen_sessions)} sessions so far, items {it[0]} done/{it[1]} left, commits {cm}", 1)
         last_activity = time.time()
         ledger_since = time.time()
     if not alive():
         state = "DONE" if os.path.exists(f"{W}/RALPH_DONE") else "BLOCKED" if os.path.exists(f"{W}/BLOCKED") else "STOPPED"
-        say(f"END {state}; items {it[0]} done/{it[1]} left, commits {cm}, tokens in {tok_in:,} out {tok_out:,}")
+        say(f"END {state}; items {it[0]} done/{it[1]} left, commits {cm}, tokens in {tok_in:,} out {tok_out:,}", 2)
         break
     if time.time() - last_activity > idle_s and time.time() - last_idle_say > idle_s:
-        say(f"IDLE {int((time.time() - last_activity) / 60)} min with the loop alive (rate limit sleep or hung model call)")
+        say(f"IDLE {int((time.time() - last_activity) / 60)} min with the loop alive (rate limit sleep or hung model call)", 2)
         last_idle_say = time.time()
     time.sleep(every)

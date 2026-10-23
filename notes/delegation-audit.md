@@ -46,3 +46,6 @@ Apply the proposed changes after `recipe-v1` ends, rerun a comparable job, add t
 v1 showed `TOOL-ERROR read` with no text. The trace showed the errors were model-side (`Tool execution aborted`, empty input; `read` called without `filePath`), not test failures, which v1 could not tell apart. v2 adds the error text, abort streaks, test failures, re-reads, the timeout warning, router failures and token totals.
 
 Still not covered: a hung model call looks like IDLE only (no view inside the call); the monitor cannot steer (to steer, edit `progress.md` in the job clone or kill the loop); the ledger `source='ralph'` is not per job, so PROVIDER assumes one job at a time; no automatic landing.
+
+## Terse mode (default since 2026-10-23)
+`job-pulse.py` prints only: ALERT (ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER 3 windows in a row) and progress (START, ITEM). SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS and a single PROVIDER need `--verbose`. Reason: the supervisor pays tokens per notification, and a failed test or a provider timeout is routine; the loop recovers by itself.
