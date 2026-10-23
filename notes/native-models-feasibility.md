@@ -228,3 +228,10 @@ dragon, the angel and the mannequin to confirm or refute the fit-problem hypothe
 
 Acceptance for the whole effort: each category's corpus asset ends with a report with no open fail, a contact sheet and a video in the arena and
 field cameras, reproduced from `recipe.json` alone.
+
+## 7. Direction (user, 2026-10-23): UX and GUI first
+
+The project starts from the UX and the GUI. Section 6 (order of work) is superseded: first design the studio screens, the flow per category,
+the knobs at each stage and a click-through (wireframes), then derive the recipe schema, converter changes and engine viewer from what the screens
+need. Findings from reading the editor and converter code (tab registration, no worker threads in the editor, converter takes an argparse namespace,
+what blocks byte-identical output) are kept in the session plan and are inputs to that later step, not to the UX.
