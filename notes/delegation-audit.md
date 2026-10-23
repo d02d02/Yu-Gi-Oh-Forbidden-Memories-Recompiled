@@ -38,6 +38,7 @@ Run via WSL with `MSYS_NO_PATHCONV=1`. Router view: `python3 llm-router/scripts/
 | Job | Date | Finding | Action |
 |---|---|---|---|
 | `recipe-v1` | 2026-10-23 | Sessions 1 and 2 ended on pending calls (900 s timeout). Work was on disk, uncommitted, counted as "changed nothing". 25 KB of the same sources re-read 3 to 5 times. 53 steps, 486k tokens in, by the time item 1 was ticked. | Proposed, not yet applied: timeout 1800 s; commit-per-item rule in `delegate-prompt.txt`; known-facts section in `JOB.md`; smaller items; stall counter to count working-tree changes. |
+| `recipe-v1` result | 2026-10-23 | DONE: 7 of 7 items, 9 sessions, 194 steps, 2.21M input / 37k output tokens (about 316k per item), about 2 h wall clock. Output: recipe.py 573 lines, 132 tests, all pass on Windows Python; review found it matches `recipe-schema.md`. Tool calls: 97 read, 62 bash, 33 edit; 116 explore-type. The agent committed late (two items landed uncommitted), so I copied the working tree and not the branch. | Landed as `ef52520b5`. Cost of review about 25k Anthropic tokens against hand-writing about 1,400 lines. Apply the planned fixes before the next job. |
 
 ## Open
 Apply the proposed changes after `recipe-v1` ends, rerun a comparable job, add the measured result here.
