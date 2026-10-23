@@ -30,7 +30,7 @@ class StudioTabTest(GuiCase):
             self.assertTrue(tab.form.winfo_children())            # knobs are drawn
             self.assertIn("disabled", tab.next_button.state())    # S0 fails: Next is off
             licence = next(k for k in studio_tab.knobs.knobs("S0") if k["path"] == "meta.license")
-            tab.commit(licence, "CC-BY-4.0")
+            tab.commit_knob(licence, "CC-BY-4.0")
             self.assertEqual(tab.session.studio.recipe["meta"]["license"], "CC-BY-4.0")
             tab.history("undo")
             self.assertNotIn("license", tab.session.studio.recipe.get("meta", {}))

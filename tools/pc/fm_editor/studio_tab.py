@@ -182,8 +182,8 @@ class StudioTab(Tab):
             shown = ", ".join(map(str, current)) if isinstance(current, list) else ("" if current is None else str(current))
             var = tk.StringVar(value=shown)
             widget = ttk.Entry(row, textvariable=var, width=24)
-            widget.bind("<Return>", lambda e: self.commit(k, var.get()))
-            widget.bind("<FocusOut>", lambda e: self.commit(k, var.get()))
+            widget.bind("<Return>", lambda e: self.commit_knob(k, var.get()))
+            widget.bind("<FocusOut>", lambda e: self.commit_knob(k, var.get()))
             if not shown:
                 ttk.Label(row, text="auto: " + str(k["auto"]), style="Note.TLabel").pack(side="right")
         else:
@@ -193,7 +193,7 @@ class StudioTab(Tab):
             ttk.Button(row, text="Back to auto", command=lambda: self.auto(k)).pack(side="left", padx=6)
 
     # --- actions -----------------------------------------------------------------------------
-    def commit(self, k, text):
+    def commit_knob(self, k, text):
         text = text.strip()
         if k["control"] == "number":
             try:
