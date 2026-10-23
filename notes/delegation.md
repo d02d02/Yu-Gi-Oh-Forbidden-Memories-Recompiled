@@ -2,6 +2,7 @@
 
 Goal: Claude Code writes a precise job, a free-tier model does the typing in a loop, Claude Code spends tokens only on the brief, a few status lines and the final check. The harness is `C:\Users\mda\llm-router` (see its `HOWTO.md`); this note covers only how this project uses it. Kit: `tools/delegate/`.
 
+See also `notes/delegation-audit.md` (live monitor, trace, how to read them).
 ## Shape of a job
 * A job is a **shallow WSL-native clone** of this repo (`~/work/<id>`, branch `ralph/<id>`), not a worktree: a Windows worktree's `.git` pointer cannot be read from WSL, and the harness commits to whatever branch is current. The Windows checkout and the working branch are never touched while a job runs.
 * The job is three files, committed first: `progress.md` (short: goal, pointer, checklist; the harness digest reads only its head and Status), `JOB.md` (the full brief: goal, files to read with line ranges, files allowed to change, constraints, acceptance), `verify.sh` (exit 0 only when the whole job is done).

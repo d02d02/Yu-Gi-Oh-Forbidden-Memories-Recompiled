@@ -24,7 +24,8 @@ Templates: `spec-template/`.
 | `job-verify.sh <id>` | runs the job's `verify.sh` and prints PASS, or FAIL plus 15 lines, then the diffstat |
 | `job-watch.sh <id> [min=25]` | watchdog: waits, then prints the status once; run it as a second background command so a hung loop is noticed |
 | `job-stats.py <id>` | cost breakdown from OpenCode's own database: model steps, tool calls by kind, tokens |
-| `job-trace.py <id> [--full]` | audit: every tool call per session with target and status, the agent's own remarks, files re-read, aborted calls |
+| `job-trace.py <id> [--full]` | audit: every tool call per session with target and status, the agent's own remarks, files re-read, aborted calls | See `notes/delegation-audit.md`. |
+| `job-pulse.py <id> [--idle MIN] [--every SEC]` | live monitor: one line per event (session start, tool error, stuck edit loop, item ticked, commit, idle, end); run it with the Monitor tool; no model tokens |
 | `delegate-prompt.txt` | the prompt every iteration gets: read `JOB.md`, do the first unchecked item, run its check, tick it or write `Failed:`; two failures on one item = `BLOCKED` |
 
 ## How, step by step
