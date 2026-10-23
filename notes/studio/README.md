@@ -15,7 +15,7 @@ Status 2026-10-23: structure drafted, **nothing built**. The three-view structur
 | `engine-needs.md` | everything the screens ask of the engine and converter, deduplicated | grows with studio-view |
 | `recipe-schema.md` | draft recipe keys mapped to converter flags, model.json and what is new; corrections to the UX docs | draft v0 |
 | `open-questions.md` | undecided points, who decides, what blocks | live |
-| `wireframes-v1.html` | the clickable mock (open in a browser); also published as an artifact | v3: stage strips, nine-entry rail; S7 still shows the pre-schema shot UI (Q13) |
+| `wireframes-v1.html` | the clickable mock (open in a browser); also published as an artifact | v4: stage strips, nine-entry rail, S7 camera-move list and real look keys |
 
 ## Conventions
 * *(new)* = does not exist in the engine or converter today. Every *(new)* in a screen must appear in `engine-needs.md`.

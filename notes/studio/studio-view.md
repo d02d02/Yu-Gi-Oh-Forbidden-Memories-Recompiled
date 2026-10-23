@@ -89,7 +89,7 @@ Per stage: `todo` (never run) | `pass` | `warn` | `fail` | `stale`.
 | Idle (0, 1) | asset / library / procedural / Blender import | name | frames | loop gap %, drift, speed peak |
 | Enter (2) | | | | |
 | Attack (3) | | | | |
-| Attack 2 (4, second guardian star) | | | | |
+| (row 4, second guardian star) | plays Attack; not editable until the package has an attack2 clip (Q12) | | | |
 | Hit (5) | | | | |
 | Destroyed (6) | | | | |
 | Win (7) | | | | |
@@ -109,7 +109,7 @@ Rows with no source show today's fallback in grey ("plays Hit", "plays Idle") so
 | Close loop `[acts.<act>.close_loop]` | toggle + frames | on when gap > threshold |
 | Remove root travel `[acts.<act>.root_motion]` | select: remove x/z (keep y) / keep all | remove x/z |
 | Mirror `[acts.<act>.mirror]` | toggle | off |
-| Crossfade frames `[acts.<act>.crossfade]` | number | 6 |
+| Crossfade | read-only fact: 6 frames, fixed by the engine | 6 |
 | Procedural params | per type (see below) | by type |
 
 **Procedural types**: hit = recoil distance + time along facing; destroyed = collapse style (fall, sink, tip) + scale-fade; guard = brace (crouch %, flare %); win = bob height or raise; attack = anticipation, lunge distance, recovery; enter = rise or slide from a side. Each has 2-4 numbers and a live preview.
@@ -278,7 +278,7 @@ stretch      0.9x       1.6x           0.7x
 |---|---|---|
 | Atlas size `[mat.atlas]` | select 512/1024/2048 | smallest that keeps texel density |
 | Per-material table `[mat.items]` | rows: name, thumbnail, alpha mode, two-sided, tint, override file | from glb |
-| Alpha cutoff `[mat.alpha_cutoff]` | number | 0.5 |
+| Alpha | read-only fact: alpha below half is cut by the engine; the per-material alpha mode is the only control | cut at 0.5 |
 | Normal strength `[mat.normal_strength]` | number | 1.0 |
 | Roughness/metal override `[mat.pbr]` | numbers, "no PBR" toggle | from glb |
 
@@ -297,30 +297,38 @@ stretch      0.9x       1.6x           0.7x
 
 ### S7 Look
 
-**Job**: make the model sit in the game's light and frame it in the field and arena camera shots.
-**Viewport**: engine, camera = the shot being edited (field or arena tab above the viewport). Overlays: BLS ghost, safe frame (the visible area), near-plane clip indicator.
+**Job**: set the model's light, and add camera moves for its acts. Two sections on one stage: **Light** and **Camera moves**. A model with no moves keeps the game's camera (that is the auto value).
+**Viewport**: engine. Light section: camera = the game's arena camera. Camera moves section: selecting a move previews it; scrubbing the act's row drives the camera through the move *(new, E4)*. Overlays: BLS ghost, safe frame, near-plane clip indicator.
 **Compare**: split view *(new, E8)*: left native, right the disc's BLS playing the same act under the same light; a slider moves the divider. If the disc is absent, the compare is hidden and a note says why.
 
 **Knobs**
 | Knob | Control | Auto |
 |---|---|---|
-| Ambient `[look.ambient]` | number + slider | the BLS value |
-| Light gain `[look.light_gain]` | number + slider | the BLS value |
-| Tint `[look.tint]` | colour swatch + hex | none |
-| Field shot `[shots.field]` | height, distance, yaw numbers; "Frame model" button | computed from the fitted size |
-| Arena shot `[shots.arena]` | same | same |
-| Per-act shot overrides `[shots.<act>]` | add row: act, height, distance, yaw | none |
+| Ambient `[look.ambient]` | number + slider, % | 20 |
+| Light gain `[look.light_gain]` | number + slider, % | 100 |
+| Normal strength `[look.normal_strength]` | number, % | 180 |
+| Highlight `[look.highlight]` | number, % | 100 |
+| Flip green `[look.flip_green]` | toggle (glTF up / DirectX down) | on |
+| Camera near `[look.camera_near]` | number, game units | 1000 |
+| Camera keep `[look.camera_keep]` | number, % (100 = the game's camera) | 50 |
+| Camera scale `[look.camera_scale]` | number, % | 100 |
+| Camera moves `[shots]` | table, at most 8 rows (`n of 8` shown): act, from, to (frames of that act's row), yaw, pitch, distance %, height, ease, other monster; Add move / Duplicate / Delete; all whole numbers | none |
+
+The camera moves are the package's `shots` (arena, and the 3D Monsters field fight on its own orbit). The studio previews them on the arena camera; the field-fight result is checked in S8. Look values are the package's `look` (percent), so what is saved is exactly what the game reads.
 
 **Checks**
 | id | Fails/warns when | Fix line |
 |---|---|---|
 | `S7.brightness` | warn when mean luminance differs from the BLS under the same light by > 15% | "Adjust light gain or ambient." |
 | `S7.framing` | fail when any part of the model is outside the safe frame in its idle or attack | "Raise the distance or lower the height." |
-| `S7.near-plane` | fail when the near plane cuts the model in the arena shot | "Increase distance." |
+| `S7.near-plane` | fail when the near plane cuts the model at any frame of a move | "Raise distance % in that move, or raise camera near." |
+| `S7.move-range` | fail when from >= to, or a frame is past the act's row length | "Set from below to, inside the row." |
+| `S7.move-count` | fail beyond 8 moves | "Delete or merge a move." |
+| `S7.move-extreme` | warn when a move's yaw + pitch + distance leaves the model outside the safe frame at its end | "Lower yaw or raise distance." |
 | `S7.ghost-scale` | info: model height vs BLS ghost | "" |
 
-**Gate**: framed in both shots, nothing clipped.
-**Needs**: E4 camera presets from numbers, E8 compare, C6 writes `look` and `shots` into `model.json` (hand-edited today).
+**Gate**: no fail; brightness within range or acknowledged. No move is required.
+**Needs**: E4 camera driven by a move and a row phase, E8 compare, C6 writes `look` and `shots` into `model.json` (hand-edited today).
 
 ### S8 In-context validation
 

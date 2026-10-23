@@ -26,7 +26,7 @@ Derived from the knob tables in `studio-view.md`, checked against the converter'
 | `model.category` | S0 | new | C1-C8; drives presets only |
 | `model.name` | S0/S9 | flag `--name` | |
 | `model.cards` | S0/S9 | mod.json `cards` | at most 64 per entry |
-| `model.card_overrides` | S9 | model.json `scale`, `offset` per card | **new**: model.json holds one scale/offset, so per-card means one package per card or a mod.json-level override |
+| `model.card_overrides` | S9 | mod.json `native_models` entry `scale` / `offset` | **new** optional members (Q11); several entries may share one package |
 | `meta.author`, `meta.license` | S0 | flags `--author`, `--license` | |
 | `meta.url`, `meta.attribution` | S0 | model.json `source` for the URL; attribution **new** | |
 | `audit.fix_axes`, `audit.smooth_passes`, `audit.normalise`, `audit.mirror`, `audit.drop_parts` | S1 | new | today Blender-side |
@@ -62,12 +62,12 @@ Derived from the knob tables in `studio-view.md`, checked against the converter'
 | `pkg.name` | S9 | folder and `model.json` `name` | |
 | `pkg.write_mod` | S9 | `new_native_mod.py` behaviour | |
 
-Acts are `idle, enter, attack, attack2, hit, destroyed, win, guard`. `model.json` has no `attack2` clip today: row 4 plays `attack`. **attack2 is new in the recipe, with no package home**, so either drop it from S5 or add it to the package (engine change). Recommendation: drop it from the studio until the engine has it, and show row 4 as "plays Attack".
+Acts are `idle, enter, attack, hit, destroyed, win, guard` (attack2 dropped, Q12). `model.json` has no `attack2` clip today: row 4 plays `attack`. **attack2 is new in the recipe, with no package home**, so either drop it from S5 or add it to the package (engine change). Recommendation: drop it from the studio until the engine has it, and show row 4 as "plays Attack".
 
 ## Corrections the schema forces on the UX docs
 1. **S7 `shots`**: in the package, a shot is an arena camera move over a frame range of one act (`act, from, to, yaw, pitch, distance %, height, ease, other`), at most 8, not a static "field shot / arena shot" framing. The S7 knob table in `studio-view.md` must become a shot list editor (add, edit, scrub-to-preview). Camera presets for the viewport (S4) are a separate studio feature, not saved in the package.
 2. **S7 look**: real keys are the eight in `native-models.md` (Look). `tint` and a free "arena camera distance/height" do not exist; remove or mark *(new)*.
-3. **Per-card scale/offset** (multi-card): see `model.card_overrides` above. Needs a decision (Q11).
+3. **Per-card scale/offset** (multi-card): see `model.card_overrides` above. Decided (Q11).
 4. **Alpha cutoff** in S3 is fixed at half in the engine; make it a read-only fact, not a knob, unless the converter bakes alpha.
 5. **Attack 2**: see above.
 6. **Crossfade**: fixed at 6 frames; remove as a knob or mark *(new)*.
@@ -98,4 +98,4 @@ Sorted keys and one JSON formatter; integers where the game's JSON reader needs 
 ```
 
 ## New questions
-Q11 Per-card scale/offset: one package per card, or a package-level override table? (needs the engine/mod loader's view.) Q12 Add `attack2` to the package, or drop it? Both go to `open-questions.md`.
+Q11 and Q12 are decided (see `open-questions.md`): per-card overrides as optional `scale`/`offset` on a mod.json entry; attack2 dropped.
