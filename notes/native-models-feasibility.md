@@ -235,3 +235,23 @@ The project starts from the UX and the GUI. Section 6 (order of work) is superse
 the knobs at each stage and a click-through (wireframes), then derive the recipe schema, converter changes and engine viewer from what the screens
 need. Findings from reading the editor and converter code (tab registration, no worker threads in the editor, converter takes an argparse namespace,
 what blocks byte-identical output) are kept in the session plan and are inputs to that later step, not to the UX.
+
+## 8. What the engine offers a viewport today (read from notes and code, nothing run; Library screen and the rest of `gl_picture.c` not read)
+
+"The real engine is the viewport" is decided, but the engine is not a viewer yet. Gaps, in the order they bite:
+
+1. **Needs the disc and the game's state.** The native draw starts from a captured disc-model slot (`NativeModel_BeginSlot`, root and world-to-screen
+   matrices, lights from the GTE state). No synthetic `NativeDraw` injection point exists; the GL pass itself reads no game memory, so one can be added.
+2. **No hot reload.** Meshes are never freed and the GL cache (16 slots) is keyed on the mesh pointer; `NativeRegistry_Reset` is test-only and unsafe
+   at runtime. Today a changed package means restarting the game. `MEMORIES_NATIVE_MODEL=<path>` (+ `_ID`) forces a package without a mod.
+3. **`yfm_control` has no native commands** (TCP 127.0.0.1, `MEMORIES_CONTROL=port`; `step`, `pad`, `shot`, `peek`/`poke`, `jump library`...). No clip, time,
+   camera, model path or overlay command.
+4. **`shot`/`hash` read VRAM and miss the GL pass.** The model is captured only by a windowed run with `MEMORIES_WINDOW_SHOT` (`glReadPixels`), not headless.
+   The native pass also needs a window, scale >= 2 and Internal 2x.
+5. **Clip choice is an env var read once** (`MEMORIES_NATIVE_CLIP`), free-running clock from the draw counter: no scrub, pause or phase input.
+6. **No line/wireframe drawing in the 3D pass.** Bones, footprint grid and ghost silhouette need a line shader (bone matrices are already in the skin
+   rows). The mod overlay API only draws text and rectangles.
+7. **Camera is the game's.** `NativeShot` (`native_cinematic.c`) is the nearest free-camera hook, used in the arena and the field.
+
+Implication for the UX: the studio's live preview is a game window plus control commands that must be added (load package, set act/clip/phase, pause,
+camera, overlays, window capture). Early stages (S0-S3) need no engine. This is an input to the later code step, not to the UX.
