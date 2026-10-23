@@ -15,3 +15,6 @@ Owner: U = user decides, C = Claude can resolve by reading code or measuring, U+
 | Q8 | Undo/redo scope: per knob, per stage, or recipe snapshots only? | U | studio-view |
 | Q9 | Is "Reset to auto" per stage enough, or also per knob (the dot icon in the mock)? | U | studio-view |
 | Q10 | **Decided 2026-10-23 (user: yes to recommendation):** the category matrix is data plus a popover, not a screen; see `flow-presets.md`. | done | |
+| Q11 | Per-card scale/offset for one model on several cards: one package per card, or a package-level override table (needs a mod loader change)? See `recipe-schema.md`. | U+C | multi-card |
+| Q12 | `attack2` (disc row 4) has no clip in the package; drop it from S5 until the engine has it (recommended), or add it to the package? | U | S5 |
+| Q13 | Studio views that the schema corrected: S7 shots become a shot-list editor and the look keys are the real eight; update `studio-view.md` S7 and the mock. | C | S7 |

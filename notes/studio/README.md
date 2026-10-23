@@ -13,12 +13,13 @@ Status 2026-10-23: structure drafted, **nothing built**. The three-view structur
 | `flow-presets.md` | per-category flow and presets (C1-C8 x S0-S9) | matrix + questions |
 | `tk-mapping.md` | how the web wireframes translate to Tk widgets and the editor's limits | v1 |
 | `engine-needs.md` | everything the screens ask of the engine and converter, deduplicated | grows with studio-view |
+| `recipe-schema.md` | draft recipe keys mapped to converter flags, model.json and what is new; corrections to the UX docs | draft v0 |
 | `open-questions.md` | undecided points, who decides, what blocks | live |
-| `wireframes-v1.html` | the clickable mock (open in a browser); also published as an artifact | v1, not yet updated for the detail docs |
+| `wireframes-v1.html` | the clickable mock (open in a browser); also published as an artifact | v3: stage strips, nine-entry rail; S7 still shows the pre-schema shot UI (Q13) |
 
 ## Conventions
 * *(new)* = does not exist in the engine or converter today. Every *(new)* in a screen must appear in `engine-needs.md`.
-* Check ids look like `S4.footprint`; knob ids like `size.fit_mode` and map one-to-one to `recipe.json` keys (schema is derived later, from these names).
+* Check ids look like `S4.footprint`; knob ids like `size.fit_mode` and map one-to-one to `recipe.json` keys (schema draft in `recipe-schema.md`).
 * Game units: the standard monster is 373 tall, root 159 above the soles. Frames are game frames (30 per second) unless a doc says clip frames.
 * States: `todo`, `pass`, `warn`, `fail`, `stale` (see `studio-view.md`).
 
