@@ -8,6 +8,10 @@
 #include "func_80058E1C.h"
 #include "func_800528AC.h"
 #include "func_80052D2C.h"
+#ifdef MEMORIES_PC
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
+#endif
 #include "model_record_tables.h"
 #include "model_scene_setup.h"
 #include "model_transfer_flags.h"
@@ -160,6 +164,12 @@ have_flags:
         if (flags != 0) {
             D_8009AF98 = 0;
         }
+#ifdef MEMORIES_PC
+        LOG(LOG_MODEL, "evt cammove f=%u flags=%d eye=%d,%d,%d>%d,%d,%d tgt=%d,%d,%d>%d,%d,%d dur=%d", Memories_PresentedFrames(), (int)flags,
+            (int)p->eye.start_x, (int)p->eye.start_y, (int)p->eye.start_z, (int)p->eye.end_x, (int)p->eye.end_y, (int)p->eye.end_z,
+            (int)p->target.start_x, (int)p->target.start_y, (int)p->target.start_z, (int)p->target.end_x, (int)p->target.end_y,
+            (int)p->target.end_z, (int)p->duration);
+#endif
         if (arg3 != 0) {
             return;
         }
