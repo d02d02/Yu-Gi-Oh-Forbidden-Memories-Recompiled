@@ -15,4 +15,6 @@ Cards with no 3D model on the disc are absent. Cards without `contact` never rea
 ## How it was measured
 `measure_reference.py` runs `attack_window_evlog.py` per card (hand `374,<card>,100,332,683`: the card attacks defender 332 in the arena, `MEMORIES_TRACE=model`), then reads the `evt draw` lines (`slot`, `row`, `frame`, `len`). Needs the disc (`MEMORIES_DISC`, absolute path), the game build and the capture harness. `build_reference.py WORK_DIR` turns the logs into this file; output is sorted, two builds are byte-identical.
 
-Not measured yet: BLS outline, card footprint, camera shots.
+`bls_outline.json`: Black Luster Soldier (card 364) from the disc record via `hmd_export.py` + `measure_outline.py`: bbox, height 373, front (x,y) and side (z,y) convex hulls, game units, feet at 0. The model sits off the origin in z (-699..-463): centre it before drawing the ghost.
+
+Not measured yet: card footprint and arena camera shots. Both need engine work (no constant for the footprint was found; the camera needs the temporary per-frame `cam` log line described in `camera_distance_from_log.py`, a C change and a rebuild).
