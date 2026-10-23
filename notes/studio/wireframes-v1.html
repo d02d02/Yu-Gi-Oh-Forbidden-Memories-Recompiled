@@ -1,0 +1,330 @@
+<title>Model Studio Wireframes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one app frame, three views (Models list = pattern 1, Studio = pattern 8 split pane, Flow matrix = reference). Engine viewport sits top of the right pane. */
+:root{
+  --bg:#f3f4f6; --l1:#ffffff; --l2:#f8f9fb; --line:#d9dce3; --fg:#1b1f29; --mute:#5d6577;
+  --accent:#1f5eff; --accent-bg:#e7eeff;
+  --pass:#1a7f4b; --pass-bg:#e2f4ea; --warn:#9a6200; --warn-bg:#fdf0d2; --fail:#c0282d; --fail-bg:#fde6e6; --todo:#8b92a3;
+  --view:#12161f; --view-line:#2a3142; --view-fg:#aeb6c8;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f121a; --l1:#171b26; --l2:#1d2230; --line:#2c3347; --fg:#e6e9f1; --mute:#9aa3b8;
+  --accent:#7ba2ff; --accent-bg:#1e2a4d;
+  --pass:#5fd09a; --pass-bg:#15301f; --warn:#f0b650; --warn-bg:#3a2d10; --fail:#ff7b80; --fail-bg:#3b1618; --todo:#6f778a;
+  --view:#0a0c12; --view-line:#242a3a; --view-fg:#8f98ad; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f121a; --l1:#171b26; --l2:#1d2230; --line:#2c3347; --fg:#e6e9f1; --mute:#9aa3b8;
+  --accent:#7ba2ff; --accent-bg:#1e2a4d;
+  --pass:#5fd09a; --pass-bg:#15301f; --warn:#f0b650; --warn-bg:#3a2d10; --fail:#ff7b80; --fail-bg:#3b1618; --todo:#6f778a;
+  --view:#0a0c12; --view-line:#242a3a; --view-fg:#8f98ad; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans);padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:14px}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+h1{font-size:20px} h2{font-size:15px} h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+p{margin:0}.mute{color:var(--mute)}.mono{font-family:var(--mono)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;background:var(--l1);border:1px solid var(--line);border-radius:6px;padding:3px}
+.tabs button{border:0;background:none;padding:6px 12px;border-radius:4px;color:var(--mute)}
+.tabs button[aria-selected="true"]{background:var(--accent-bg);color:var(--accent);font-weight:500}
+.btn{border:1px solid var(--line);background:var(--l1);border-radius:6px;padding:6px 12px}
+.btn:hover{background:var(--l2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0a1230}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0a1230}}
+.btn.danger{background:var(--fail);border-color:var(--fail);color:#fff}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.frame{background:var(--l1);border:1px solid var(--line);border-radius:8px}
+.note{font-size:12px;color:var(--mute);border-left:2px solid var(--line);padding-left:10px}
+/* list */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px}
+.search{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:4px 8px;background:var(--l2);min-width:240px}
+.search input{border:0;background:none;outline:0;flex:1;min-width:0}
+.search label{font-size:12px;color:var(--mute)}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--mute)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:9px 12px;border-top:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:500;background:var(--l2)}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--l2)}
+td .lnk{color:var(--accent);font-weight:500}
+.chev{color:var(--mute)}
+.pager{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
+.chip{display:inline-flex;gap:5px;align-items:center;border-radius:99px;padding:1px 9px;font-size:12px;border:1px solid var(--line);background:var(--l2)}
+.chip.pass{background:var(--pass-bg);color:var(--pass);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.fail{background:var(--fail-bg);color:var(--fail);border-color:transparent}
+.dots{display:flex;gap:3px}.dots i{width:9px;height:9px;border-radius:2px;background:var(--todo);opacity:.5}
+.dots i.pass{background:var(--pass);opacity:1}.dots i.warn{background:var(--warn);opacity:1}.dots i.fail{background:var(--fail);opacity:1}
+/* studio */
+.studio{display:grid;grid-template-columns:260px 1fr;gap:12px;align-items:start}
+.rail{padding:6px;display:grid;gap:2px;position:sticky;top:8px}
+.rail button{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;text-align:left;border:0;background:none;padding:8px;border-radius:6px}
+.rail button:hover{background:var(--l2)}
+.rail button[aria-current="true"]{background:var(--accent-bg)}
+.rail .sid{font:500 11px var(--mono);color:var(--mute)}
+.rail .nm{font-weight:500}.rail .sub{font-size:12px;color:var(--mute);display:block}
+.st{width:10px;height:10px;border-radius:50%;background:var(--todo)}
+.st.pass{background:var(--pass)}.st.warn{background:var(--warn)}.st.fail{background:var(--fail)}
+.panel{display:grid;gap:12px;min-width:0}
+.panelhead{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;padding:12px 14px}
+.viewport{background:var(--view);border:1px solid var(--view-line);border-radius:8px;overflow:hidden;position:relative}
+.viewport svg{display:block;width:100%;height:auto;max-height:340px}
+.vbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 10px;border-top:1px solid var(--view-line);color:var(--view-fg);font-size:12px}
+.vbar label{display:inline-flex;gap:5px;align-items:center;padding:2px 8px;border:1px solid var(--view-line);border-radius:99px;cursor:pointer}
+.vbar label:has(input:checked){color:#fff;border-color:var(--accent);background:rgba(31,94,255,.28)}
+.vbar input{accent-color:var(--accent)}
+.vtag{position:absolute;top:8px;left:10px;font:11px var(--mono);color:var(--view-fg);background:rgba(0,0,0,.35);padding:2px 6px;border-radius:4px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.box{padding:12px 14px;display:grid;gap:10px;align-content:start;min-width:0}
+.check{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start}
+.check b{font-weight:500}.check .fix{display:block;color:var(--mute);font-size:12px}
+.knob{display:grid;gap:3px}
+.knob label{font-size:12px;color:var(--mute)}
+.knob input[type=text],.knob input[type=number],.knob select{border:1px solid var(--line);background:var(--l2);border-radius:6px;padding:5px 8px;width:100%}
+.knob.row{grid-template-columns:1fr auto;align-items:center}
+.knob .hint{font-size:11px;color:var(--mute)}
+.foot{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:10px 14px}
+.timeline{display:grid;gap:8px;font-size:12px}
+.trow{display:grid;grid-template-columns:70px 1fr 90px;gap:8px;align-items:center}
+.bar{position:relative;height:18px;background:var(--l2);border:1px solid var(--line);border-radius:4px}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--accent-bg);border-right:2px solid var(--accent)}
+.bar .hit{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fail)}
+.bar .disc{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--pass)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mute)}
+/* matrix */
+.mx td,.mx th{text-align:center;padding:7px 8px}.mx td:first-child,.mx th:first-child{text-align:left}
+.mx td{cursor:default}.mx tr:hover{background:none}
+.cell{display:inline-block;min-width:54px;padding:1px 6px;border-radius:4px;font-size:11px}
+.cell.auto{background:var(--pass-bg);color:var(--pass)}.cell.guided{background:var(--accent-bg);color:var(--accent)}
+.cell.manual{background:var(--warn-bg);color:var(--warn)}.cell.na{color:var(--todo)}
+/* overlays */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;z-index:20}
+.dialog{background:var(--l1);border:1px solid var(--line);border-radius:10px;padding:18px;max-width:420px;width:100%;display:grid;gap:12px}
+.dialog .acts{display:flex;gap:8px;justify-content:flex-end}
+.back{display:none}
+@media (max-width:820px){
+  .studio{grid-template-columns:1fr}
+  .rail{position:static}
+  .studio.detail .rail{display:none}.studio:not(.detail) .panel{display:none}
+  .back{display:inline-block}
+  .two{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){.rail button,.btn{transition:background .12s}}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div><h1>Model Studio</h1><p class="mute">Wireframes for the FM Editor add-on. Click through; nothing here is saved.</p></div>
+    <div class="tabs" role="tablist" aria-label="Wireframe view">
+      <button role="tab" id="t-list" aria-selected="true" data-view="list">1 Models</button>
+      <button role="tab" id="t-studio" aria-selected="false" data-view="studio">2 Studio</button>
+      <button role="tab" id="t-flow" aria-selected="false" data-view="flow">3 Flow by category</button>
+    </div>
+  </div>
+
+  <!-- 1 MODELS: pattern 1 List / Index -->
+  <section id="v-list" class="wrap">
+    <div class="top">
+      <div><h2>Models</h2><p class="mute">Every native model in this project, with the state of its ten stages.</p></div>
+      <div style="display:flex;gap:8px"><button class="btn" id="b-import">Add finished package</button><button class="btn primary" id="b-new">Start from .glb</button></div>
+    </div>
+    <div class="frame">
+      <div class="toolbar">
+        <div class="search"><label for="q">Search</label><input id="q" type="text" placeholder="name, card id, author"><kbd>/</kbd></div>
+        <button class="btn" id="b-filter" aria-expanded="false">Filters</button>
+        <span id="chips" style="display:flex;gap:6px"></span>
+      </div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Model</th><th>Category</th><th>Card</th><th>Stages S0–S9</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+      <div class="pager"><span id="count">3 models</span><span><button class="btn" disabled>Previous</button> <button class="btn" disabled>Next</button></span></div>
+    </div>
+    <p class="note">Start from .glb opens Studio at S0 with the file picked, nothing else to fill first. Filters is one panel (category, status, card). Add finished package is today's "Native models" tab behaviour, unchanged.</p>
+  </section>
+
+  <!-- 2 STUDIO: pattern 8 Split Pane -->
+  <section id="v-studio" hidden class="wrap">
+    <div class="top">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn back" id="b-back">Stages</button>
+        <h2 id="mname">Dragon</h2><span class="chip" id="mcat">C5 winged creature</span>
+        <span class="mute mono" id="mrec">recipe.json · saved</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="b-report">Export report</button>
+        <button class="btn" id="b-blender">Open in Blender</button>
+        <button class="btn danger" id="b-remove">Remove model</button>
+      </div>
+    </div>
+    <div class="studio" id="studio">
+      <nav class="frame rail" id="rail" aria-label="Stages"></nav>
+      <div class="panel" id="panel"></div>
+    </div>
+    <p class="note">Left: stage list with state, arrow keys move, Enter moves focus right. Right: one stage at a time. The viewport is the real game window (frames streamed from the engine), so the toggles below it are engine overlays. Next is disabled while the stage has a fail; a warn needs one click to acknowledge.</p>
+  </section>
+
+  <!-- 3 FLOW -->
+  <section id="v-flow" hidden class="wrap">
+    <div><h2>What each category asks of the person</h2><p class="mute">Auto: accept the default. Guided: look and adjust knobs. Manual: needs work outside the studio. Source: feasibility note sec. 2–3.</p></div>
+    <div class="frame tablewrap"><table class="mx" id="mx"></table></div>
+    <div class="legend"><span><span class="cell auto">auto</span></span><span><span class="cell guided">guided</span></span><span><span class="cell manual">manual</span></span><span><span class="cell na">n/a</span></span></div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<script>
+const STAGES=[
+ ["S0","Intake","triage"],["S1","Mesh & skin","audit"],["S2","Rig","bones"],["S3","Materials","textures"],["S4","Size & place","fit"],
+ ["S5","Clips","acts"],["S6","Timing","vs disc"],["S7","Look","light, camera"],["S8","Validate","in game"],["S9","Package","export"]];
+const MODELS=[
+ {id:"dragon",name:"Dragon",cat:"C5",catName:"C5 winged creature",card:"to assign",author:"Sketchfab, CC-BY",upd:"today",st:["pass","warn","pass","pass","warn","fail","todo","todo","todo","todo"]},
+ {id:"angel",name:"Angel",cat:"C3",catName:"C3 humanoid, no rig",card:"to assign",author:"AI generated",upd:"2 days ago",st:["pass","fail","todo","todo","todo","todo","todo","todo","todo","todo"]},
+ {id:"mannequin",name:"Mannequin",cat:"C1",catName:"C1 humanoid, standard",card:"364 Black Luster Soldier",author:"Quaternius, CC0",upd:"last week",st:["pass","pass","pass","pass","pass","pass","pass","pass","pass","pass"]}];
+const DET={
+ S0:{title:"Intake and triage",gate:"Category chosen.",ov:["footprint"],
+  checks:[["pass","File loads","1 mesh, 1 skin, 14 clips, 2 materials."],["pass","Class detected","Winged creature, confidence 72%. Two limbs plus wing chains found."],["pass","Licence present","CC-BY, attribution text stored in the package."]],
+  knobs:[["sel","Category",["C5 winged creature","C4 quadruped or beast","C1 humanoid, standard","C8 static mesh"]],["txt","Author","Sketchfab user"],["txt","Licence","CC-BY 4.0"],["txt","Source URL","https://"],["sel","Skin",["Armature (112 bones)"]],["txt","Card id(s)","to assign"]]},
+ S1:{title:"Mesh and skin audit",gate:"No fail. A warn needs your acknowledgement.",ov:["bones","footprint"],
+  checks:[["pass","Bone count","96 of 128 allowed after merge."],["warn","16 bones merged","Merged into parents: 11 in the wing membrane. Wing tips may look stiff.","Review in S5 preview, or keep the original wing bones and drop the tail instead."],["pass","Bind pose vs frame 0 of idle","Largest drift 0.8% of height, at the left claw."],["pass","Weights","0 vertices without weight. 4 influences kept."]],
+  knobs:[["tog","Fix axes and units (y up, metres)",true],["tog","Merge lightest bones to reach the limit",true],["num","Weight smoothing passes",1],["tog","Drop LOD copies and helpers",true]]},
+ S2:{title:"Rig",gate:"Root chosen. Humanoid map complete, or non-humanoid confirmed.",ov:["bones","origin"],
+  checks:[["pass","Parent chains","Every bone reaches the root."],["pass","Non-humanoid confirmed","No humanoid map needed for C5."],["pass","Extras","Tail and wing bones carry weights."]],
+  knobs:[["sel","Root bone",["Pelvis","Spine_01","Body_Center"]],["sel","Foot joints",["Four feet","None (flying)"]],["sel","Strike bone",["Jaw","Tail_Tip","Claw_R"]],["txt","Follow rule","Wing_L2 = Wing_L1 × 0.6"]]},
+ S3:{title:"Materials and textures",gate:"Atlas builds and previews textured.",ov:[],
+  checks:[["pass","Atlas","2048 × 2048, 2 materials packed."],["pass","UV repeats","None beyond four."],["pass","Alpha","Wing membrane is two-sided, cutoff 0.5."]],
+  knobs:[["sel","Atlas size",["2048","1024","512"]],["tog","Two-sided wings",true],["num","Alpha cutoff",0.5],["num","Normal strength",1]]},
+ S4:{title:"Size and placement",gate:"Fits the card footprint. No clipping with the neighbour in field and arena previews.",ov:["ghost","footprint","origin"],
+  checks:[["warn","Wingspan overruns the footprint","Spread wings are 1.9× the footprint in the attack pose.","Fit with wings folded in the idle, or lower the scale to 85%."],["pass","Head clears the arena camera",""],["pass","Lowest point vs ground","Hover offset 40 units, no foot contact (flying)."]],
+  knobs:[["sel","Fit by",["Extent (footprint)","Height","Percent"]],["sel","Fit pose",["Wings folded (idle)","As exported"]],["num","Scale % about the soles",85],["num","Ground offset",40],["txt","Origin (drag in viewport)","x 0  z 0"]]},
+ S5:{title:"Clips",gate:"Every act has a source. Loops close.",ov:["bones"],
+  checks:[["fail","Attack uses a travelling clip","Run_New drifts 410 units along the ground. It is a run, not an attack.","Pick Bite_01, or use a procedural lunge."],["warn","Idle loop closure 6%","First and last pose differ at the tail.","Turn on loop closure blend (8 frames)."],["pass","Hit, destroyed","Procedural recoil and collapse accepted."]],
+  knobs:[["sel","Idle",["Flying_Idle","Hover_Slow"]],["sel","Attack",["Run_New","Bite_01","Procedural lunge"]],["sel","Hit",["Procedural recoil","Hurt_01"]],["sel","Destroyed",["Procedural collapse","Death_01"]],["tog","Close loop (blend last frames)",true],["tog","Remove root travel",true],["num","Crossfade frames",6]]},
+ S6:{title:"Timing against the disc",gate:"Strike frame set. Stretch factors in range.",ov:["ghost"],tl:true,
+  checks:[["pass","Stretch factor 0.9×–1.4×","Within the 0.6×–1.8× range."],["warn","Strike not on the disc's contact frame","Bite lands 11 frames early.","Drag the red marker to the green one, or set a time-map point."]],
+  knobs:[["sel","Strike tracks",["Jaw","Tail_Tip","Claw_R"]],["num","Hold last frame (frames)",4],["tog","Warn outside speed range",true]]},
+ S7:{title:"Look",gate:"Framed in arena and field shots; not clipped by the near plane.",ov:["ghost"],
+  checks:[["pass","Compared with Black Luster Soldier","Same light, brightness within 6%."]],
+  knobs:[["num","Ambient",0.45],["num","Light gain",1.1],["num","Arena camera distance",900],["num","Field camera height",320]]},
+ S8:{title:"In-context validation",gate:"All acts seen. No gate open in S1–S7.",ov:[],
+  checks:[["pass","Library turntable","Rendered."],["todo","Field attack","Not run."],["todo","Arena attack","Not run."]],
+  knobs:[["tog","Capture contact sheet",true],["tog","Record short video",true]]},
+ S9:{title:"Package",gate:"native_check reports 0 errors.",ov:[],
+  checks:[["todo","native_check","Runs when you press Build."],["todo","Same recipe, same bytes","Verified by building twice."]],
+  knobs:[["txt","Package name","dragon"],["tog","Write mod.json entry",true]]}
+};
+const MX={ // rows C1..C8, cols S0..S9
+ C1:["auto","auto","auto","auto","auto","auto","auto","auto","auto","auto"],
+ C2:["auto","auto","manual","auto","auto","guided","auto","guided","auto","auto"],
+ C3:["auto","manual","manual","auto","auto","guided","guided","guided","auto","auto"],
+ C4:["auto","auto","guided","auto","guided","guided","guided","guided","auto","auto"],
+ C5:["auto","guided","guided","auto","guided","guided","guided","guided","auto","auto"],
+ C6:["auto","auto","guided","auto","guided","guided","guided","guided","auto","auto"],
+ C7:["auto","guided","auto","auto","auto","guided","guided","guided","auto","auto"],
+ C8:["auto","na","na","auto","guided","guided","guided","guided","auto","auto"]};
+const CN={C1:"Humanoid, standard skeleton",C2:"Humanoid, custom or extras",C3:"Humanoid, no rig",C4:"Quadruped or beast",C5:"Winged creature",C6:"Legless, floating",C7:"Rigid multi-part",C8:"Static mesh"};
+
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let cur=MODELS[0], stage=0, ack={}, filterCat=null;
+
+function view(n){["list","studio","flow"].forEach(v=>{$("#v-"+v).hidden=v!==n;$("#t-"+v).setAttribute("aria-selected",v===n)})}
+$$(".tabs button").forEach(b=>b.onclick=()=>{ if(b.dataset.view==="studio")open(cur.id); else view(b.dataset.view)});
+
+function dots(m){return `<span class="dots" aria-label="stage states">${m.st.map(s=>`<i class="${s}"></i>`).join("")}</span>`}
+function worst(m){return m.st.includes("fail")?["fail","Blocked"]:m.st.includes("warn")?["warn","Needs review"]:m.st.every(s=>s==="pass")?["pass","Packaged"]:["","In progress"]}
+function renderRows(){
+  const q=$("#q").value.toLowerCase();
+  const list=MODELS.filter(m=>(!q||(m.name+m.card+m.author).toLowerCase().includes(q))&&(!filterCat||m.cat===filterCat));
+  $("#rows").innerHTML=list.map(m=>{const[w,l]=worst(m);return `<tr tabindex="0" data-id="${m.id}"><td><span class="lnk">${m.name}</span><div class="mute" style="font-size:12px">${m.author}</div></td><td>${m.catName}</td><td>${m.card}</td><td>${dots(m)}</td><td><span class="chip ${w}">${l}</span></td><td class="mute">${m.upd}</td><td class="chev">›</td></tr>`}).join("")||`<tr><td colspan="7" class="mute" style="padding:28px 12px">No model matches. Clear the search, or start from a .glb.</td></tr>`;
+  $("#count").textContent=list.length+" model"+(list.length===1?"":"s");
+  $$("#rows tr[data-id]").forEach(r=>{r.onclick=()=>open(r.dataset.id);r.onkeydown=e=>{if(e.key==="Enter")open(r.dataset.id)}});
+  $("#chips").innerHTML=filterCat?`<span class="chip">Category: ${filterCat} <button class="btn" style="padding:0 6px" id="x-cat" aria-label="Clear category filter">×</button></span>`:"";
+  if(filterCat)$("#x-cat").onclick=()=>{filterCat=null;renderRows()};
+}
+$("#q").oninput=renderRows;
+$("#b-filter").onclick=()=>{filterCat=filterCat?null:"C5";renderRows()};
+document.addEventListener("keydown",e=>{if(e.key==="/"&&!$("#v-list").hidden&&document.activeElement.tagName!=="INPUT"){e.preventDefault();$("#q").focus()}});
+$("#b-new").onclick=()=>{cur={...MODELS[0],name:"New model",st:["todo","todo","todo","todo","todo","todo","todo","todo","todo","todo"],id:"new"};MODELS.push(cur);renderRows();open("new")};
+$("#b-import").onclick=()=>dialog("Add a finished package","Pick a folder with model.hdm and model.json. It is copied into the project as it is, with no stages run.",[["Cancel"],["Choose folder","primary"]]);
+
+function open(id){cur=MODELS.find(m=>m.id===id);stage=Math.max(0,cur.st.findIndex(s=>s!=="pass"));if(stage<0)stage=0;
+  $("#mname").textContent=cur.name;$("#mcat").textContent=cur.catName;view("studio");renderRail();renderPanel();$("#studio").classList.remove("detail")}
+function renderRail(){
+  $("#rail").innerHTML=STAGES.map((s,i)=>`<button data-i="${i}" ${i===stage?'aria-current="true"':""}><span class="sid">${s[0]}</span><span><span class="nm">${s[1]}</span><span class="sub">${s[2]}</span></span><span class="st ${cur.st[i]}" title="${cur.st[i]}"></span></button>`).join("");
+  $$("#rail button").forEach(b=>{b.onclick=()=>go(+b.dataset.i,true);b.onkeydown=e=>{
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const n=Math.min(9,Math.max(0,stage+(e.key==="ArrowDown"?1:-1)));go(n,false);$$("#rail button")[n].focus()}
+    if(e.key==="Enter"){const f=$("#panel select,#panel input");f&&f.focus()}}});
+}
+function go(i,show){stage=i;renderRail();renderPanel();if(show)$("#studio").classList.add("detail")}
+
+const BONES=[[300,150,300,215],[300,215,262,300],[300,215,338,300],[300,150,230,110],[300,150,370,110],[300,150,300,95]];
+function scene(ov){
+  const on=k=>ov.includes(k);
+  return `<svg viewBox="0 0 600 340" role="img" aria-label="Engine viewport placeholder">
+   <rect width="600" height="340" fill="var(--view)"/>
+   ${on("footprint")?`<g stroke="var(--view-line)" fill="none">${[0,1,2,3,4,5].map(i=>`<path d="M${120+i*72} 250 L${60+i*96} 320"/>`).join("")}<path d="M120 250 H480 M96 275 H504 M72 320 H528"/><path d="M200 262 H400 L430 305 H170 Z" stroke="var(--accent)" stroke-dasharray="5 4"/></g>`:`<path d="M72 320 H528" stroke="var(--view-line)"/>`}
+   ${on("ghost")?`<g fill="none" stroke="#7a86a3" stroke-dasharray="4 4"><circle cx="470" cy="108" r="14"/><path d="M470 122 V190 M470 134 L444 172 M470 134 L496 172 M470 190 L452 262 M470 190 L488 262"/><text x="430" y="284" fill="#7a86a3" stroke="none" font-size="10" font-family="IBM Plex Mono,monospace">BLS 373</text></g>`:""}
+   <g fill="#3a4666" stroke="#6f86c9"><path d="M300 90 C330 90 340 120 330 150 C360 140 400 110 440 118 C410 150 372 175 342 190 C348 230 340 270 330 280 H270 C258 270 252 230 258 190 C228 175 190 150 160 118 C200 110 240 140 270 150 C260 120 270 90 300 90Z"/></g>
+   ${on("bones")?`<g stroke="#ffcf5a" stroke-width="2">${BONES.map(b=>`<line x1="${b[0]}" y1="${b[1]}" x2="${b[2]}" y2="${b[3]}"/>`).join("")}</g><g fill="#ffcf5a">${BONES.map(b=>`<circle cx="${b[0]}" cy="${b[1]}" r="3"/>`).join("")}</g>`:""}
+   ${on("origin")?`<g stroke="#5fd09a" stroke-width="2"><path d="M290 280 H310 M300 270 V290"/></g><text x="316" y="276" fill="#5fd09a" font-size="10" font-family="IBM Plex Mono,monospace">origin</text>`:""}
+  </svg>`;
+}
+function knob(k,i){const[t,l,v]=k,id="k"+i;
+  if(t==="sel")return `<div class="knob"><label for="${id}">${l}</label><select id="${id}">${v.map(o=>`<option>${o}</option>`).join("")}</select></div>`;
+  if(t==="num")return `<div class="knob"><label for="${id}">${l}</label><input id="${id}" type="number" value="${v}" step="any"></div>`;
+  if(t==="tog")return `<div class="knob row"><label for="${id}">${l}</label><input id="${id}" type="checkbox" ${v?"checked":""}></div>`;
+  return `<div class="knob"><label for="${id}">${l}</label><input id="${id}" type="text" value="${v}"></div>`;}
+const ICON={pass:"✓",warn:"!",fail:"✕",todo:"–"};
+function timeline(){
+  const rows=[["Idle",100,null,null,"1.0×"],["Enter",100,null,null,"1.1×"],["Attack",100,38,49,"1.4×"],["Hit",100,null,null,"0.9×"],["Destroyed",100,null,null,"1.2×"]];
+  return `<div class="box frame"><h3>Time map: clip frames across the disc row</h3><div class="timeline">${rows.map(r=>`<div class="trow"><span>${r[0]}</span><div class="bar"><div class="fill" style="width:${r[1]}%"></div>${r[2]?`<div class="hit" style="left:${r[2]}%" title="your strike"></div><div class="disc" style="left:${r[3]}%" title="disc contact"></div>`:""}</div><span class="mono">${r[4]}</span></div>`).join("")}</div>
+  <div class="legend"><span style="color:var(--fail)">▌ strike in your clip</span><span style="color:var(--pass)">▌ contact frame on the disc</span><span>bar = disc row length, right column = stretch factor</span></div></div>`}
+function renderPanel(){
+  const id=STAGES[stage][0],d=DET[id],s=cur.st[stage];
+  const all=["ghost","footprint","bones","origin"],names={ghost:"BLS ghost",footprint:"Card footprint",bones:"Bones",origin:"Origin and root"};
+  const blocked=s==="fail", needAck=s==="warn"&&!ack[cur.id+id];
+  $("#panel").innerHTML=`
+   <div class="frame panelhead"><div><h2>${id} ${d.title}</h2><p class="mute" style="font-size:12px">Gate: ${d.gate}</p></div><span class="chip ${s}">${{pass:"Pass",warn:"Warn",fail:"Fail",todo:"Not run"}[s]}</span></div>
+   <div class="viewport"><span class="vtag">engine · ${cur.name.toLowerCase()} · idle</span>${scene(d.ov)}
+     <div class="vbar"><button class="btn" style="padding:2px 10px" aria-label="Play or pause">Pause</button><span>act</span><select aria-label="Act" style="background:transparent;border:1px solid var(--view-line);border-radius:6px;color:inherit;padding:2px 6px"><option>Idle</option><option>Attack</option><option>Hit</option></select>
+     ${all.map(k=>`<label><input type="checkbox" ${d.ov.includes(k)?"checked":""} data-ov="${k}">${names[k]}</label>`).join("")}</div></div>
+   ${d.tl?timeline():""}
+   <div class="two">
+     <div class="box frame"><h3>Checks</h3>${d.checks.map(c=>`<div class="check"><span class="chip ${c[0]}">${ICON[c[0]]}</span><div><b>${c[1]}</b> ${c[2]||""}${c[3]?`<span class="fix">${c[3]}</span>`:""}</div></div>`).join("")}</div>
+     <div class="box frame"><h3>Knobs</h3>${d.knobs.map(knob).join("")}</div>
+   </div>
+   <div class="frame foot"><div style="display:flex;gap:8px"><button class="btn" id="n-prev" ${stage===0?"disabled":""}>Previous</button><button class="btn" id="n-auto">Reset to auto</button></div>
+     <div style="display:flex;gap:10px;align-items:center">${blocked?`<span class="mute" style="font-size:12px">Fix the fail to continue</span>`:needAck?`<button class="btn" id="n-ack">Acknowledge warnings</button>`:""}
+     <button class="btn primary" id="n-next" ${(blocked||needAck)?"disabled":""}>${stage===9?"Build package":"Next stage"}</button></div></div>`;
+  $("#n-prev").onclick=()=>go(stage-1,true);
+  $("#n-auto").onclick=renderPanel;
+  if($("#n-ack"))$("#n-ack").onclick=()=>{ack[cur.id+id]=1;renderPanel()};
+  $("#n-next").onclick=()=>{if(cur.st[stage]==="todo")cur.st[stage]="pass";if(stage<9)go(stage+1,true);else dialog("Package built","native_check: 0 errors. Wrote mods/"+cur.name.toLowerCase()+"/models/. Same recipe builds the same bytes.",[["Close","primary"]]);renderRows()};
+  $$("[data-ov]").forEach(c=>c.onchange=()=>{const on=$$("[data-ov]:checked").map(x=>x.dataset.ov);$(".viewport svg").outerHTML=scene(on)});
+}
+$("#b-back").onclick=()=>$("#studio").classList.remove("detail");
+$("#b-report").onclick=()=>dialog("Report exported","Contact sheet, short video and text report for "+cur.name+" were written next to recipe.json.",[["Close","primary"]]);
+$("#b-blender").onclick=()=>dialog("Open "+cur.name+" in Blender","The studio waits. When you save and close Blender, S1 and S2 run again on the new file.",[["Cancel"],["Open Blender","primary"]]);
+$("#b-remove").onclick=()=>dialog("Remove model '"+cur.name+"'?","Deletes its recipe and package from the project. The source .glb stays where it is.",[["Cancel"],["Remove model","danger"]],true);
+
+function dialog(title,body,btns,destructive){
+  const sc=$("#scrim");sc.hidden=false;
+  sc.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dt"><h2 id="dt">${title}</h2><p class="mute">${body}</p><div class="acts">${btns.map((b,i)=>`<button class="btn ${b[1]||""}" data-i="${i}">${b[0]}</button>`).join("")}</div></div>`;
+  const bs=$$("#scrim button"), first=destructive?bs[0]:bs[bs.length-1];first.focus();
+  const close=()=>{sc.hidden=true;sc.innerHTML="";document.removeEventListener("keydown",esc)};
+  const esc=e=>{if(e.key==="Escape")close();if(e.key==="Tab"){e.preventDefault();const i=bs.indexOf(document.activeElement);bs[(i+(e.shiftKey?-1:1)+bs.length)%bs.length].focus()}};
+  document.addEventListener("keydown",esc);
+  bs.forEach(b=>b.onclick=()=>{const t=b.textContent;close();if(t==="Remove model"){const i=MODELS.indexOf(cur);MODELS.splice(i,1);cur=MODELS[0];renderRows();view("list")}});
+}
+// matrix
+$("#mx").innerHTML=`<thead><tr><th>Category</th>${STAGES.map(s=>`<th title="${s[1]}">${s[0]}<div style="text-transform:none;letter-spacing:0">${s[1]}</div></th>`).join("")}</tr></thead><tbody>${Object.keys(MX).map(c=>`<tr><td><b class="mono">${c}</b> ${CN[c]}</td>${MX[c].map(v=>`<td><span class="cell ${v}">${v}</span></td>`).join("")}</tr>`).join("")}</tbody>`;
+renderRows();
+</script>
