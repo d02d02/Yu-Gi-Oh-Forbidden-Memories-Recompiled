@@ -88,3 +88,16 @@ Observed:
 - `/exit` in Claude Code with a running session printed "Session keeps running. Use /stop to end it": the jobs were not affected. `/stop` was not tried; its effect on background jobs is unknown.
 - The classifier denied Claude's first process-kill and file-delete attempts; the user ran them. After the user said "do whatever you need", `wsl kill <pid>` of the harness's own loop was allowed.
 Rule: before restarting a job run `wsl pgrep -af ralph.sh`; if a loop for the job exists and shows IDLE with 0 opencode processes, kill it, then `job-run.sh` and the monitor.
+
+### Router report: `sm3-model` (2026-10-23 23:48)
+206 calls over 99 min, 190 ok (92%), 5,411,072 tokens, 0 wasted (0%).
+
+| model | calls | ok | p50 | p95 |
+|---|---|---|---|---|
+| openrouter/poolside/laguna-s-2.1:free | 197 | 182 | 8.8s | 122.9s |
+| cohere/command-a-plus-05-2026 | 8 | 8 | 4.8s | 8.0s |
+| build/build | 1 | 0 | - | - |
+
+Failures: 429 15, other 1
+
+Request size (mean chars) by quarter: 98,615 -> 93,889 -> 68,916 -> 65,684
