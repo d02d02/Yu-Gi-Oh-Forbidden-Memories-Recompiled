@@ -172,14 +172,133 @@ stretch      0.9x       1.6x           0.7x
 **Needs** *(new)*: disc ground truth per act and class (row lengths, contact frames); a scrub-by-row-phase engine command; the time-map applied in the render-side sampler (D2: pure C, captured inputs only, so a map is data the sampler reads); BLS compare overlay.
 **No ground truth**: decided (Q5): show empty, never guess.
 
+### S0 Intake and triage
+
+**Job**: load the file, learn what it is, record who made it, choose the category. Needs no engine (viewport shows a static preview of the file, E7 not required).
+**Entry**: "Start from .glb" opens S0 with the file already read; the Studio never shows an empty S0 except after "Replace source".
+**Layout**: the viewport shows the model in its exported pose with the bounding box; beside it a **contents table** (meshes, skins, clips, materials, each with counts and an include checkbox).
+
+**Knobs**
+| Knob | Control | Auto |
+|---|---|---|
+| Category `[model.category]` | select C1-C8 with a one-line expectation under it ("good", "decent", "moving statue") | detected |
+| Source file `[source.path]` | read-only + "Replace source" (keeps the recipe; all later stages go stale) | the picked file |
+| Author, Licence, Source URL `[meta.author/licence/url]` | three text fields, visible labels | read from glb `asset` extras when present, else empty |
+| Attribution required `[meta.attribution]` | toggle + text | on when the licence text contains BY |
+| Skin `[source.skin]` | select (only if several) | the skin with most bound vertices |
+| Included meshes `[source.meshes]` | checkbox per mesh | all except names matching LOD, proxy, collision, helper |
+| Card id(s) `[model.cards]` | chips, can stay empty until S9 | empty |
+
+**"Why this category" panel** (collapsed by default, one click): lists the evidence used: skeleton shape, humanoid profile match %, limb count, wing-like chains, skinned or not, clip count. A confidence figure. Changing the category re-applies presets to stages still at auto and marks the rest stale.
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S0.load` | fail if the file does not parse or has no mesh | "This file did not open: <reason>. Re-export as glb 2.0, or convert .blend/.fbx through Blender." |
+| `S0.format` | info for `.blend` / `.fbx`: Blender conversion runs first | "Converting through Blender (button: Convert)." |
+| `S0.licence` | fail if licence is empty | "Add the licence so it is stored in the package and shown in the Library." |
+| `S0.attribution` | warn if attribution is required but the author is empty | "Add the author name." |
+| `S0.category-confidence` | warn if confidence < 60% | "Check the evidence panel and choose the category." |
+| `S0.skins` | warn if several skins and none chosen | "Choose the skin to use." |
+
+**Gate**: category chosen, licence present.
+**Needs**: C1 (findings as data), detection heuristics in the converter *(new, extracted from `convert`)*; Blender conversion button *(new)*.
+**Sample for users**: the mannequin is the built-in sample ("Open sample") so a first run can see a finished model.
+
+### S1 Mesh and skin audit
+
+**Job**: tell the person, before anything else, whether the asset is sound enough, and where it is not.
+**Viewport**: engine not required for the first measures; the bind-vs-rest overlay *(new)* needs the converter's skinning in Python (no engine), so S1 can run without the disc. Camera `front`; overlays: bones, weight heat map for the picked bone, bind-vs-rest distance heat map.
+
+**Layout**: under the viewport a **report table** by region (head, torso, left arm, right arm, hands, legs, feet, wings, tail, other), columns: vertices, worst drift %, weight issues, verdict dot. Clicking a row frames that region and selects its worst vertices' bone in the weight heat map.
+
+**Knobs**
+| Knob | Control | Auto |
+|---|---|---|
+| Fix axes and units `[audit.fix_axes]` | toggle | on (y up, metres) |
+| Bone limit action `[audit.bone_limit]` | select: merge lightest / drop listed / fail | merge lightest, with a preview list of what merges |
+| Merged bones list `[audit.merge]` | list with checkboxes; unchecking keeps a bone and forces another to merge | computed |
+| Weight smoothing `[audit.smooth_passes]` | number | 0 (1 when issues found) |
+| Normalise / limit to 4 `[audit.normalise]` | toggle | on |
+| Drop stray parts `[audit.drop_parts]` | list of detached islands with checkboxes | none |
+| Mirror `[audit.mirror]` | select none / x | none |
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S1.bind-vs-rest` | warn if frame 0 of any clip moves a region > 4% of height from the bind mesh; fail > 12% | "The mesh and rig rest in different poses (region). Re-pose in Blender, or choose another rig." |
+| `S1.bones` | fail > 128 after merge | "Too many bones. Allow more merging, or drop the tail/hair chain." |
+| `S1.merge` | warn when bones were merged and weight moved > 5% on one region (wings) | "Review the merged list; keep the wing bones and merge elsewhere." |
+| `S1.weights` | warn: unweighted vertices > 0; fail > 1% | "Fix weights in Blender (button), or let auto-smooth fill them." |
+| `S1.influences` | info: vertices cut from 5+ to 4 influences, count | "" |
+| `S1.scale` | warn: node scale 0.01 or 100 or non-uniform | "Apply scale on export, or accept the auto fix." |
+| `S1.normals` | warn: flipped normals > 1% | "Fix in Blender or turn on auto-flip." |
+| `S1.size` | warn: triangle count or texture memory beyond the budget | "Reduce in Blender (decimate)." |
+
+**Gate**: no fail; warns acknowledged.
+**Hand-off**: "Open in Blender" passes the current file; on return the studio re-reads, re-runs S1 and S2 only, and marks the later stages stale. A banner states "Blender returned a new file" with a diff of counts.
+**Needs**: C8 bind-vs-rest report, C1; the audit measurements as data. No engine needed.
+
+### S2 Rig
+
+**Job**: tell the game which bone is the body root, which bones are which limbs (humanoids), which bones ride others, and which bone strikes.
+**Viewport**: engine or Python preview; the bone overlay with colours by role. **Bone tree** at the side (replaces the checks column on narrow windows): expand/collapse, search, role badge per bone.
+
+**Interactions**: click a bone in the viewport or the tree to select it; the knob panel shows its role, parent, weight count and "used by" (root, foot, strike, follow). Assigning a role to the selected bone: a select (`Root`, `Left foot`, `Strike`, `Extra: rigid`, `Extra: follow …`, `Cut`). Humanoid map editor (C1-C3): a stick-figure grid of the required slots (hips, spine, head, arms, hands, legs, feet); each slot shows the mapped bone and turns green when filled; "Auto map" fills by name then by position.
+
+**Knobs**
+| Knob | Control | Auto |
+|---|---|---|
+| Root bone `[rig.root]` | pick in viewport or select | pelvis (biped), body centre otherwise |
+| Humanoid map `[rig.humanoid]` | slot grid | auto map; "non-humanoid" toggle for C4-C8 |
+| Foot joints `[rig.feet]` | multi-pick or None | detected for biped/quadruped; None for floaters |
+| Strike bone default `[rig.strike]` | pick | head/hand by category |
+| Extras `[rig.extras]` | list: bone -> rigid / follow BONE at % / cut | rigid |
+| Follow rules `[rig.follow]` | "A copies B at 60%" rows | none |
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S2.chains` | fail if a bone has no path to the root | "Reconnect in Blender, or cut the bone." |
+| `S2.map` | fail for C1-C3 if a required slot is empty | "Pick a bone for <slot>, or switch to non-humanoid." |
+| `S2.root-side` | warn if the root is not near the body centre (> 15% off) | "Choose a bone closer to the pelvis." |
+| `S2.reversed-scale` | fail if a bone has negative scale | "Fix in Blender (apply scale)." |
+| `S2.extras-weights` | warn if an extra bone carries no weights | "Nothing will move; cut it or paint weights." |
+
+**Gate**: root chosen; map complete or non-humanoid confirmed.
+**Needs**: bone/root/feet detection extracted from `convert` as data (C1); picking bones in the engine viewport needs E6 (joint positions); with Python preview it needs none.
+
+### S3 Materials and textures
+
+**Job**: make sure the model looks textured as it will in the game and nothing is silently dropped.
+**Viewport**: engine (the only way to see what the game draws). Overlays: UV density, atlas view (a second view showing the packed atlas with material outlines).
+
+**Knobs**
+| Knob | Control | Auto |
+|---|---|---|
+| Atlas size `[mat.atlas]` | select 512/1024/2048 | smallest that keeps texel density |
+| Per-material table `[mat.items]` | rows: name, thumbnail, alpha mode, two-sided, tint, override file | from glb |
+| Alpha cutoff `[mat.alpha_cutoff]` | number | 0.5 |
+| Normal strength `[mat.normal_strength]` | number | 1.0 |
+| Roughness/metal override `[mat.pbr]` | numbers, "no PBR" toggle | from glb |
+
+**Checks**
+| id | Fails/warns when | Fix line |
+|---|---|---|
+| `S3.atlas` | fail if the atlas cannot be built at the chosen size | "Raise the atlas size or lower texture sizes." |
+| `S3.uv-repeat` | warn when UVs exceed four repeats (engine clamps) | "Bake the tiling into the texture." |
+| `S3.dropped` | warn per material that would be lost (e.g. Blender-Internal) | "Bake to a texture in Blender, or give it a replacement file." |
+| `S3.vertex-colour` | warn: vertex colours are not drawn | "Bake them into the texture." |
+| `S3.emissive` | warn: emissive may not be drawn (confirm against the engine) | "Bake glow into the base colour." |
+| `S3.memory` | warn: texture memory beyond the per-model budget | "Lower the atlas size." |
+
+**Gate**: atlas builds and previews textured.
+**Needs**: E1 (load and replace), E3/E7 for the preview, atlas builder returns data (C1). To confirm: what the engine draws for emissive and vertex colour (read `gl_picture.c`, not read yet).
+
 ## 5. Outlined stages (to detail next)
 
 | Stage | Detail still needed |
 |---|---|
-| S0 Intake | first-run layout, class detection explanation ("why C5"), multi-skin, mesh include/drop UI, Blender conversion path, licence capture rules |
-| S1 Audit | bind-vs-rest overlay and heat-map spec, per-region report, bone merge preview, what "re-pose" in Blender returns |
-| S2 Rig | bone tree widget, humanoid map editor, extras rules, picking bones in the viewport |
-| S3 Materials | atlas preview, per-material override flow, what the engine draws (emissive, vertex colour) to confirm |
 | S7 Look | lighting compare against BLS, camera shot editor (field/arena shots) |
 | S8 Validate | scripted run list, contact sheet/video outputs, pass criteria |
 | S9 Package | build progress, native_check output, byte-identity check, where the package lands |

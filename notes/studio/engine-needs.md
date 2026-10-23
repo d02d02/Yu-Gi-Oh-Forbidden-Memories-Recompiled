@@ -27,6 +27,12 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 | C7 | Byte-identical output (pinned libs, one JSON formatter, glb hash) | S9 |
 | C8 | Bind-vs-rest report | S1 |
 
+| C9 | Category detection (skeleton shape, humanoid profile, wing chains) extracted from `convert` as data with evidence | S0 |
+| C10 | Python-side skinning for a bind-vs-rest overlay and region report, no engine needed | S1, S2 |
+| C11 | Blender round trip: convert .blend/.fbx, open-and-return with re-read | S0, S1 |
+| C12 | Atlas builder returning materials, density and drops as data | S3 |
+| C13 | Engine facts to confirm by reading `gl_picture.c`: emissive, vertex colour, alpha handling | S3 |
+
 ## Data not in the repo
 | id | Need | Used by |
 |---|---|---|
