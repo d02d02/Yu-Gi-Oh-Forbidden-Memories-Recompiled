@@ -1,0 +1,2 @@
+/tools/hd-models/
+/notes/studio/recipe-schema.md

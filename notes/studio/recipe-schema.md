@@ -46,7 +46,7 @@ Derived from the knob tables in `studio-view.md`, checked against the converter'
 | `size.origin_height` | S4 | flag `--origin-height` | default 159 |
 | `size.center` | S4 | flag `--no-center` (inverted) | |
 | `size.fit_pose` | S4 | new | fit on a chosen pose |
-| `size.origin_offset`, `size.ground_offset` | S4 | model.json `offset` (x,y,z whole numbers) | ground offset is `offset` y |
+| `size.offset` | S4 | model.json `offset` `[x, y, z]` whole numbers (the model's own axes: x right, y down, z forward) | the studio's origin drag and ground offset are UI conveniences that compute this triple |
 | `size.scale_pct` | S4 | model.json `scale` | integer percent about the soles |
 | `acts.<act>.source` | S5 | `--clips`, `--clips-from`; model.json `clips` | asset clip name; library and procedural are **new** |
 | `acts.<act>.trim`, `.speed`, `.mirror`, `.crossfade` | S5 | new | engine crossfade is 6 frames, fixed today |
@@ -86,7 +86,7 @@ Sorted keys and one JSON formatter; integers where the game's JSON reader needs 
   "model": {"category": "C5", "name": "Dragon", "cards": []},
   "meta": {"author": "…", "license": "CC-BY-4.0"},
   "rig": {"root": "Body_Center", "feet": [], "strike": "Jaw"},
-  "size": {"mode": "extent", "value": 600, "origin_height": 159, "scale_pct": 85, "ground_offset": 40},
+  "size": {"mode": "extent", "value": 600, "origin_height": 159, "scale_pct": 85, "offset": [0, 0, 0]},
   "acts": {
     "idle": {"source": "Flying_Idle", "loop": true},
     "attack": {"source": "Bite_01", "strike": [11]},
