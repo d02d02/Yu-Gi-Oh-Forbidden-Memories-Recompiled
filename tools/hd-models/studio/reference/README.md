@@ -18,3 +18,9 @@ Cards with no 3D model on the disc are absent. Cards without `contact` never rea
 `bls_outline.json`: Black Luster Soldier (card 364) from the disc record via `hmd_export.py` + `measure_outline.py`: bbox, height 373, front (x,y) and side (z,y) convex hulls, game units, feet at 0. The model sits off the origin in z (-699..-463): centre it before drawing the ghost.
 
 Not measured yet: card footprint and arena camera shots. Both need engine work (no constant for the footprint was found; the camera needs the temporary per-frame `cam` log line described in `camera_distance_from_log.py`, a C change and a rebuild).
+
+## Arena camera (`arena_camera.json`)
+`build_camera.py` reads the `cam f= phase= eye= ref=` lines that `Model_UpdateScene` now logs (`MEMORIES_TRACE=model`, `src/game/model_scene_states.c`, MEMORIES_PC only) for cards 364, 1, 12, 250, 600. Per phase: frames, eye-to-look-at distance min/max, eye/ref first and last.
+Finding: the phase script is the same for every attacker (same phases, same frame counts, opening orbit 1799, wide shot 1199), but the close-shot distance depends on the monster: phase 5/6 = 462 (card 364), 959 (card 1), 708 (card 12), 507 (card 250), 651 (card 600). So the camera reference is per monster class, not global. Rebuild with `measure_reference.py` + `build_camera.py`.
+
+Card footprint: no footprint exists in the arena camera or draw logs; the field slot geometry is a separate (field-view) measurement, still open.

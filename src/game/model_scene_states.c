@@ -2,6 +2,10 @@
 #include "../psyq/libgte.h"
 #include "../psyq/libgpu.h"
 #include "camera_view.h"
+#ifdef MEMORIES_PC
+#include "pc/debug/log.h"
+#include "pc/sdk/display.h"
+#endif
 #include "func_8004E9A0.h"
 #include "func_800528AC.h"
 #include "func_800556E8.h"
@@ -67,6 +71,8 @@ static void Model_SetArenaView(GsRVIEW2 *view)
         s32 model1 = D_800F2C40[1].field_E1F ? (s32)D_800F2C40[1].field_DF8 : -1;
         float dx = (float)(view->vpx - view->vrx), dy = (float)(view->vpy - view->vry), dz = (float)(view->vpz - view->vrz);
         float k = NativeModel_ArenaCameraFactor(model0, model1, dx, dy, dz);
+        LOG(LOG_MODEL, "cam f=%u phase=%d eye=%d,%d,%d ref=%d,%d,%d", Memories_PresentedFrames(), (int)D_8009AF9A,
+            (int)view->vpx, (int)view->vpy, (int)view->vpz, (int)view->vrx, (int)view->vry, (int)view->vrz);
         GsRVIEW2 wide = *view;
         int moved = 0;
         if (k > 1.0001f || k < 0.9999f) {
