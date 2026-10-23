@@ -26,3 +26,6 @@ Order notes
 * **Q4**: the BLS outline and footprint come from measurement (SM0), not from guesses.
 * **Q8**: undo is one linear history per recipe, one entry per knob change or per completed viewport gesture, Ctrl+Z / Ctrl+Y, restores values and marks later stages stale.
 * **Q9**: both: "Reset to auto" per stage, and a small back-to-auto control on every knob changed from its auto value.
+
+## SM3 split (2026-10-23)
+The delegation harness has no display, so a Tk check would skip and pass vacuously. SM3 is therefore two parts. **SM3a** (delegated, job `sm3-model`, spec `tools/delegate/specs/sm3-model`): the UI-free layer in `tools/hd-models/studio/`: `rail.py` (rail rows, footer gating), `knobs.py` (S0-S3 knob tables as data), `checkrows.py` (check rows with fix targets), `session.py` (open a glb, run stages on a cached model, inputs digest and silent return of unchanged stale stages, 300 ms debounce, autosave, undo), `run_audit.py` (the subprocess the tab polls). **SM3b** (not delegated): the thin Tk tab on those modules in `tools/pc/fm_editor/`, written and checked on the Windows machine.

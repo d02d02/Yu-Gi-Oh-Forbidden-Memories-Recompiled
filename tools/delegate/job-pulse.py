@@ -17,7 +17,7 @@ Events (grep-able prefix):
   TOOL-ERROR  a tool call failed; the error text is shown (aborted = model sent a malformed/empty call)
   ABORT-RUN   3 aborted calls in one session: the model is emitting broken tool calls
   TEST-FAIL   a bash call's output shows a failing test (FAIL/Traceback/Error)
-  STUCK-LOOP  4 edits of one file in one session
+  STUCK-LOOP  7 edits of one file in one session (editing a new test file is normal at 4)
   REREAD      the same file read 3 times in one session (context is not being kept)
   TIMEOUT-NEAR  the session is at 80% of the iteration timeout without a commit: the iteration will be killed
   STALLED-ITEM  2 sessions in a row hit the timeout without an item ticked: the brief needs sharpening (wakes the supervisor)
@@ -154,8 +154,8 @@ while True:
                         say(f"TEST-FAIL {tgt[:40]} :: {line.strip()[:90]}")
                 elif tool == "edit":
                     edits[(sid, tgt)] += 1
-                    if edits[(sid, tgt)] == 4:
-                        say(f"STUCK-LOOP 4 edits of {tgt.split('/')[-1]} in one session", 2)
+                    if edits[(sid, tgt)] == 7:
+                        say(f"STUCK-LOOP 7 edits of {tgt.split('/')[-1]} in one session", 2)
                 elif tool == "read":
                     reads[(sid, tgt)] += 1
                     if reads[(sid, tgt)] == 3:
