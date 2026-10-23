@@ -97,3 +97,21 @@ Everything else, including the structure of progress.md.
 
 ## Acceptance
 `bash verify.sh` exits 0.
+
+## Worked recipe for item 6 (the agent stalled twice exploring; do NOT explore, WRITE this now, then adjust)
+Step 1, append to `tests/test_studio_view.py` (copy the `setUp`/`tearDown` of `TestSessionEdit`, line ~353, unchanged) a class `TestWalk` with ONE test `test_walk`:
+```
+sess = self.sess                                  # Session.open(glb) + run_stage("S0") already done in setUp
+self.assertEqual(sess.studio.state("S0"), "fail") # S0 fails on the licence (print it first; if it differs, assert what it prints)
+sess.edit("meta.license", "CC-BY-4.0"); sess.edit("meta.author", "Tester")   # only paths that exist in knobs.py for S0
+sess.change_category("C1")
+sess.run_stage("S0")
+self.assertEqual(sess.studio.state("S0"), "pass")
+sess.open_stage("S1")
+# acknowledge each warning of S1: for row in checkrows.check_rows(sess.studio, "S1") if row severity is warn: sess.acknowledge(row id, value)
+self.assertTrue(rail.footer(sess.studio, "S1")["next_enabled"])
+sess.undo()                                       # repeat until the licence edit is undone
+self.assertEqual(sess.studio.state("S0"), "fail")
+```
+Step 2: run `python3 tools/hd-models/tests/test_studio_view.py -k TestWalk`. The first run WILL fail on a wrong assumed name or value: print the real value (`print(...)`), fix that one line, rerun. Do not read `state.py`, `audit.py` or `session.py` in full: `grep -n "def " file` then read at most 30 lines.
+Step 3: add one line about `studio/rail.py knobs.py checkrows.py session.py run_audit.py` to the table in `tools/hd-models/README.md` (the line must contain the text `studio/session.py`), then run `bash verify.sh`.
