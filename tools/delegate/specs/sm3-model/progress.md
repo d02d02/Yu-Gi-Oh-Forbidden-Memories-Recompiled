@@ -6,6 +6,8 @@ Read JOB.md first (goal, pasted facts, rules, acceptance). One item per session;
 Not started.
 
 ## Items
+- [ ] 0. Create `tools/hd-models/tests/test_studio_view.py` with ONE small class TestRail holding ONE test (`rail(studio)` returns 4 group headings and 9 entries) using the synthetic glb helper, under 60 lines; `studio/rail.py` may already exist from an earlier session, reuse it
+  check: python3 tools/hd-models/tests/test_studio_view.py -k TestRail
 - [ ] 1. `studio/rail.py` and tests/test_studio_view.py class TestRail: `rail(studio)` rows (4 group headings, 9 entries, S1+S2 merged into "Skeleton" with the worse state), `next_stage`, `footer` (previous, verb-first next label, enabled and reason; last stage reads "Build package")
   check: python3 tools/hd-models/tests/test_studio_view.py -k TestRail
 - [ ] 2. `studio/knobs.py` and class TestKnobs: the knob tables of S0-S3 as data, `knobs(stage)`, `value`, `is_changed`, `back_to_auto`; every knob path belongs to its stage per `state.stage_of_path`, and a sample value for every knob passes `recipe.validate` without an error finding

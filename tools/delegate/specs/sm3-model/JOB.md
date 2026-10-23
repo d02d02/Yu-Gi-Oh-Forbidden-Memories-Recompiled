@@ -79,6 +79,7 @@ The model is parsed once (`audit.load_model`) and cached; a changed `source.sha2
 CLI `tools/hd-models/studio/run_audit.py GLB [RECIPE_JSON] [--stage S1]`: prints `json.dumps` of `audit.audit_all(...)` (or the one stage) to stdout, exit 0; exit 2 and a one-line message on stderr when the glb is missing. The Tk tab will run it as a subprocess (no threads in the editor). Test it with `subprocess.run([sys.executable, ...])`.
 
 ### Rules
+- WRITE SMALL. Earlier runs read 150 KB, then died on provider read timeouts while generating one large file. Create a new file with at most 60 lines in one write, then grow it with further edits of at most 60 lines each. Do not re-read state.py, audit.py, test_studio_audit.py or recipe.py: the facts above are enough; open at most one function of them by grep when stuck.
 - Do not change `state.py`, `audit.py`, `recipe.py`, `native_*.py` (verify.sh checks). If something there seems wrong, write BLOCKED with the reason.
 - Every test must be able to fail: assert exact values (ids, states, glyphs, labels, orders), never "runs without error".
 - Each test builds its own glb in a temp dir; no shared state between tests; tests pass headless in under 30 s in total.
