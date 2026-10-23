@@ -26,15 +26,22 @@ def parse(log: str) -> dict:
         models[slot] = model
         rows.setdefault(slot, {}).setdefault(row, set()).add(length)
         by_frame.setdefault(f, {})[slot] = (row, clock, length)
+    last_attack = {}
     seen = set()
     for f in sorted(by_frame):
         pair = by_frame[f]
         for slot, other in ((0, 1), (1, 0)):
-            if slot in pair and other in pair and pair[other][0] in REACTION and pair[slot][0] in ATTACK and slot not in seen:
+            if slot not in pair or other not in pair:
+                continue
+            if pair[slot][0] in ATTACK:
+                last_attack[slot] = pair[slot]
+            if pair[other][0] in REACTION and slot in last_attack and slot not in seen:
+                # the attacker's clock in its attack row at the first reaction frame (its last draw in that row when it has already left it)
                 seen.add(slot)
-                contact.append({"attacker_slot": slot, "attacker_model": models[slot], "attack_row": pair[slot][0],
-                                "row_length": pair[slot][2], "contact_clock": pair[slot][1], "contact_frame": pair[slot][1] // 16, "defender_row": pair[other][0],
-                                "presented_frame": f})
+                row, clock, length = last_attack[slot]
+                contact.append({"attacker_slot": slot, "attacker_model": models[slot], "attack_row": row,
+                                "row_length": length, "contact_clock": clock, "contact_frame": clock // 16, "suspect": clock // 16 >= length - 2 or pair[slot][0] not in ATTACK,
+                                "defender_row": pair[other][0], "presented_frame": f})
     return {"models": models, "rows": {s: {r: sorted(v) for r, v in d.items()} for s, d in rows.items()}, "contact": contact}
 
 
