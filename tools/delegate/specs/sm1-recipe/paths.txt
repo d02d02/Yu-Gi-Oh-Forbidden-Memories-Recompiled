@@ -1,7 +1,0 @@
-/notes/studio/recipe-schema.md
-/notes/native-models.md
-/tools/hd-models/native_spec.py
-/tools/hd-models/native_check.py
-/tools/hd-models/tests/test_native_tools.py
-/tools/hd-models/recipe.py
-/tools/hd-models/tests/test_recipe.py
