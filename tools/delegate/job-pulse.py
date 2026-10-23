@@ -3,7 +3,7 @@
 
     job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=900] [--verbose]
 
-Default output is terse: ALERT lines (act now: ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER x3 in a row) and
+Default output is terse: ALERT lines (act now: ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER with zero successes) and
 progress lines (START, ITEM). Everything else (SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS, single PROVIDER) only with --verbose.
 
 Events (grep-able prefix):
@@ -155,8 +155,9 @@ while True:
             say(f"TIMEOUT-NEAR session {len(seen_sessions)} is {int(age)} s old (limit {int(iter_timeout)} s); uncommitted work will be killed", 2)
     n, why = ledger_failures(ledger_since)
     if n >= 3:
-        bad_windows += 1
-        say(f"PROVIDER {n} failed router calls, last: {why}", 2 if bad_windows >= 3 else 0)  # 3 bad windows in a row = alert
+        ok_n = ledger.execute("select count(*) from calls where ok=1 and source='ralph' and ts>?", (ledger_since,)).fetchone()[0]
+        # failures with fallbacks answering are routine; alert only when nothing succeeded in the window
+        say(f"PROVIDER {n} failed, {ok_n} ok, last: {why}", 2 if ok_n == 0 else 0)
         ledger_since = time.time()
     elif time.time() - ledger_since > 300:
         bad_windows, ledger_since = 0, time.time()
