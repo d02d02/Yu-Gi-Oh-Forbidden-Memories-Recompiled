@@ -8,7 +8,7 @@ OpenCode keeps every message and tool call of every session in WSL: `~/.local/sh
 ## Tools
 | Tool | Answers | Cost to read |
 |---|---|---|
-| `job-pulse.py <id>` | **live**: one line per event, silent otherwise: SESSION, TOOL-ERROR, STUCK-LOOP (4 edits of one file), ITEM, COMMIT, IDLE (default 4 min), END. Start with the Monitor tool (max 30 min per arm, re-arm); 0 model tokens while quiet | 1 line per event |
+| `job-pulse.py <id>` | **live**: one line per event, silent otherwise: SESSION, ITEM, COMMIT, TOOL-ERROR (with error text), ABORT-RUN (3 aborted calls), TEST-FAIL, STUCK-LOOP (4 edits of a file), REREAD (3 reads), TIMEOUT-NEAR (80% of iteration limit, no commit), PROVIDER (3+ router failures, with reason), TOKENS (per 100k, per item), IDLE (default 4 min), END (with totals). Start with the Monitor tool (max 30 min per arm, re-arm); 0 model tokens while quiet | 1 line per event |
 | `job-status.sh <id>` | running? items done? commits? | ~8 lines |
 | `job-stats.py <id>` | sessions, model steps, tokens, tool counts | 2 lines |
 | `job-trace.py <id>` | every call: tool, target, status, output size; the agent's remarks; files re-read; aborted calls | ~100 lines; read the last session only |
@@ -41,3 +41,8 @@ Run via WSL with `MSYS_NO_PATHCONV=1`. Router view: `python3 llm-router/scripts/
 
 ## Open
 Apply the proposed changes after `recipe-v1` ends, rerun a comparable job, add the measured result here.
+
+## Monitor gaps found 2026-10-23 (v1 -> v2)
+v1 showed `TOOL-ERROR read` with no text. The trace showed the errors were model-side (`Tool execution aborted`, empty input; `read` called without `filePath`), not test failures, which v1 could not tell apart. v2 adds the error text, abort streaks, test failures, re-reads, the timeout warning, router failures and token totals.
+
+Still not covered: a hung model call looks like IDLE only (no view inside the call); the monitor cannot steer (to steer, edit `progress.md` in the job clone or kill the loop); the ledger `source='ralph'` is not per job, so PROVIDER assumes one job at a time; no automatic landing.
