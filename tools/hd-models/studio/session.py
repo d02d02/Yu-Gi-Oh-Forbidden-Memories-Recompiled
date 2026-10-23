@@ -1,0 +1,233 @@
+"""The Model Studio's session: open a glb/recipe, run stages, edit with debounce, undo/redo, autosave.
+
+The Tk tab drives this object; it is UI-free and testable headless.
+"""
+import copy
+import hashlib
+import os
+import time
+from pathlib import Path
+
+from . import audit
+from . import state
+import recipe
+
+
+class Session:
+    def __init__(self, glb_path, studio, recipe_path, model):
+        self.glb = Path(glb_path)
+        self.studio = studio
+        self.recipe_path = Path(recipe_path) if recipe_path else None
+        self._model = model
+        self._sha256 = self._file_sha256(self.glb)
+        self._pending = {}      # stage -> time (monotonic) when edit was made
+
+    @classmethod
+    def open(cls, glb_path, recipe_path=None):
+        glb_path = Path(glb_path)
+        recipe_path = Path(recipe_path) if recipe_path else None
+
+        # Load or create recipe
+        if recipe_path and recipe_path.exists():
+            rec = recipe.load(recipe_path)
+            # source.path in recipe is relative to recipe file; resolve to absolute
+            src_path = rec.get("source", {}).get("path")
+            if src_path:
+                abs_src = (recipe_path.parent / src_path).resolve()
+                if abs_src != glb_path.resolve():
+                    # glb moved; we'll treat as sha256 change
+                    pass
+        else:
+            # New recipe: store glb path relative to recipe file if recipe_path given, else absolute
+            if recipe_path:
+                try:
+                    rel = glb_path.resolve().relative_to(recipe_path.parent.resolve())
+                    src_path = str(rel)
+                except ValueError:
+                    src_path = str(glb_path.resolve())
+            else:
+                src_path = str(glb_path.resolve())
+            rec = {"schema": recipe.SCHEMA, "source": {"path": src_path}, "model": {"category": "C1"}}
+
+        studio = state.Studio(rec)
+        sha256 = cls._file_sha256(glb_path)
+
+        # Load model; if it fails, audit_all will produce S0.load fail
+        model = None
+        try:
+            model = audit.load_model(glb_path)
+        except audit.AuditError:
+            pass
+
+        session = cls(glb_path, studio, recipe_path, model)
+        # Store sha256 in recipe if not present
+        if "sha256" not in studio.recipe.get("source", {}):
+            state.set_path(studio.recipe, "source.sha256", sha256)
+
+        # If model failed to load, run audit_all to produce S0.load fail
+        if model is None:
+            results = audit.audit_all(glb_path, studio.recipe)
+            audit.apply_to_studio(studio, results, {s: session.stage_inputs(s) for s in ("S0", "S1", "S2", "S3")})
+
+        return session
+
+    @staticmethod
+    def _file_sha256(path):
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def _check_reload(self):
+        """Reload model if source.sha256 changed; mark all stages stale."""
+        current_sha = self._file_sha256(self.glb)
+        stored_sha = state.get_path(self.studio.recipe, "source.sha256")
+        if current_sha != stored_sha:
+            # File changed; reload model
+            self._model = None
+            try:
+                self._model = audit.load_model(self.glb)
+            except audit.AuditError:
+                pass
+            state.set_path(self.studio.recipe, "source.sha256", current_sha)
+            self._sha256 = current_sha
+            # Mark all stages that have findings as stale
+            for s in state.STAGES:
+                if s in self.studio.findings:
+                    self.studio.stale.add(s)
+
+    def stage_inputs(self, stage):
+        """Return the recipe sections this stage reads, plus sha256, as plain data."""
+        self._check_reload()
+        rec = self.studio.recipe
+        base = {"sha256": self._sha256}
+        if stage == "S0":
+            base.update({
+                "source": copy.deepcopy(rec.get("source", {})),
+                "model": copy.deepcopy(rec.get("model", {})),
+                "meta": copy.deepcopy(rec.get("meta", {})),
+            })
+        elif stage == "S1":
+            base.update({
+                "source": copy.deepcopy(rec.get("source", {})),
+                "model": copy.deepcopy(rec.get("model", {})),
+                "meta": copy.deepcopy(rec.get("meta", {})),
+                "audit": copy.deepcopy(rec.get("audit", {})),
+            })
+        elif stage == "S2":
+            base.update({
+                "rig": copy.deepcopy(rec.get("rig", {})),
+                "model": {"category": rec.get("model", {}).get("category")},
+            })
+        elif stage == "S3":
+            base.update({
+                "mat": copy.deepcopy(rec.get("mat", {})),
+            })
+        return base
+
+    def run_stage(self, stage):
+        """Run audit for the stage, store findings, return them."""
+        if self._model is None:
+            # Model failed to load; audit_all will produce S0.load fail
+            results = audit.audit_all(self.glb, self.studio.recipe)
+            audit.apply_to_studio(self.studio, results, {s: self.stage_inputs(s) for s in ("S0", "S1", "S2", "S3")})
+            return self.studio.findings.get(stage, [])
+        findings = audit.audit_stage(stage, self._model, self.studio.recipe)
+        self.studio.set_findings(stage, findings["findings"], self.stage_inputs(stage))
+        return findings["findings"]
+
+    def open_stage(self, stage):
+        """Open a stage: run checks if needed. Returns True if checks ran."""
+        inputs = self.stage_inputs(stage)
+        must_run = self.studio.reopen(stage, inputs)
+        if must_run:
+            self.run_stage(stage)
+            return True
+        return False
+
+    # --- editing with debounce -------------------------------------------------------------
+    def edit(self, path, value, now=None):
+        """Edit a knob; record pending debounce for stale stages."""
+        if now is None:
+            now = time.monotonic()
+        marked = self.studio.edit(path, value)
+        # Also update pending for stages that were already stale (debounce reset)
+        for s in self.studio.stale:
+            if s in self._pending:
+                self._pending[s] = now
+        for s in marked:
+            self._pending[s] = now
+        return marked
+
+    def due(self, now=None):
+        """Stages whose pending time is at least 0.3 s old."""
+        if now is None:
+            now = time.monotonic()
+        return [s for s, t in self._pending.items() if now - t >= 0.3 - 1e-9]
+
+    def run_due(self, now=None):
+        """Run all due stages, clear them from pending, return the ids."""
+        if now is None:
+            now = time.monotonic()
+        to_run = self.due(now)
+        for s in to_run:
+            self.run_stage(s)
+            self._pending.pop(s, None)
+        return to_run
+
+    # --- persistence -------------------------------------------------------------------------
+    def autosave(self):
+        """Save to recipe_path if unsaved and path exists. Returns True if wrote."""
+        if self.studio.save_state == "unsaved" and self.recipe_path:
+            return self.studio.save(self.recipe_path)
+        return False
+
+    # --- undo/redo -------------------------------------------------------------------------
+    def undo(self):
+        if not self.studio.undo_stack:
+            return []
+        entry = self.studio.undo_stack[-1]
+        marked = self.studio.undo()
+        # Compute all affected stages from the entry
+        affected = set()
+        for path, _old, _new in entry:
+            owner = state.stage_of_path(path)
+            if owner:
+                affected.add(owner)
+                affected.update(self.studio.downstream(owner))
+        affected = [s for s in affected if s in self.studio.findings]
+        now = time.monotonic()
+        for s in affected:
+            self._pending[s] = now
+        return affected
+
+    def redo(self):
+        if not self.studio.redo_stack:
+            return []
+        entry = self.studio.redo_stack[-1]
+        marked = self.studio.redo()
+        affected = set()
+        for path, _old, _new in entry:
+            owner = state.stage_of_path(path)
+            if owner:
+                affected.add(owner)
+                affected.update(self.studio.downstream(owner))
+        affected = [s for s in affected if s in self.studio.findings]
+        now = time.monotonic()
+        for s in affected:
+            self._pending[s] = now
+        return affected
+
+    # --- category/acknowledge --------------------------------------------------------------
+    def change_category(self, category):
+        marked = self.studio.change_category(category)
+        now = time.monotonic()
+        for s in marked:
+            self._pending[s] = now
+        return marked
+
+    def acknowledge(self, check_id, value):
+        self.studio.acknowledge(check_id, value)
+        # acknowledging marks recipe unsaved; stage stays same
+        return self.studio.undo_stack[-1] if self.studio.undo_stack else []

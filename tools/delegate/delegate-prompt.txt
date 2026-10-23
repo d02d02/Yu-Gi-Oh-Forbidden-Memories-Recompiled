@@ -9,3 +9,4 @@ If the same item has two "Failed:" lines, create BLOCKED containing why and what
 Never change a check command, nor a test file that JOB.md calls "given", to make an item pass; if one seems wrong, write BLOCKED with the reason.
 When every item is ticked and `bash verify.sh` passes, create an empty file RALPH_DONE.
 Never edit files outside what JOB.md allows. Never push.
+READING RULE (enforced by a plugin that blocks the read): never read a file over 150 lines whole. `grep -n` the name you need, then read with offset and limit (at most 150 lines). Never read the same file range twice. JOB.md already quotes the facts.
