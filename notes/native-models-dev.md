@@ -68,7 +68,7 @@ placed from the original's root, and plays its own clip chosen from the game's a
 
 * **Disc units and axes.** The disc model's space is y-down; the converter maps glTF (y up, metres) with `FLIP = diag(1,-1,-1)`, scale 100 units per metre (`SCALE
   = 0.01`) and a fit factor so the model's hip-to-ankle length equals Black Luster Soldier's (`s_fit`), so the game's camera/effects/shadow volume still make sense.
-  `native_convert.py` needs no disc: it scales so the root (hips) stands `--root-height` (300) game units above the soles, from BLS's root
+  `native_convert.py` needs no disc. OLD fit (now only `--root-height`): the root (hips) stands 300 game units above the soles, from BLS's root
   y of -300 (below); `--height` / `--scale` instead.
 * **THE TRAP: the disc's part coordinates (`Hmd.world()`, `tb`) include the root's world position** (BLS hips = (0,-300,575) = `field_D1C->workm.t`). The native
   model must have its hips at the ORIGIN of its own space; the game's root matrix carries the position: `view = WS_rot * (root_rot * v / 4096 + root_tr) / 4096 + WS_tr`
@@ -165,11 +165,10 @@ is drawn at the picture's size, so a part of it past the 4:3 edges does not reac
 * Custom camera at the coup de grace (defender's second hit / destroyed row): feasible in `Model_SetArenaView`, keyed to the defender slot's row and clock; slow motion is not (one game clock for logic, sound, effects).
 * Effects are anchored to the hidden original model's joints, not the new model's bones (no visible mismatch in the BLS-vs-191 fight: the visible effects are on the defender); re-anchoring needs the new pose on the game thread.
 * Tint-flash mask per part (the hit flash is a whole-body tint now); guard/defence rows; a second monster; GLES/macOS check; the angel's licence (the asset must not be shared).
-* The no-disc fit's default root height (300, BLS's) is to be compared with a `rigged_to_hdm4.py` conversion of the same model
-  (`native_check.py` prints both models' soles); a first load of a big package happens in the frame that needs it (a hitch).
+* (Resolved by sec. 12: the standard is 373 tall, origin 159 above the soles.) Remaining: a first load of a big package happens in the frame that needs it (a hitch).
 * The game's real "3D Monsters" option crash (user report, needs their crash-*.txt) is unrelated and unreproduced.
 
-## 9. Size and placement of a model, and the camera shots (2026-10-22)
+## 12. Size, placement and camera shots (2026-10-22; supersedes the root-height 300 fit in sec. 4)
 
 * The game places a monster by its body root and sizes it as the disc's Black Luster Soldier (card 364): 373 game units from the
   soles to the top, the placed point 159 above the soles (measured with `tools/hd-models/hmd_export.py 364`). A native model is

@@ -1,58 +1,55 @@
 # Native models: plug-and-play content + 3D Monsters field attack
 
-Branch `feat/native-models-plug-and-play`, rebased onto upstream master (`e64b91f9c`) 2026-10-22; `native_models` = mod API 19 (upstream took 17, 18). Pre-rebase history: `backup/native-pre-rebase`. Never a PR; push only to this branch.
-This file = action plan + status board. `history.md` = what is done. Full M3-M5 checklists and the long local log are in git history of this file (before the 2026-10-22 compaction).
+Branch `feat/native-models-plug-and-play`, rebased onto upstream master (`e64b91f9c`) 2026-10-22; `native_models` = mod API 19. Pre-rebase history: `backup/native-pre-rebase`. Never a PR; push only to this branch.
+This file = resume point (status + open work). `history.md` = what was done, phase by phase. Older long checklists: git history of this file.
+
+## Docs map (read only what the task needs)
+| File | Read for |
+|---|---|
+| `notes/native-models-feasibility.md` | **the current direction**: verdict, stages S0-S9, categories C1-C8, studio design, engine gaps (sec. 8), UX-first (sec. 7) |
+| `notes/native-models-fit-problem.md` | why the dragon/angel look wrong: the hypotheses and evidence to collect |
+| `notes/native-models.md` | modder's how-to: manifest, `model.json`, acts, look, limits, troubleshooting |
+| `notes/native-models-dev.md` | engine internals: capture/replay/draw, HDM4 format, coordinates, director, shaders, camera, test traps |
+| `notes/adding-a-model.md` | procedure to add a model + the dragon worked example (I) |
+| `tools/hd-models/README.md` | the tools |
 
 ## Objectives
-1. **Plug-and-play content.** Rigged glTF -> working mod in one command, no C/disc/our Blender script: folder with `mod.json`, `model.json` (hand-editable), generated model binary, PNG textures (swap by replacing a PNG). Animations, strike timing, size, look, camera shots = data. Errors = notes in the Mods window, never a crash.
-2. **3D Monsters field attack** (`mod.3d-monsters.attack` = field): native model stands on its card, attacks, reacts, guards, dies, fades; right depth vs cards/monsters, no pose mixing, strike on the defender's reaction, the mod's fades.
+1. **Plug-and-play content.** Rigged glTF -> working mod in one command, no C/disc/our Blender script: `mod.json`, hand-editable `model.json`, generated binary, PNG textures. Animations, strike timing, size, look, camera shots = data. Errors = notes in the Mods window, never a crash. **Re-scoped 2026-10-23** (feasibility note): reliable for rigged humanoids, guided for creatures.
+2. **3D Monsters field attack** (`mod.3d-monsters.attack` = field): native model on its card, attacks, reacts, guards, dies, fades; right depth, no pose mixing, strike on the defender's reaction. Done (M5, M7).
 
-## Decisions (defaults)
-D1 converter to validated package, no new C lib | D2 animation sampling pure C, render side, captured inputs only | D3 native size NOT fed back (`field_DD0`/`field_DC8`; keeps console timing/save-state parity) | D4 arena cinematics = camera on view copy + clip choice, no length change | D5 model key = card id (per draw) | D6 HDM1-3 removed, HDM4 only (old HDM4 files load).
-
-## Verification
-* Here (Windows, disc via `MEMORIES_DISC`, real GL window): game build, ctest, mod builds, Python tests, field/arena captures (`tools/hd-models/field_attack.py`).
-* Laptop results come on orphan `test-results` (`mN.md`; read-only for me). Milestones = frozen `milestone/native-mN` branches, never pushed again; failures fixed forward (`Fix M<N>-<item>: ...`, unit test, `milestone/native-m<N>.<k>` if needed).
+## Decisions
+D1 converter to validated package, no new C lib | D2 animation sampling pure C, render side, captured inputs only | D3 native size NOT fed back (`field_DD0`/`field_DC8`; console timing/save-state parity) | D4 arena cinematics = camera on view copy + clip choice, no length change | D5 model key = card id | D6 HDM4 only.
+**J (2026-10-23, user):** studio viewport = the real engine over `yfm_control`; one `recipe.json` drives a deterministic `glb + recipe -> package`; Blender stays the hand-off for mesh/weight fixes (not a modeller); **the project starts from the UX and the GUI, only then code**; the user will supply skills for drawing the UX.
 
 ## Rules for every change
 * `src/game`: `#ifdef MEMORIES_PC` only, no libc/libm (each adds an outside_resident_image stub; must stay "12"), `make match` unaffected. Engine code in `src/pc`.
 * Code-mod surface: new exports only, structs have `size`, never change exported layout; 3D Monsters binds new entries with `host->symbol()`.
 * Before each push: game build, ctest, 3D Monsters build, Python tests, re-read diff. Small commits.
+* Verification: here = Windows, disc via `MEMORIES_DISC`, real GL window. Laptop results come on orphan `test-results` (read-only for me). Milestones = frozen `milestone/native-mN`, failures fixed forward.
 
-## Milestones (all PASS, the user, 2026-10-22)
-| M | Branch | Covers | Notes |
+## Milestones (all PASS, the user, 2026-10-22; phases A-I detail in `history.md`)
+| M | Branch | Covers | Fixes |
 |---|---|---|---|
-| M1 | `milestone/native-m1` (0191bde7) | A | |
+| M1 | `native-m1` (0191bde7) | A | |
 | M2 | `native-m2` (5cfc2168) | B | |
 | M3 | `native-m3` (afc069ea) | C | |
-| M4 | `native-m4` (194aeba1) | D | fixes M4-1 `18ac4081` (converter wrote non-whole numbers the game's JSON reader refuses), M4-8 `876c6c85` (Windows-path package didn't find model.hdm) |
-| M5 | `native-m5` (d8bb6a29), `m5.1` (ac43731b) | E1, E4, F | fixes M5-1 `e59e543c` (marker packet overwritten: monster/glow dropped out), M5-5 `68c85ac1` (stray draw at monster load); test build = m5.1 |
-| M6 | | E2/E3 arena | PASS |
-| M7 | | G | PASS |
+| M4 | `native-m4` (194aeba1) | D | M4-1 `18ac4081` converter wrote non-whole numbers the game's JSON reader refuses; M4-8 `876c6c85` Windows-path package |
+| M5 | `native-m5` (d8bb6a29), `m5.1` (ac43731b) | E1, E4, F | M5-1 `e59e543c` marker packet overwritten; M5-5 `68c85ac1` stray draw at monster load; test build = m5.1 |
+| M6 / M7 | | E2/E3 arena / G | PASS |
 
-## Phases (A-G done)
-* **A** (A1-A7): GlReady only when pass draws; arena camera push only for native slot in arena scene; HDM4 parser hardened; `field_DFE` capture; test switch fixes; `native_model.c` uses `pc/compat/fs.h`; FM Editor API compat.
-* **B**: `native_anim.c` (pure C: director, sampling, cross-fade, FK -> bone rows); HDM1-3 removed; GL code stays in `gl_picture.c`; widescreen checked.
-* **C** (C1-C7): `NativeState`/`NativeInstance` (`NativeModel_SetInstance`: size, card, context ARENA/FIELD/BIG_CARD/LIBRARY/MEASURE, key, fade, contact_frame), nearest-OT-entry marker, per-key anim state, 24 draws/frame, event log `MEMORIES_TRACE=native|model`.
-* **D** (D1-D9): HDM4 binary + `model.json` format 1 (spec: `src/pc/render/native_registry.h`, `notes/native-models.md`); manifest `"native_models": [{"cards":[364],"package":"x/model.json"}]` (mod order = priority); lazy loader, PNG via libpng, texture cap 2048; `tools/hd-models/native_convert.py`, `new_native_mod.py MODEL.glb --card N --out mods/x`, `native_check.py`; round-trip tests.
-* **E**: E1 state->clip from `clips` + fallbacks; E4 warp strike frames <-> contact (field done; arena uses BLS's measured warp). E2/E3 (disc contact table `data/native/contact.json`, measure all disc models) = optional, needs disc.
-* **F**: 3D Monsters `sort_monster` sets instance (`field_models.c`); depth via marker at nearest entry; fade in composite; optional bind through `host->symbol`. F5 (fit to disc bounds) not wanted: converter standard instead.
-* **G**: `model.json` `"shots"` (<=8: yaw/pitch/height/distance%, ease, `from`..`to` frames, `other`), `native_cinematic.c`, `NativeModel_ArenaShot`/`FieldShot`, `fight_shot_orbit` in 3D Monsters. Not done, not needed: G3 extra field frames, G4 sounds (`host->sound_play`); no `shots.json` (shots live in `model.json`).
-* **Placement standard** (converter, at source, no engine change): scaled to 373 tall (disc BLS), origin on vertical axis 159 above soles, horizontally at middle of the idle pose's feet (`--height`, `--origin-height`, `--no-center`). `model.json` `scale` (about soles) and optional `offset [x,y,z]` (whole numbers, before scale). Mannequin idle must be `Idle_Loop`, not `Sword_Idle` (a lunge).
-
-## Open work (in order)
-1. **H3 DONE (tab test needs Tk: not run here; fm_editor suite 506 OK, 56 skipped)**: FM Editor "Native models" tab** (`tools/pc/fm_editor`): add/remove/pick a package and its cards in a mod's `native_models`; checks from `native_models.py` (exists, with entry checks in validation); register tab in `app.py` like `ArtTab` (`art_tab.py`); copy files into the mod like the Art tab does for PNGs (`project.files`, `validate.py` `has_file`); test; README section; line in `history.md`.
-2. H1 DONE: the Library's model view shows the native model (fix: `NativeModel_EndSlot` kept a card-less slot only when packets were kept; now also when a part was drawn). Seen on card 364 (`tmp/agent/fx/library-{vanilla,native}.bmp`); drive: yfm_control `goto library`, `library_all_cards=1`, r1, right x10, down x6, right x5 (card 364), cross, triangle, square.
-3. **I** (last; gate: A-H stable): written procedure for adding any model (dragon, Goku). I1 draft done: `notes/adding-a-model.md` (untested steps marked). Open: I2 rigging when source has none (humanoid Mixamo/Rigify + `--clips-from` UAL; non-humanoid dragon rig and clips; generic Blender scripts), I3 converter profiles for quadruped/winged/multi-material/hair/cape, I4 sizing/placement checklist "looks wrong -> change what", I5 two worked examples (dragon, Goku) with exact commands + pictures, I6 validation (native_check 0 errors, field+arena captures, tests untouched, no engine change; any needed engine change = pipeline bug fixed first). Dragon: Black Dragon by 3DHaupt.com (readme: modeled 2009-10; licence: the user says the same as the humanoid models (third-party, proper licence; no caveat). Package `license` field: write what the user gives, until then it says `unknown`), downloaded to `C:\Users\mda\games\dragon-dl` (rar; extract with `C:\Windows\System32\tar.exe`; the Drive download needs `curl -C -` retries). First pass done: `Dragon_Baked_Actions.blend` -> glb (`tmp/agent/dragon/`; 136 bones cut to 120 by merging the lightest leaf bones' weights into their parents; the blend's Blender-Internal materials are dropped by Blender 4.5, so one material with `textures/Dragon_Bump_Col2.jpg` on UV `UV_mirror`) -> `new_native_mod.py ... -- --rig generic --root pelvic_2 --clips all --height 600` -> `tmp/pc/game32/mods/dragon-test` (card 364); it plays in the Library view, textured and animated. Size tools today: converter `--height` (vertical extent of the bind pose, wings and neck included), `--scale`, `--root-height`, `--origin-height`; `model.json` `scale` (percent about the soles) and `offset`; `make_dragon.py --height`. A dragon's wingspan is about twice its height, so `--height 450` is ~2200 units wide: a `--extent N` (largest bounding dimension) option is the planned tool for non-humanoids (I4). Open: size (600 is too big for the Library camera: pick `--height`/`scale`), the asset has only Idel_New, Fly_New, Run_New, Walk_New (no attack/hit/death: author them or map Run_New to attack), strike frames, field and arena checks. Next: map Run_New to attack and Idel_New to idle/hit/guard/destroyed (author clips only if the user asks), pick the size, run `field_attack.py --native` and the arena with the dragon package, then write the dragon worked example (I5) in `notes/adding-a-model.md`. Goku: user has none yet. Models are third-party fan-made with proper licence: author/licence in package (`--author`, `--license`), no private-use caveat.
-3b. **J (planned, nothing started; user, 2026-10-23)**: the plug-and-play promise is re-scoped in `notes/native-models-feasibility.md` (verdict, stages S0-S9, procedure for categories C1-C8, the 3D studio add-on to the FM Editor, missing pieces, proposed order: recipe schema, audit report that confirms the fit-problem hypotheses on dragon/angel/mannequin, disc ground truth for timing, retarget + procedural acts, time maps, corpus, studio shell, auto-rig). Decided (user, 2026-10-23): studio viewport = the real engine driven over `yfm_control`. **J starts from the UX and the GUI (screens, flow, knobs per stage, wireframes, click-through per category); code is derived from that, not before.** I5 (dragon worked example) waits on this.
-4. E2/E3 optional (disc). Angel parked (asset: raised arm/sword, needs `"scale": 65`). Delete spare `merge-prep/upstream-master`.
-5. Not mine: user's LLM model-pipeline draft (`notes/prompt-model-pipeline.md`; `C:\Users\mda\llm-router\pipeline`, review in `...\notes\REVIEW-model-pipeline-plan.md`: not accepted, redo asked).
+Placement standard (converter, no engine code): scaled to 373 tall (disc BLS), origin on the vertical axis 159 above the soles, horizontally at the idle feet; `model.json` `scale` (percent about the soles), `offset [x,y,z]`. Mannequin idle = `Idle_Loop`, not `Sword_Idle` (a lunge). Not done, not needed: G3 extra field frames, G4 sounds, F5 fit-to-disc-bounds, E2/E3 (disc contact table; optional, needs disc).
 
 ## Status
-A-G done (M1-M7 PASS, placement/size PASS). H: H2 done, H3 checks done (`pc_fm_editor_native_models`), H3 picker done, H1 waiting, H4 docs current. I planned. ctest 163/163 after rebase (`pc_sdk_launchers` needs a real `python3` on PATH; bash `python` here is the Store stub). `pc_user_dir` fails only as root (container).
+A-H done and PASS (H1 Library shows the native model on card 364; H3 FM Editor "Native models" tab, suite 506 OK, Tk tab test not run here). ctest 163/163 after rebase (`pc_sdk_launchers` needs a real `python3` on PATH; bash `python` is the Store stub; `pc_user_dir` fails only as root). Dragon: first pass plays in the Library; angel parked. **J: documented, nothing built; UX design is next.**
+
+## Open work (in order)
+1. **J, UX first**: design the studio (screens, flow per category C1-C8, knobs per stage S0-S9, wireframes, click-through) as an add-on to the FM Editor, using the skills the user will provide. Inputs: feasibility note sec. 2-5, 8; FM Editor facts in sec. 9 there. Code (recipe schema, converter entry, engine viewer commands) is derived from the screens afterwards.
+2. **I5 dragon worked example** waits on J; state and facts are in `adding-a-model.md` (dragon section). Goku: user has no model yet.
+3. Optional: E2/E3 (disc); delete spare `merge-prep/upstream-master`.
+4. Not mine: user's LLM model-pipeline draft (`notes/prompt-model-pipeline.md`; `C:\Users\mda\llm-router\pipeline`; review in `...\notes\REVIEW-model-pipeline-plan.md`: not accepted, redo asked).
 
 ## Local environment (this machine)
-* Python: `tmp/pc/tools/python/python.exe`. Game build `tmp/pc/game32/memories-pc.exe`; ctest dir `tmp/agent/ct`. PATH needs llvm-mingw+ninja+cmake from `tmp/pc/tools`.
-* Capture harness: origin/dev `tools/pc` copied to `tmp/agent/dev` (found via `_paths.py`); needs `MEMORIES_DISC`. `field_attack.py` (`--native`, `--arena`, `--clip`, `--start/--every/--frames`); outputs `tmp/agent/fx/*`. Field attack plays in ~230 frames.
-* Settings per run: `MEMORIES_MOD_3D_MONSTERS_<SETTING>=<value>`; `play-bls.ps1` makes its own profile, native via `-NativeModel PKG\model.json`.
-* Blender 4.5.10 (winget) for the angel scripts; inputs under `tmp/agent/angel/`.
+* Python: `tmp/pc/tools/python/python.exe` (3.14, numpy 2.5.4, Pillow 13.0.0). Game build `tmp/pc/game32/memories-pc.exe`; ctest dir `tmp/agent/ct`. PATH needs llvm-mingw+ninja+cmake from `tmp/pc/tools`.
+* Capture harness: origin/dev `tools/pc` copied to `tmp/agent/dev` (via `_paths.py`); needs `MEMORIES_DISC`. `field_attack.py` (`--native`, `--arena`, `--clip`, `--start/--every/--frames`) -> `tmp/agent/fx/*`; field attack ~230 frames. Library capture: yfm_control `goto library`, `library_all_cards=1`, r1, right x10, down x6, right x5 (card 364), cross, triangle, square.
+* Per run: `MEMORIES_MOD_3D_MONSTERS_<SETTING>=<value>`; `play-bls.ps1` makes its own profile, native via `-NativeModel PKG\model.json`.
+* Blender 4.5.10 (winget) for the angel/dragon scripts; inputs under `tmp/agent/angel/`, `tmp/agent/dragon/`.

@@ -16,74 +16,13 @@ How to add a model (draft): `notes/adding-a-model.md`.
 | Black Dragon (3DHaupt.com, `Dragon_Baked_Actions.blend`) | non-humanoid, 136 bones cut to 120, 4 actions (`Idel_New`, `Fly_New`, `Run_New`, `Walk_New`), no attack/hit/death | moves awkwardly, messy movement |
 | Fallen angel (AI-made mesh dressed on the mannequin rig by weight transfer) | humanoid mesh with raised arm and sword, no rig of its own | leg, sword and hand deformed |
 
-## 2. The pipeline
+## 2-3. Pipeline, runtime and tool limits (moved, not repeated here)
 
-```
-disc model --hmd_export.py--> glTF            (reference only: rigid parts, one joint per part, y up, 100 game units = 1 unit)
-
-rigged .glb --new_native_mod.py--> native_convert.py --> mods/x/
-                                       models/x/model.hdm    mesh + skeleton + clips baked at 30 fps (HDM4)
-                                       base.png (+ normal.png, metal_roughness.png)
-                                       model.json            clip per act, strike frames, scale, offset, look, shots
-                                   + mod.json  "native_models": [{"cards":[364], "package":"models/x/model.json"}]
-```
-
-Files: `tools/hd-models/` (`native_convert.py`, `new_native_mod.py`, `native_check.py`, `native_spec.py`, `make_dragon.py`,
-`blender/*.py`), engine `src/pc/render/native_*.c` (`native_anim.c` = animation, `native_registry.c` = loading and `model.json`,
-`native_model.c` = slots and instances, `native_cinematic.c` = camera shots), `gl_picture.c` (the OpenGL draw).
-
-### Extraction
-
-The only extraction is `hmd_export.py CARD OUT`: a disc monster to glTF. It is not part of the injection path. It was used to measure the
-disc's Black Luster Soldier (BLS, card 364): 373 game units from soles to top, hips (the body root the game places) 159 above the soles.
-Those two numbers are the "standard monster" the converter fits every model to.
-
-### Injection (what the converter does)
-
-- Reads the skin with the most joints (max 128), 4 influences per vertex (the strongest kept), unskinned meshes ride the bone above them.
-- Packs all materials into one texture atlas (max 2048 a side); normal and metal/roughness maps follow.
-- Moves the root bone to the origin, flips glTF's y-up to the game's y-down, scales (`--height`, default 373; or `--extent`, `--scale`,
-  `--root-height`), puts the origin on the body's vertical axis `--origin-height` (159) above the lowest vertex ("the soles").
-- Bakes every clip at 30 fps in glTF space with the node tree (linear/step/cubic keys), then converts each frame to bone-local
-  translation + quaternion in game space. Root horizontal travel is removed (the game moves the monster); the idle pose's feet (or, with
-  no foot joints, the middle of the mesh seen from above in the bind pose) are put on the origin.
-- Guesses which clip plays each act by name; picks strike frames from the fastest hand/weapon joint's speed peaks (max 4).
-- `--follow BONE=SOURCE` makes a bone copy another's turn at a fraction (used for the angel's wings; the only constraint-like feature).
-
-### Runtime (what the game does with it)
-
-The disc's own model keeps running out of sight and supplies position, animation row, row length and clock. The native model never decides
-when anything happens.
-
-1. The disc animation row selects an act: rows 0 and 1 idle, 2 enter, 3 attack (4 with the second guardian star), 5 hit, 6 destroyed,
-   7 win, 8 guard.
-2. The act selects a clip (`model.json` `clips`; else a default name; else guard/destroyed play the hit's, the rest the idle's).
-3. Time inside the clip = row phase (`anim_frame / (16 * anim_length)`, clamped 0..1) x clip length. **The clip is stretched once over the
-   row.** Only the attack is warped: when a code mod knows the contact frame (3D Monsters on the field), the first strike frame lands on it
-   (piecewise linear); the arena uses a hard-coded warp measured for BLS's `Sword_Attack` only.
-4. Local pose of each bone is interpolated between baked frames; when the row changes, the last pose is cross-faded in over 6 frames.
-5. Forward kinematics, then per bone: root view matrix x world x inverse bind, sent to the shader (4-bone skinning).
-6. `model.json` `scale` (percent, about the soles) and `offset` are applied to the root view; lighting uses the game's lights plus
-   `ambient` and `light_gain`.
-
-The game's own timing, sounds, effects, save states and logic are untouched by design (decisions D3, D4 in `progress.md`).
-
-## 3. Modification tools and their limits
-
-| Level | Tool | Can change | Cannot change |
-|---|---|---|---|
-| Data, no reconvert | `model.json`, the PNGs | clip per act, strike frames, `scale`, `offset`, light, arena/field camera `shots`, textures | mesh, weights, clip content |
-| Converter flags | `--height`, `--extent`, `--scale`, `--origin-height`, `--root`, `--no-center`, `--keep-root-motion`, `--follow`, `--clips`, `--clips-from`, `--rig` | size, origin, which clips, borrowed clips (bones matched by name) | a wrong rig, wrong weights, a bind pose that disagrees with the rig |
-| Blender scripts | `angel_on_mannequin_weights.py`, `angel_swords_and_islands.py`, `export_rigged_glb.py`, `export_dragon_blend.py`, `common.py` | re-skin onto the mannequin, carry props, export a glb, cut bones | they are written for those two assets; nothing is generic |
-
-Hard limits of the format and engine:
-
-- 128 bones, 16 clips, 4 influences per vertex, one texture set per model, 512 MB of native models in all (32-bit game).
-- Clips are baked: no IK, constraints, physics, cloth, hair or tail dynamics at runtime. Anything secondary must already be in the clip.
-- No retargeting between different skeletons. `--clips-from` matches by bone name and assumes the same rest pose.
-- Uniform scale only. Colours per vertex are not drawn. UVs beyond four repeats are clamped. Alpha below half is cut.
-- The game's JSON reader takes whole numbers only.
-- Timing belongs to the disc row: the native clip cannot lengthen or shorten a row.
+Converter flags, package, acts and limits: `native-models.md`. Capture, replay, director, coordinates, shaders, camera, angel scripts: `native-models-dev.md`.
+Tool levels and hard limits (128 bones, 16 clips, 4 influences, one texture set, 512 MB, baked clips with no IK/physics/cloth, no retargeting,
+uniform scale only, vertex colours not drawn, UVs past four repeats clamped, alpha below half cut, whole numbers in JSON, timing owned by the disc row)
+and the verdict per category: `native-models-feasibility.md` sec. 1-2. The one fact this file still needs: the runtime stretches ONE clip once over the
+disc row (phase = `anim_frame / (16 * anim_length)`); only the attack is warped (first strike frame onto the contact frame, or BLS's measured table).
 
 ## 4. The structural gap: a good model versus what the game does with it
 

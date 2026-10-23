@@ -96,8 +96,16 @@ run, walk; no attack, hit or death). Steps that worked, in order:
 5. `model.json` `clips`: map the asset's own names (idle, enter, attack, hit, guard, destroyed, win); an act with no clip plays idle.
    Changing a clip means the strike frames must be inside it (the game notes it).
 
-Licence: the same terms as the other models of this branch (third-party, fan-made, properly licensed); the author and licence go in
-the package (`--author`, `--license`). Status: plays in the Library; field and arena checks, the size and the attack clip are open.
+Facts (Black Dragon by 3DHaupt.com, modelled 2009-10): downloaded to `C:\Users\mda\games\dragon-dl` (a rar; the Drive download needs
+`curl -C -` retries); glb in `tmp/agent/dragon/`; one material with `textures/Dragon_Bump_Col2.jpg` on `UV_mirror`; first-pass mod
+`tmp/pc/game32/mods/dragon-test` (card 364), built with `--rig generic --root pelvic_2 --clips all --height 600`; `make_dragon.py`
+now uses `--extent` (largest bounding side; a wingspan is about twice the height, so `--height 450` is about 2200 units wide) and
+patches the `clips` map and `strike` afterwards. Licence: the same terms as the other models of this branch (third-party, fan-made,
+properly licensed); the package `license` field says `unknown` until the user gives the text.
+Status: plays in the Library; 600 is too big for the Library camera. Open: size, attack/hit/death clips (the asset has only
+`Idel_New`, `Fly_New`, `Run_New`, `Walk_New`: idle/hit/guard/destroyed <- Idel_New, enter/win <- Fly_New, attack <- Run_New is a locomotion
+cycle, see `native-models-fit-problem.md` sec. 4), strike frames, field and arena checks (`field_attack.py --native`). The fit problems
+and the planned fixes are the studio's (`native-models-feasibility.md`); this example is written after them.
 
 A dragon (non-humanoid) and Goku (humanoid with hair), each from the raw model to the captures above: the exact commands, the
 problems met and their fixes, the pictures. They need the models themselves (a rigged glb each) from their authors.

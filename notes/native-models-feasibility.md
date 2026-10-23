@@ -219,22 +219,13 @@ Things the stages assume that do not exist or are not decided:
     the Library.
 14. **Human-effort promise per category** (minutes expected), measured on the corpus, so the README does not overpromise.
 
-## 6. Order of work (proposal, not started)
-
-1. Recipe schema and a converter that reads it (no GUI). 2. Audit report (S1, S5 inventory) with the bind-versus-rest check, run on the
-dragon, the angel and the mannequin to confirm or refute the fit-problem hypotheses. 3. Disc ground truth for S6. 4. Retarget + procedural acts.
-5. Time maps and the class-based placement. 6. Corpus and regression. 7. Studio shell in the FM Editor driving the engine viewer.
-8. Auto-rig and anchors last.
-
-Acceptance for the whole effort: each category's corpus asset ends with a report with no open fail, a contact sheet and a video in the arena and
-field cameras, reproduced from `recipe.json` alone.
-
+## 6. Code order (superseded by sec. 7: UX and GUI first)
+Once the screens exist: recipe schema + converter entry; audit report (bind-vs-rest, clip stats) run on dragon, angel, mannequin; disc ground truth for timing; retarget + procedural acts; time maps + class placement; corpus + regression; studio shell; auto-rig and effect anchors last.
 ## 7. Direction (user, 2026-10-23): UX and GUI first
 
 The project starts from the UX and the GUI. Section 6 (order of work) is superseded: first design the studio screens, the flow per category,
 the knobs at each stage and a click-through (wireframes), then derive the recipe schema, converter changes and engine viewer from what the screens
-need. Findings from reading the editor and converter code (tab registration, no worker threads in the editor, converter takes an argparse namespace,
-what blocks byte-identical output) are kept in the session plan and are inputs to that later step, not to the UX.
+need. The editor and converter facts (sec. 9) and the engine gaps (sec. 8) are inputs to that later step, not to the UX.
 
 ## 8. What the engine offers a viewport today (read from notes and code, nothing run; Library screen and the rest of `gl_picture.c` not read)
 
@@ -255,3 +246,17 @@ what blocks byte-identical output) are kept in the session plan and are inputs t
 
 Implication for the UX: the studio's live preview is a game window plus control commands that must be added (load package, set act/clip/phase, pause,
 camera, overlays, window capture). Early stages (S0-S3) need no engine. This is an input to the later code step, not to the UX.
+
+## 9. FM Editor and converter facts the UX must fit (read from code, nothing run)
+
+* **Editor** (`tools/pc/fm_editor`, Tk): a tab is a `Tab` subclass (`tabs.py:128`) built in `app.py` and listed in `self.tabs`; edits call `app.changed()` / `app.say()`
+  (pattern `native_models_tab.py:113`). Images only through the pure-Python `pngio.ppm` -> `tk.PhotoImage` (`art_tab.py:28`); there is no PIL and no embedded viewer.
+  The project holds `project.files` (name -> bytes) and `project.other["native_models"]`; `native_models.add_package` copies a finished package in. There is no field
+  for a glb or a recipe. Validation (`validate.py:527`) checks entries but never opens the `.hdm`/`model.json` (the editor does not import `native_check`).
+  No worker threads: long jobs are `after()` chunks, so convert/preview must be a subprocess polled from Tk. Tk tests skip without a display (`GuiCase`).
+* **Converter** (`tools/hd-models`, `tmp/pc/tools/python` with numpy and Pillow): `native_convert.convert(namespace)`; flags clips, clips-from, rig, root, root-height,
+  origin-height, height, extent, scale, texture-max, follow, no-center, keep-root-motion, no-pbr, name/author/license; size precedence scale > extent > root-height > height.
+  It never writes `scale`, `offset`, `shots`, `look` (hand-edited today; `make_dragon.py` patches `clips`/`strike`). Bone/root/feet detection and clip stats live inside
+  the monolithic `convert`; `native_check` prints instead of returning findings. Byte-identical output needs: one recipe, a dict entry point, one JSON formatter,
+  no filename-derived fields, pinned Pillow/numpy, a glb hash, `mod.json` written whole. Each is a consequence of the screens, not a starting point.
+* **Skills awaited (user, 2026-10-23):** the user will provide skills for drawing the UX; the screens are drawn from sec. 2-5 and 8-9 with them.
