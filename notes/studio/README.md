@@ -2,7 +2,7 @@
 
 The studio is the FM Editor add-on that turns a rigged `.glb` into a native-model package through ten stages (S0-S9), a recipe file and the real game engine as the viewport. Direction and reasons: `../native-models-feasibility.md` (verdict, stages, categories, engine gaps). These docs hold the **UX and GUI design**, which comes before any code (decision J).
 
-Status 2026-10-23: structure drafted, **nothing built**. The three-view structure is unproven until each view is detailed; `studio-view.md` is being detailed first.
+Status 2026-10-23: design set complete and **confirmed by the user (Q1)**; build started: SM1 slice 1 runs as delegated job `recipe-v1` (see `build-plan.md`, `notes/delegation-audit.md`). Nothing else built yet.
 
 ## Map
 | File | Holds | State |

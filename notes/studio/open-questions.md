@@ -4,7 +4,7 @@ Owner: U = user decides, C = Claude can resolve by reading code or measuring, U+
 
 | # | Question | Owner | Blocks |
 |---|---|---|---|
-| Q1 | All three views are now detailed (Studio S0-S9, Models small, flow as data). The structure holds so far; the user confirms by reviewing the mock and `studio-view.md`. | U | everything |
+| Q1 | **Confirmed 2026-10-23 (user: "Q1 confirmed").** All three views are now detailed (Studio S0-S9, Models small, flow as data). The structure holds so far; the user confirms by reviewing the mock and `studio-view.md`. | done | everything |
 | Q2 | **Decided 2026-10-23 (delegated to Claude):** rail keeps ten stages and ten gates, shown under four group headings: Prepare (S0-S3), Fit (S4-S6), Judge (S7-S8), Ship (S9). Revisit after S0-S3 are detailed. | done | |
 | Q2b | **Decided 2026-10-23 (user: yes):** S1 and S2 share one rail entry "Skeleton (S1–S2)" with two sections and two gates. Ids S1 and S2 stay as they are so check ids and recipe keys do not change. The rail has nine entries; docs still say S0–S9. | done | |
 | Q3 | **Decided 2026-10-23 (user: yes to recommendation):** keep the Models view, small; see `models-view.md`. | done | |
