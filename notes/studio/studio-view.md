@@ -20,7 +20,7 @@ Page pattern: **Split Pane**. Left = stage list (S0-S9), right = the open stage.
 +--------+----------------------------------------------------------------+
 ```
 
-* **Rail**: four group headings (Prepare S0-S3, Fit S4-S6, Judge S7-S8, Ship S9; headings are labels, not gates), then id, name, one-word subtitle, state dot per stage. Arrow keys move, Enter moves focus to the first knob. Clicking a later stage than the first non-pass stage is allowed (looking is free); Next is what is gated.
+* **Rail**: nine entries (S1 and S2 are one "Skeleton" entry with two sections, ids unchanged); four group headings (Prepare S0-S3, Fit S4-S6, Judge S7-S8, Ship S9; headings are labels, not gates), then id, name, one-word subtitle, state dot per stage. Arrow keys move, Enter moves focus to the first knob. Clicking a later stage than the first non-pass stage is allowed (looking is free); Next is what is gated.
 * **Header**: model name (inline rename, Enter saves), category chip (opens the category picker, which re-applies presets only to stages still at auto), recipe state (`saved`, `unsaved changes`, `building`).
 * **Viewport**: always the engine. Transport (play/pause, act, speed 0.25x-2x, scrub by clip frame *(new)*) plus overlay toggles. Overlays offered per stage, not all everywhere.
 * **Checks**: one row per check: state chip, plain sentence with the measured number, and a fix line that names a knob (click focuses it) or a hand-off. Rows sorted fail, warn, pass. Pass rows collapse to one line when there are more than four.

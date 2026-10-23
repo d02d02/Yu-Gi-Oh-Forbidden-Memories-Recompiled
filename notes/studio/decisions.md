@@ -21,3 +21,12 @@
 
 ## Out of scope
 Modelling, weight painting, texture painting, auto-rigging inside the tool (it is a hand-off), runtime IK or physics, changing a disc row's length, a web viewport as the judging view.
+
+## Added 2026-10-23
+| id | Decision |
+|---|---|
+| SD8 | Rail shows nine entries: S1 (mesh audit) and S2 (rig) are one "Skeleton" entry with two sections and two gates; ids S1/S2 unchanged. |
+| SD9 | Viewport = streamed low-res frames in Tk plus "Pop out game window" (Q6). |
+| SD10 | No disc reference means an empty reference, never a guess (Q5). |
+| SD11 | Models view stays, small; category matrix is data plus a popover, not a screen (Q3, Q10). |
+| SD12 | The studio is a tab in the FM Editor: Python `tkinter` with `ttk` themed widgets, same as the editor. |
