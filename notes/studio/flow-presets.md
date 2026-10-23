@@ -26,3 +26,6 @@ Each category shows, on S0, a short expectation line (feasibility sec. 1: good /
 1. Is the matrix a screen, or does it become the category picker's tooltip plus the preset data?
 2. Should the rail dim stages marked n/a for the category, and hide them?
 3. Does a person ever change category mid-run? (The studio-view state model makes everything stale; is that acceptable?)
+
+## Recommendation after detailing the Studio (2026-10-23, awaiting the user)
+The matrix is **data and a tooltip, not a screen**: it lives as the preset table the category select applies (one column per category beside each knob table in `studio-view.md`) and as a small "What to expect" popover on the category chip in S0 and in the header, showing effort per stage for that category. Stages marked n/a for the category stay in the rail, dimmed, and open to a one-line "Skipped for this category" panel (they can still be opened). Changing category mid-run is allowed; everything but S0 goes stale and the person is told so in a confirm dialog naming the model.
