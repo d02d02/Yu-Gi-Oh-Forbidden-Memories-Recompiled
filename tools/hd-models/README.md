@@ -15,6 +15,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `native_spec.py` | the formats and limits the three share (plain Python) |
 | `rigged_to_hdm4.py MODEL.glb OUT.hdm --card 364 --clips-from CLIPS.glb` | the first converter (superseded by `native_convert.py`): fits the model to the disc model's legs, so it needs the disc image (`--disc`, default `game/ygofm-orig-usa.bin` of the main checkout) |
 | `gltf_to_hdm.py`, `hmd_export.py`, `vendor/` | helpers the converters import (glTF reader, disc model reader; `gltf_to_hdm.py`'s own HDM2 output is no longer drawn by the game); `hmd_export.py CARD OUT` also exports a disc monster's model to glTF |
+| `vendor/split_model.py RECORD.bin OUT_DIR`, `vendor/reassemble_model.py OUT_DIR RECORD.bin` | for tinkering with a disc model record: split it into its 17 phase files (one `.bin` per phase, named as in `model_record.PHASES`) and glue them back; the round trip is byte-identical (`tests/test_record_tools.py`). Small helpers, not part of the native-model path |
 | `blender/angel_on_mannequin_weights.py` + `common.py` | Blender: dress the mannequin's rig with another mesh (weight transfer, rigid props, wing bones, bridge-face cut) |
 | `blender/angel_swords_and_islands.py` | Blender: reassemble/carry the swords, drop floating pieces |
 | `blender/export_rigged_glb.py` | Blender: export the skinned glb the converter reads |
