@@ -22,13 +22,14 @@ Templates: `spec-template/`.
 | `job-run.sh <id> [max-iters]` | runs `llm-router/scripts/ralph.sh` on the job until `RALPH_DONE`, `BLOCKED`, a stall or the cap. Start it as a **background** command so there is no polling |
 | `job-status.sh <id>` | about 8 lines: state, items done/left, commits, next item, last Result/Failed lines |
 | `job-verify.sh <id>` | runs the job's `verify.sh` and prints PASS, or FAIL plus 15 lines, then the diffstat |
+| `job-watch.sh <id> [min=25]` | watchdog: waits, then prints the status once; run it as a second background command so a hung loop is noticed |
 | `job-stats.py <id>` | cost breakdown from OpenCode's own database: model steps, tool calls by kind, tokens |
 | `delegate-prompt.txt` | the prompt every iteration gets: read `JOB.md`, do the first unchecked item, run its check, tick it or write `Failed:`; two failures on one item = `BLOCKED` |
 
 ## How, step by step
 1. Write the spec directory (copy `spec-template/`): small items, one exact check each, `JOB.md` with exact paths.
 2. `job-new.sh <id> <spec-dir>`.
-3. `job-run.sh <id> 12` in the background; Claude Code is re-invoked when it exits.
+3. `job-run.sh <id> 12` in the background, plus `job-watch.sh <id> 25` in the background as a watchdog; Claude Code is re-invoked when either ends. Full method: "Supervisor playbook" in `notes/delegation.md`; OpenCode usage: "OpenCode quick reference" there.
 4. `job-status.sh <id>`, then `job-verify.sh <id>`; read `job-stats.py <id>` for cost.
 5. Land: `git fetch //wsl.localhost/Ubuntu-24.04/home/mda/work/<id> ralph/<id>:ralph/<id>`, read the diff of the files that carry logic, apply the code commits **excluding** `progress.md`, `JOB.md`, `verify.sh`, run the project's own checks on Windows, commit on the working branch. Never merge the job branch as is.
 
