@@ -259,7 +259,7 @@ stretch      0.9x       1.6x           0.7x
 **Checks**
 | id | Fails/warns when | Fix line |
 |---|---|---|
-| `S2.chains` | fail if a bone has no path to the root | "Reconnect in Blender, or cut the bone." |
+| `S2.chains` | warn if bones sit in a separate tree from the root (the game accepts several parentless bones, `native_format.c`; they just do not follow the root) | "Parent them under the body in Blender if they should move with it, or accept." |
 | `S2.map` | fail for C1-C3 if a required slot is empty | "Pick a bone for <slot>, or switch to non-humanoid." |
 | `S2.root-side` | warn if the root is not near the body centre (> 15% off) | "Choose a bone closer to the pelvis." |
 | `S2.reversed-scale` | fail if a bone has negative scale | "Fix in Blender (apply scale)." |
