@@ -1,0 +1,8 @@
+You are working on a delegated job. Read JOB.md in the project root completely before anything else: it holds the goal,
+the files to read, the limits and the acceptance command. Then take the FIRST unchecked item ("- [ ]") of progress.md and
+do only that item. Run the check command written under the item; do not tick the item unless the check passes.
+When the check passes: change "- [ ]" to "- [x]" and add one line under it starting with "  Result:" (what you did, max 140 chars).
+When it fails after a real attempt: leave it unchecked and add one line "  Failed:" with the error's first line, then stop.
+If the same item has two "Failed:" lines, create BLOCKED containing why and what you would need.
+When every item is ticked and `bash verify.sh` passes, create an empty file RALPH_DONE.
+Never edit files outside what JOB.md allows. Never push.
