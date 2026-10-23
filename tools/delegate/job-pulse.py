@@ -71,6 +71,19 @@ def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --ve
         sys.exit(0 if " END " in line else 3)  # the exit wakes a plain background command, no Monitor re-arm needed
 
 
+LEDGER = "/mnt/c/Users/mda/llm-router/data/ledger.sqlite"
+
+
+def pending_age():
+    """Age in seconds of the oldest router call of this job still pending (the ledger logs a row before each upstream call), else None."""
+    try:
+        con = sqlite3.connect(f"file:{LEDGER}?mode=ro", uri=True, timeout=2)
+        row = con.execute("SELECT MIN(ts) FROM pending WHERE job LIKE ?", (job + "-%",)).fetchone()
+        return time.time() - row[0] if row and row[0] else None
+    except Exception:
+        return None
+
+
 def kill_hung_call():
     """Kill this job's `opencode run` so the loop starts a fresh session; returns how many were killed."""
     n = 0
@@ -211,7 +224,8 @@ while True:
     if time.time() - last_activity > idle_s and time.time() - last_idle_say > idle_s:
         say(f"IDLE {int((time.time() - last_activity) / 60)} min with the loop alive (rate limit sleep or hung model call)", 2)
         last_idle_say = time.time()
-    if kill_idle_s and time.time() - last_activity > kill_idle_s:
+    age = pending_age()
+    if kill_idle_s and time.time() - last_activity > kill_idle_s and (age is None or age > 300):
         say(f"KILLED {kill_hung_call()} opencode process(es) idle for {int(kill_idle_s / 60)} min; the loop starts a fresh session", 2)
         last_activity = time.time()
     time.sleep(every)
