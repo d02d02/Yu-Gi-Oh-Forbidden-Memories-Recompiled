@@ -8,6 +8,7 @@ This file = resume point (status + open work). `history.md` = what was done, pha
 |---|---|
 | `notes/native-models-feasibility.md` | **the current direction**: verdict, stages S0-S9, categories C1-C8, studio design, engine gaps (sec. 8), UX-first (sec. 7) |
 | `notes/studio/README.md` | **the studio UX/GUI design set** (decisions, screens, per-stage detail, Tk mapping, engine needs, open questions, clickable mock) |
+| `notes/delegation.md` | **delegating work to the user's local llm-router/OpenCode Ralph harness**: kit `tools/delegate/`, token-cheap supervision, landing, measured cost, what to delegate |
 | `notes/native-models-fit-problem.md` | why the dragon/angel look wrong: the hypotheses and evidence to collect |
 | `notes/native-models.md` | modder's how-to: manifest, `model.json`, acts, look, limits, troubleshooting |
 | `notes/native-models-dev.md` | engine internals: capture/replay/draw, HDM4 format, coordinates, director, shaders, camera, test traps |
