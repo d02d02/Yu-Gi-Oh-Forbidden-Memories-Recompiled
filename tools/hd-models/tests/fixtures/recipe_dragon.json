@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "source": {"path": "dragon.glb", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "model": {"category": "C5", "name": "Dragon", "cards": [1, 2, 3]},
+  "meta": {"author": "Artist", "license": "CC-BY-4.0", "url": "http://example.com/dragon"},
+  "rig": {"profile": "auto", "root": "Body_Center", "feet": ["L_Foot", "R_Foot"]},
+  "size": {"mode": "extent", "value": 600, "origin_height": 159, "scale_pct": 85, "offset": [0, 0, 0], "center": false},
+  "acts": {
+    "idle": {"source": "Flying_Idle", "loop": true},
+    "enter": {"source": "Idle_Loop"},
+    "attack": {"source": "Bite_01", "strike": [11, 15]},
+    "hit": {"source": {"procedural": "recoil", "distance": 30, "frames": 10}},
+    "destroyed": {"source": "Death01"},
+    "win": {"source": "Win_Clip"},
+    "guard": {"source": "Block_Animation"}
+  },
+  "look": {"ambient": 20, "light_gain": 100},
+  "acks": [{"check": "S4.footprint", "value": 1.9}],
+  "shots": [{"act": "attack", "from": 0, "to": 30, "yaw": 0, "pitch": 0, "distance": 100, "height": 0, "ease": 30}]
+}

@@ -8,6 +8,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 
 | Tool | What it does |
 |---|---|
+| `recipe.py` | reads and validates a studio `recipe.json`, maps it to converter arguments and model.json members |
 | `new_native_mod.py MODEL.glb --card 364 --out mods/my-mod [-- converter options]` | the whole mod: converts into `models/<model>/` and writes or updates `mod.json`'s `native_models`, then checks it |
 | `native_convert.py MODEL.glb OUT_DIR [--clips-from X.glb] [--root-height 300] ...` | a rigged glTF -> a package: `model.hdm` (own skeleton + clips), `base.png` (+ normal, metal/roughness), `model.json` (clips per act guessed by name, strike frames from the hand's speed). Rig profiles ue / mixamo / generic; several materials packed into one texture; unskinned props follow the bone above them |
 | `native_check.py PATH...` | a mod folder, a `model.json` or an `.hdm` checked as the game checks it (plain Python): the same reasons, then each model's size, clips per act, strike frames, textures, memory. Also measures an older `.hdm` (its height and soles) |
