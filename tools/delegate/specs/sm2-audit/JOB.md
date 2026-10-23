@@ -75,3 +75,16 @@ Everything else, including the structure of progress.md, `studio/state.py`, `tes
 
 ## Acceptance
 `bash verify.sh` exits 0.
+
+## Hints for item 4 (TestS1BindVsRest), worked out for you: do not re-derive them
+Read only `bind_vs_rest()` and the "bind vs rest" block of `s1()` in `studio/audit.py` (lines ~370-420), not the whole file.
+- Synthetic skin joints (index: node): 0 pelvis(1), 1 spine_01(2), 2 upperarm_r(3), 3 hand_r(4), 4 thigh_r(5), 5 foot_r(6).
+  Body vertices: y<0.5 weighted to joint 5 (foot_r), 0.5-1.0 to joint 0 (pelvis), above 1.0 to joint 1 (spine_01). Mesh spans y 0 to 1.6.
+- Drift is how far the node rest pose moves a vertex away from the stored mesh, in percent of `model.height`. foot_r (node 6) has
+  no children: setting its `translation` to `[0, -0.8 + d, 0]` moves only the foot vertices by d, so the worst region is the
+  feet, drift = 100 * d / model.height. Read `model.height` from the loaded model and compute d from the percent you want
+  (about 0 for no finding, 8% for warn, 20% for fail; assert the value within 0.2). Print the finding once to confirm its region name.
+- The check uses the CLOSEST pose among the node rest pose and frame 0 of every clip. So for the warn and fail cases, empty the
+  animations (`doc["animations"] = []`). For the last case keep them: a clip whose frame 0 puts foot_r back at the bind pose
+  makes the file pass (add an animation with a translation channel on node 6 with times [0, 1] and values [[0,-0.8,0],[0,-0.8,0]]).
+- Build each variant with the existing `variant(tmp_dir, mutate)` helper and audit it as the TestS1Mesh tests do.

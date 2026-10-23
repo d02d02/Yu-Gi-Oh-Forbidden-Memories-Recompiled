@@ -67,3 +67,6 @@ OpenCode is the coding agent the harness runs, always inside WSL, always through
 * **Providers and failures**: the router tries the models in the order of `llm-router/config.yaml` and fails over; the ledger (`llm-router/data/ledger.sqlite`) keeps provider, tokens, status and, for failures, the error text. Daily request budgets are in `quotas.yaml`; Gemini's free tier is about 20 requests a day.
 * **Why runs differ from the interactive feel**: the free models are weaker than Claude. Small items, exact checks, exact paths and an acceptance script are what make them reliable; vague briefs make them wander.
 * More: `C:\Users\mda\llm-router\HOWTO.md` (operation, troubleshooting) and `C:\Users\mda\llm-router\notes\token-optimization.md` (why it is configured this way).
+
+## Router limits seen on the free tiers (2026-10-23)
+Gemini 20 requests/day and Ollama's loop share run out by mid-afternoon; Groq's 8,000 tokens/min cannot carry an agent request (20-27k tokens), so it is off `plan` and `build`; NVIDIA laguna fails about half the time with "Worker local total request limit". Details, remedies and what changed: `notes/delegation-audit.md`, section "Router analysis during `sm2-audit`". The monitor now wakes the supervisor only for END, STUCK-LOOP, ABORT-RUN and STALLED-ITEM.

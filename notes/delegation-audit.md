@@ -53,3 +53,28 @@ Still not covered: a hung model call looks like IDLE only (no view inside the ca
 
 ## Round-2 changes applied (2026-10-23)
 From the `recipe-v1` findings: (1) `after-iter.py` runs after every iteration through `RALPH_AFTER_ITER` (new env in `llm-router/scripts/ralph.sh`): re-runs each item's check, ticks, unticks, commits the working tree; (2) the prompt says one item per session, commit, stop; the iteration limit is 1800 s; (3) `spec-template/JOB.md` has "Facts and excerpts" (paste, do not point) and "Given" (read-only tests) sections; (4) `job-land.sh` lands the working tree and runs the tests; (5) `job-pulse.py` has `--exit-on-alert`, `--kill-idle`, a per-job event log and per-item tokens at END; (6) `job-run.sh` prints the quota before starting. Not done: conformance script (goes into the SM2 spec), model pinning, parallel jobs. To confirm with the next job: tokens per item below the 316k of `recipe-v1`, zero killed-with-uncommitted-work iterations.
+
+## Router analysis during `sm2-audit` (2026-10-23, after 5 sessions, 79 steps, 1.47M input tokens)
+Source: `llm-router/data/ledger.sqlite` (161 calls since 14:39) plus `~/work/sm2-audit.pulse.log`.
+
+| Provider / model | Calls | OK | Cause |
+|---|---|---|---|
+| gemini (order 1) | 0 | | daily budget 20/20 spent earlier in the day |
+| groq gpt-oss-120b (order 2) | 45 | 3 | free tier 8,000 tokens/min; an agent request is 20-27k tokens, so it cannot succeed |
+| ollama (order 3) | 0 | | 140/140 of the loop's share spent |
+| nvidia laguna-xs (order 4) | 73 | 39 | 27 "Worker local total request limit reached", 6 read timeouts, 1 decode timeout |
+| nvidia nemotron-ultra (order 6) | 38 | 38 | reliable but slow; carried 1.07M of the 1.5M tokens |
+
+Patterns: (1) one provider (Groq) that can never serve the workload adds a failed hop to every call and drives the PROVIDER alert (42 of 45 failures); (2) Gemini and Ollama are spent early, so later iterations of the day run on NVIDIA alone; (3) each failure puts a model in the 120 s cooldown and a started stream cannot fail over, which shows up as IDLE 4+ min and sessions running to the 1800 s timeout; (4) each step sends about 18.8k tokens and sessions re-read the 35 KB `audit.py`; (5) the supervisor was woken about ten times for routine alerts (IDLE, TIMEOUT-NEAR, PROVIDER), each a turn of tokens.
+
+Applied the same day:
+- R1 `llm-router/config.yaml`: Groq gpt-oss-120b removed from `plan` and `build` (kept on `chore`). Not committed in llm-router (out of scope for this repo); `git diff` there shows it.
+- R2 same file: `build` order is now gemini, ollama, nemotron-ultra, laguna-xs, openrouter, cohere (nemotron 38/38 ahead of laguna 39/73). `plan` unchanged. Revisit when Gemini/Ollama quotas are fresh each morning: laguna is faster when it answers.
+- R3 `JOB.md` of `sm2-audit`: a worked recipe for item 4 (which joint to shift, how to compute the expected percent, why to clear the animations), after two sessions ran to the timeout without a commit. Rule: when an item times out twice, add such a recipe, do not wait for a third.
+- R4 `tools/delegate/job-pulse.py`: `--exit-on-alert` now wakes the supervisor only for END, STUCK-LOOP, ABORT-RUN and the new STALLED-ITEM (2 sessions in a row hit the timeout with no item ticked). IDLE, TIMEOUT-NEAR and PROVIDER are printed and logged only, and `--kill-idle` handles the hung call in the same process. Arm it with `--kill-idle 8`.
+- Not done, your call (R5): a paid tier (Groq Dev, Gemini billing) if free tiers stay this tight.
+
+Result to record: after `sm2-audit` ends, compare tokens per item and sessions per item against `recipe-v1` (316k input per item, 9 sessions for 7 items) and note whether R1/R2 changed the PROVIDER count.
+
+### `sm2-audit` result (2026-10-23)
+DONE: 7 of 7 items, 7 sessions, 165 steps, 2.68M input / 34k output tokens (383k input per item, against 316k for `recipe-v1`), about 2 h 40 min wall clock (14:39 to 17:21). Output: `tests/test_studio_audit.py` 702 lines, one real fix in `studio/audit.py` (a skin index of 0 in the recipe counted as "no skin"). Two things I corrected after landing: the agent's README edit had replaced the `split_model` row instead of adding a line (restored), and its audit fix dropped the `or {}` guard (restored). Items 1-3 took one session each; item 4 took two sessions to the timeout with no commit, then ticked in session 6 right after the `JOB.md` recipe (R3); items 5-7 followed in 12 minutes. The real-model corpus (UAL, dragon, angel) runs without error; S0 fails on the empty recipe as it should, the dragon shows S2.chains 68 and S2.root-side 31, the angel S3.dropped. Cost went up against `recipe-v1` despite the smaller task, which points at the free-tier state of the day (see the router analysis above), not at the spec.

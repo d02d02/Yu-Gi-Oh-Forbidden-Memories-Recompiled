@@ -3,8 +3,10 @@
 
     job-pulse.py <id> [--idle MIN=4] [--every SEC=20] [--iter-timeout SEC=1800] [--verbose] [--exit-on-alert] [--kill-idle MIN]
 
-Default output is terse: ALERT lines (act now: ABORT-RUN, STUCK-LOOP, TIMEOUT-NEAR, IDLE, END, PROVIDER with zero successes) and
-progress lines (START, ITEM). --exit-on-alert exits on the first ALERT (exit 3; END exits 0) so a background command wakes the supervisor; --kill-idle MIN
+Default output is terse: ALERT lines (ABORT-RUN, STUCK-LOOP, STALLED-ITEM, TIMEOUT-NEAR, IDLE, END, PROVIDER with zero successes) and
+progress lines (START, ITEM). --exit-on-alert exits only on a WAKE alert (END, STUCK-LOOP, ABORT-RUN, STALLED-ITEM; exit 3, END exits 0);
+the other alerts are printed and logged, and IDLE, TIMEOUT-NEAR and PROVIDER no longer cost a supervisor turn;
+--kill-idle MIN
 kills the job's hung `opencode run` after MIN idle minutes. Every event is also appended to ~/work/<id>.pulse.log.
 Everything else (SESSION, COMMIT, TOOL-ERROR, TEST-FAIL, REREAD, TOKENS, single PROVIDER) only with --verbose.
 
@@ -18,6 +20,7 @@ Events (grep-able prefix):
   STUCK-LOOP  4 edits of one file in one session
   REREAD      the same file read 3 times in one session (context is not being kept)
   TIMEOUT-NEAR  the session is at 80% of the iteration timeout without a commit: the iteration will be killed
+  STALLED-ITEM  2 sessions in a row hit the timeout without an item ticked: the brief needs sharpening (wakes the supervisor)
   PROVIDER    3+ failed router calls since the last report (429, timeouts), with the last reason
   IDLE        no activity for MIN minutes (repeated every MIN); rate-limit sleep or a hung model call
   TOKENS      every 100k input tokens: running total and tokens per tick-off item
@@ -50,6 +53,10 @@ EXIT_ON_ALERT = "--exit-on-alert" in sys.argv
 kill_idle_s = arg("--kill-idle", 0) * 60
 LOGF = os.path.expanduser(f"~/work/{job}.pulse.log")
 bad_windows = 0
+slow_sessions = 0  # TIMEOUT-NEARs since an item was last ticked
+# what wakes the supervisor under --exit-on-alert: the job ended, or a judgement call is needed (a broken model, a loop, an item
+# that burned two sessions). IDLE, TIMEOUT-NEAR and PROVIDER are routine (the kill-idle and the iteration timeout handle them).
+WAKE = ("END", "STUCK-LOOP", "ABORT-RUN", "STALLED-ITEM")
 
 
 def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --verbose)
@@ -60,7 +67,7 @@ def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --ve
         f.write(line + "\n")
     if lvl >= 1 or VERBOSE:
         print(line, flush=True)
-    if lvl >= 2 and EXIT_ON_ALERT:
+    if lvl >= 2 and EXIT_ON_ALERT and msg.split()[0] in WAKE:  # the others are printed and logged but do not cost a supervisor turn
         sys.exit(0 if " END " in line else 3)  # the exit wakes a plain background command, no Monitor re-arm needed
 
 
@@ -165,6 +172,7 @@ while True:
     it, cm = items(), commits()
     if it != last_items:
         say(f"ITEM {it[0]} done/{it[1]} left", 1)
+        slow_sessions = 0
         last_items = it
     if cm != last_commits:
         say(f"COMMIT total {cm}")
@@ -179,6 +187,9 @@ while True:
         if age > 0.8 * iter_timeout and sid not in warned and alive():
             warned.add(sid)
             say(f"TIMEOUT-NEAR session {len(seen_sessions)} is {int(age)} s old (limit {int(iter_timeout)} s); uncommitted work will be killed", 2)
+            slow_sessions += 1
+            if slow_sessions >= 2:
+                say(f"STALLED-ITEM {slow_sessions} sessions ran to the iteration timeout without ticking an item: sharpen the brief", 2)
     n, why = ledger_failures(ledger_since)
     if n >= 3:
         ok_n = ledger.execute("select count(*) from calls where ok=1 and source='ralph' and ts>?", (ledger_since,)).fetchone()[0]
