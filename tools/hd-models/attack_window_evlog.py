@@ -18,14 +18,14 @@ from PIL import ImageGrab  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("out"); ap.add_argument("--native", default=""); ap.add_argument("--scale", type=int, default=4)
 ap.add_argument("--start", type=int, default=0); ap.add_argument("--every", type=int, default=15); ap.add_argument("--frames", type=int, default=300)
-ap.add_argument("--exe", default=str(EXE))
+ap.add_argument("--exe", default=str(EXE)); ap.add_argument("--hand", default="374,364,100,332,683")
 a = ap.parse_args()
 out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 0, "mod.2d-monsters": 0, "mod.camera-pin": 1}
 env = {"MEMORIES_FPS": "-1", "MEMORIES_TRACE": "model"}   # every game frame is shown: a shot lands on exactly the frame asked for (else it waits for the next throttled present, a few frames later and different per run)
 if a.native:
     env.update(MEMORIES_NATIVE_MODEL=str(Path(a.native).resolve()), MEMORIES_NATIVE_MODEL_ID="363", MEMORIES_NATIVE_MODEL_LOG="1")
-hand = [374, 364, 100, 332, 683]
+hand = [int(x) for x in a.hand.split(",")]
 state = out / "attack.state"
 
 if not state.exists():
