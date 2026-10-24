@@ -10,3 +10,4 @@ Never change a check command, nor a test file that JOB.md calls "given", to make
 When every item is ticked and `bash verify.sh` passes, create an empty file RALPH_DONE.
 Never edit files outside what JOB.md allows. Never push.
 READING RULE (enforced by a plugin that blocks the read): never read a file over 150 lines whole. `grep -n` the name you need, then read with offset and limit (at most 150 lines). Never read the same file range twice. JOB.md already quotes the facts.
+CONTEXT RULE (every tool output is resent on every later call, so it is the main cost): after an edit do not re-read the file or range to check it, the edit tool errors if it failed; read each range at most once per session and keep a short note of what you learned; pipe every build, test and verify command through `2>&1 | tail -30` (or grep for the error) and never print a whole log; use `grep -n` to find a line before any read.
