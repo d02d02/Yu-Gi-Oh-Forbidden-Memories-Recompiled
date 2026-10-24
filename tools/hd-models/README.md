@@ -14,6 +14,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `studio/look.py` | S7 look defaults and camera-move list: default_look, normalize_look, move count/range/values/extreme checks, brightness check, run_s7 |
 | `studio/runs.py` | S8 run list and marks: run_rows, make_mark, owning_stage, row_status, status_table, coverage/problem/stale/disc checks, run_s8 |
 | `studio/package.py` | S9 package checks: parse_native_check, native/budget/identical/provenance checks, valid_package_name, run_s9 |
+| `studio/build.py` | S9 build step: recipe to new_native_mod command, build twice with an injectable runner, tree hashes, run_build_s9 |
 | `studio/clips.py` | S5 clip statistics and checks: loop gap, root drift, speed peak, bone stretch, bbox, run_s5 (data from clipdata.py) |
 | `studio/preview.py` | Route A live preview: field_attack.py command for a package and scene, disc check, frame listing (no game change) |
 | `studio/placement.py` | S4 (size and placement) maths: `fit`, `footprint_ratio`, `check_footprint`, `check_ground`, `check_uniform_scale`, `run_s4` over a glb, headless |
