@@ -15,6 +15,33 @@ from studio import audit, placement  # noqa: E402
 import synthetic_gltf  # noqa: E402
 
 
+def _write_boxes(path, boxes):
+    """Write a minimal glb with one node/mesh per axis-aligned box."""
+    b = synthetic_gltf.Builder()
+    nodes, meshes = [], []
+    for i, (x0, x1, y0, y1, z0, z1) in enumerate(boxes):
+        p, n, _uv, idx = synthetic_gltf.box(x0, x1, y0, y1, z0, z1)
+        pos = b.accessor(p, "VEC3")
+        nor = b.accessor(n, "VEC3")
+        indices = b.accessor(idx, "SCALAR", 5125)
+        nodes.append({"name": f"Box{i}", "mesh": i})
+        meshes.append({"primitives": [{"attributes": {"POSITION": pos, "NORMAL": nor},
+                                       "indices": indices}]})
+    doc = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}],
+           "nodes": nodes, "meshes": meshes,
+           "buffers": [{"byteLength": 0}], "bufferViews": b.views, "accessors": b.accessors}
+    while len(b.buf) % 4:
+        b.buf.append(0)
+    doc["buffers"][0]["byteLength"] = len(b.buf)
+    text = json.dumps(doc).encode()
+    text += b" " * (-len(text) % 4)
+    body = struct.pack("<II", len(text), 0x4E4F534A) + text
+    body += struct.pack("<II", len(b.buf), 0x004E4942) + bytes(b.buf)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body)
+
+
+
 class TestFit(unittest.TestCase):
     def test_height_default(self):
         r = placement.fit([0, 0, 0], [10, 20, 30], mode="height")
@@ -60,6 +87,47 @@ class TestFit(unittest.TestCase):
     def test_unknown_mode_raises(self):
         with self.assertRaises(ValueError):
             placement.fit([0, 0, 0], [1, 1, 1], mode="bogus")
+
+
+class TestBodyExtents(unittest.TestCase):
+    def test_lower_half_excludes_wings(self):
+        glb = HERE / "synthetic_winged.glb"
+        # Body x -0.2..0.2, y 0..1, z -0.1..0.1; thin wings y 0.6..0.8, x -3..3.
+        _write_boxes(glb, [(-0.2, 0.2, 0.0, 1.0, -0.1, 0.1),
+                           (-3.0, 3.0, 0.6, 0.8, -0.05, 0.05)])
+        try:
+            model = audit.Model(glb)
+            fitting = placement.fit(model.lo, model.hi, mode="percent")
+            extents = placement.body_extents(model, fitting)
+            self.assertAlmostEqual(fitting["extent_x"], 6.0)
+            self.assertAlmostEqual(extents["extent_x"], 0.4)
+            self.assertAlmostEqual(extents["extent_z"], 0.2)
+        finally:
+            glb.unlink(missing_ok=True)
+
+    def test_applies_fit_scale(self):
+        glb = HERE / "synthetic_winged_scale.glb"
+        _write_boxes(glb, [(-0.2, 0.2, 0.0, 1.0, -0.1, 0.1),
+                           (-3.0, 3.0, 0.6, 0.8, -0.05, 0.05)])
+        try:
+            model = audit.Model(glb)
+            fitting = placement.fit(model.lo, model.hi, mode="percent", value=200)
+            extents = placement.body_extents(model, fitting)
+            self.assertAlmostEqual(extents["extent_x"], 0.8)
+            self.assertAlmostEqual(extents["extent_z"], 0.4)
+        finally:
+            glb.unlink(missing_ok=True)
+
+    def test_fallback_to_full_extent_without_vertices(self):
+        class Empty:
+            lo = np.array([0.0, 0.0, 0.0])
+            hi = np.array([10.0, 20.0, 30.0])
+            prims = []
+
+        fitting = placement.fit(Empty.lo, Empty.hi, mode="percent", value=150)
+        extents = placement.body_extents(Empty(), fitting)
+        self.assertAlmostEqual(extents["extent_x"], 15.0)
+        self.assertAlmostEqual(extents["extent_z"], 45.0)
 
 
 class TestFootprintRatio(unittest.TestCase):
@@ -260,14 +328,15 @@ class TestRunS4(unittest.TestCase):
         self.assertIsInstance(r["findings"], list)
         self.assertAlmostEqual(r["fit"]["height"], 373.0)
 
-    def test_height_mode_footprint_warn(self):
+    def test_height_mode_body_footprint_ignores_sword(self):
+        # The rig's sword sits above the body's midline, so the body footprint
+        # fits the card even though the full span is 1.5x the card width.
         r = placement.run_s4(self.glb, {"size": {"mode": "height"}})
         self.assertAlmostEqual(r["fit"]["scale"], 373 / 1.75, delta=1e-3)
+        self.assertAlmostEqual(r["fit"]["body_extent_x"], 0.4 * 373 / 1.75, delta=1e-3)
+        self.assertAlmostEqual(r["fit"]["body_extent_z"], 0.2 * 373 / 1.75, delta=1e-3)
         fp = [f for f in r["findings"] if f["id"] == "S4.footprint"]
-        self.assertEqual(len(fp), 1)
-        self.assertEqual(fp[0]["level"], "warn")
-        self.assertEqual(fp[0]["message"], "Model is 67% wider than the card footprint.")
-        self.assertEqual(fp[0]["value"], 67)
+        self.assertEqual(fp, [])
         self.assertFalse([f for f in r["findings"] if f["id"] == "S4.ground"])
         self.assertFalse([f for f in r["findings"] if f["id"] == "S4.uniform"])
 
@@ -296,7 +365,47 @@ class TestRunS4(unittest.TestCase):
         r = placement.run_s4(self.glb, {"size": {"mode": "height", "ground_offset": 20, "floating": True}})
         self.assertFalse([f for f in r["findings"] if f["id"] == "S4.ground"])
         fp = [f for f in r["findings"] if f["id"] == "S4.footprint"]
-        self.assertEqual(len(fp), 1)
+        self.assertEqual(fp, [])
+
+    def test_winged_body_fits_no_footprint_warn(self):
+        # A wide thin slab in the upper half (a wing) must not trigger the
+        # footprint warn when the lower-half body fits the card.
+        glb = HERE / "synthetic_run_s4_winged.glb"
+        _write_boxes(glb, [(-0.25, 0.25, 0.0, 1.0, -0.05, 0.05),
+                           (-3.0, 3.0, 0.6, 0.8, -0.05, 0.05)])
+        try:
+            r = placement.run_s4(glb, {"size": {"mode": "height"}})
+            self.assertAlmostEqual(r["fit"]["body_extent_x"], 0.5 * 373.0, delta=1e-3)
+            self.assertEqual(r["findings"], [])
+        finally:
+            glb.unlink(missing_ok=True)
+
+    def test_too_wide_body_warns(self):
+        glb = HERE / "synthetic_run_s4_wide.glb"
+        _write_boxes(glb, [(-0.3, 0.3, 0.0, 1.0, -0.05, 0.05)])
+        try:
+            r = placement.run_s4(glb, {"size": {"mode": "height"}})
+            fp = [f for f in r["findings"] if f["id"] == "S4.footprint"]
+            self.assertEqual(len(fp), 1)
+            self.assertEqual(fp[0]["level"], "warn")
+            self.assertEqual(fp[0]["message"], "Model is 17% wider than the card footprint.")
+            self.assertEqual(fp[0]["value"], 17)
+            self.assertNotIn("Wings", fp[0]["message"])
+        finally:
+            glb.unlink(missing_ok=True)
+
+    def test_wings_note_appended_when_full_span_is_wide(self):
+        glb = HERE / "synthetic_run_s4_winged_wide.glb"
+        _write_boxes(glb, [(-0.3, 0.3, 0.0, 1.0, -0.05, 0.05),
+                           (-3.0, 3.0, 0.6, 0.8, -0.05, 0.05)])
+        try:
+            r = placement.run_s4(glb, {"size": {"mode": "height"}})
+            fp = [f for f in r["findings"] if f["id"] == "S4.footprint"]
+            self.assertEqual(len(fp), 1)
+            self.assertIn("Wings or limbs excluded", fp[0]["message"])
+            self.assertIn("full span is 1172% of the card footprint", fp[0]["message"])
+        finally:
+            glb.unlink(missing_ok=True)
 
     def test_uniform_finding_surfaces(self):
         glb = HERE / "synthetic_run_s4_scaled.glb"

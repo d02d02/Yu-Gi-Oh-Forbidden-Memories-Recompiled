@@ -48,6 +48,31 @@ def fit(lo, hi, mode="height", value=None):
     }
 
 
+def body_extents(model, fitting):
+    """x/z extents of the model's lower-half vertices, after the fit scale.
+
+    Uses vertices with y <= lo_y + 0.5 * (hi_y - lo_y), so wings and other
+    upper-body limbs do not inflate the footprint. Falls back to the full
+    fitted extent when the lower half has no vertices.
+    """
+    lo_y = float(model.lo[1])
+    hi_y = float(model.hi[1])
+    cutoff = lo_y + 0.5 * (hi_y - lo_y)
+    prims = getattr(model, "prims", [])
+    lower = np.empty((0, 3))
+    if prims:
+        allpos = np.vstack([p["pos"] for p in prims])
+        lower = allpos[allpos[:, 1] <= cutoff]
+    if not len(lower):
+        return {"extent_x": float(fitting["extent_x"]),
+                "extent_z": float(fitting["extent_z"])}
+    scale = float(fitting["scale"])
+    return {
+        "extent_x": float(lower[:, 0].max() - lower[:, 0].min()) * scale,
+        "extent_z": float(lower[:, 2].max() - lower[:, 2].min()) * scale,
+    }
+
+
 def footprint_ratio(extent_x, extent_z):
     """Compare a model's footprint extents against the disc footprint proxy.
 
@@ -125,6 +150,11 @@ def run_s4(glb_path, recipe=None):
     model.scale (integer percent, default 100, used as the percent-mode value
     when size.value is absent). Returns {"fit": <fit dict>, "findings": [...]}
     with the footprint, ground and uniform-scale findings collected in that order.
+
+    The footprint check measures the body (lower-half) extents, stored in "fit"
+    as body_extent_x/body_extent_z alongside the full extent_x/extent_z. When the
+    full-extent ratio is more than 1.5x the body ratio, a note about excluded
+    wings or limbs is appended to the footprint warning.
     """
     recipe = recipe or {}
     size = recipe.get("size", {}) or {}
@@ -135,8 +165,19 @@ def run_s4(glb_path, recipe=None):
         value = model_section.get("scale", 100)
     model = audit.Model(glb_path)
     fitting = fit(model.lo, model.hi, mode=mode, value=value)
+    body = body_extents(model, fitting)
+    fitting["body_extent_x"] = body["extent_x"]
+    fitting["body_extent_z"] = body["extent_z"]
+    footprint = check_footprint(body["extent_x"], body["extent_z"])
+    if footprint:
+        full_ratio = footprint_ratio(fitting["extent_x"], fitting["extent_z"])["ratio"]
+        body_ratio = footprint_ratio(body["extent_x"], body["extent_z"])["ratio"]
+        if full_ratio > 1.5 * body_ratio:
+            n = round(full_ratio * 100)
+            footprint["message"] += (" Wings or limbs excluded; full span is "
+                                     "%d%% of the card footprint." % n)
     checks = (
-        check_footprint(fitting["extent_x"], fitting["extent_z"]),
+        footprint,
         check_ground(model.lo[1], ground_offset=size.get("ground_offset", 0),
                      floating=bool(size.get("floating", False))),
         check_uniform_scale(model.doc),

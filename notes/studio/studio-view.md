@@ -75,6 +75,8 @@ Per stage: `todo` (never run) | `pass` | `warn` | `fail` | `stale`.
 | `S4.neighbour` | warn if the model overlaps the neighbour's footprint at its field offset | "Lower scale or change the offset." |
 | `S4.uniform` | fail if the node tree carries non-uniform scale after the audit | "Re-export from Blender with applied scale." |
 
+`S4.footprint` measures the **body**: the x/z extents of the model's vertices in the lower half of its height (fit scale applied), so wings or limbs above the lower half do not count; the full span is reported only as extra info.
+
 **Gate**: no fail; every warn acknowledged. **Reset to auto** restores category defaults and drops the ack.
 **Needs** *(new)*: engine commands to load a package/recipe, set pose, camera preset, overlays (ghost, grid, markers, bbox), read back bounding boxes (see `engine-needs.md`). The BLS silhouette for the ghost comes from the disc and so needs the disc (or a stored outline).
 **Open**: where the card footprint's real dimensions come from (Q4 in `open-questions.md`).
