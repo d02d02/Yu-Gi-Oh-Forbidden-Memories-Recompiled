@@ -11,7 +11,7 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 | E4 | Camera presets (field, arena, side, top, free orbit) | S4, S7 | game camera; `NativeShot` is the nearest hook |
 | E5 | Line/wire drawing in the 3D pass: bones, footprint grid, ghost outline, markers, bbox | S2, S4, S6 | none; overlay API draws text and rectangles only |
 | E6 | Read back data: bounding boxes, lowest point, joint positions per frame | S4 checks, S6 | none |
-| E7 | Frame capture of the GL pass to the editor (window shot or stream) | all | `MEMORIES_WINDOW_SHOT` glReadPixels, windowed only |
+| E7 | Frame capture of the GL pass to the editor (window shot or stream) | all | **phase 1 done**: `studio/stream.py` `FrameStream` polls `shot`+`hash`, yields changed frames at a capped rate; measured rate from `stream_demo.py --selftest` only, real rate to be measured by the user (phase 2 = C command if too slow); `MEMORIES_WINDOW_SHOT` glReadPixels, windowed only |
 | E8 | Disc-model compare: play the disc's BLS same act beside the native one | S6, S7 | none |
 | E9 | Time map consumed by the render-side sampler (data, not logic; D2/D3 hold) | S6 | strike warp only |
 
