@@ -1,0 +1,3 @@
+/tools/hd-models/
+/tools/pc/yfm_control.py
+/notes/studio/engine-needs.md
