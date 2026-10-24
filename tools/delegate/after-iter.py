@@ -10,6 +10,7 @@
    uncommitted work and the stall counter sees progress.
 The agent never decides alone that an item is done: the check command does.
 """
+import os
 import re
 import subprocess
 import sys
@@ -41,6 +42,24 @@ def passes(cmd):
 def untick(item, reason):
     lines[item["line"]] = lines[item["line"]].replace("- [x]", "- [ ]", 1)
     lines.insert(item["line"] + 1, f"  Failed: {reason}")
+
+
+def repair_tests():
+    """The agent sometimes drops an existing test class or the `if __name__` tail while growing a test file; put them back."""
+    r = subprocess.run(["git", "diff", "--name-only", "HEAD"], capture_output=True, text=True)
+    for f in [x for x in r.stdout.split() if re.search(r"(^|/)test_[^/]*\.py$", x) and os.path.exists(x)]:
+        old = subprocess.run(["git", "show", f"HEAD:{f}"], capture_output=True, text=True).stdout
+        new = open(f, encoding="utf-8").read()
+        tail = "\nif __name__ == \"__main__\":\n    unittest.main()\n"
+        body = new.split("\nif __name__")[0].rstrip("\n") + "\n"
+        lost = [b for b in re.split(r"(?m)^(?=class )", old.split("\nif __name__")[0])[1:]
+                if re.match(r"class (\w+)", b).group(1) not in new]
+        if lost or "\nif __name__" not in new:
+            open(f, "w", encoding="utf-8").write(body + "".join("\n\n" + b.rstrip("\n") + "\n" for b in lost) + tail)
+            print(f"[after-iter] repaired {f}: restored {len(lost)} dropped class(es)/tail")
+
+
+repair_tests()
 
 
 ticked, unticked = [], []

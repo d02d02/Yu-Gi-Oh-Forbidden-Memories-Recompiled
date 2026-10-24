@@ -22,6 +22,7 @@ none, say "none: the agent writes its own tests per item".>
 Everything else, including progress.md structure (only tick items and add Result/Failed lines) and the "Given" files.
 
 ## Constraints
+- Test file: never edit or move its tail (`if __name__ == "__main__":` + `unittest.main()`), never delete or overwrite an existing test class; add new classes above the tail with edits that only add lines. (after-iter.py restores dropped classes, but do not rely on it.)
 - Python 3.12 in this Linux shell; numpy and Pillow are installed. No GPU, no game window, no disc image.
 - Match the surrounding code's style; no new dependencies.
 - One item per session: the loop re-runs each item's `check:` itself, ticks what passes and commits after every iteration.
