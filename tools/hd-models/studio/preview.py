@@ -10,7 +10,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FIELD_ATTACK = HERE.parent / "field_attack.py"
-SCENES = ("field", "arena")        # the library turntable is a separate recipe (progress.md), not built here
+SCENES = ("field", "arena")
+WINDOW = {"field": (60, 12, 240), "arena": (1250, 80, 1650)}   # (start, every, last frame) that show the fight (measured)        # the library turntable is a separate recipe (progress.md), not built here
 
 
 def env_for(package, card_id, clip=None, extra=None):
@@ -22,11 +23,13 @@ def env_for(package, card_id, clip=None, extra=None):
     return env
 
 
-def command(scene, out_dir, package, card_id, *, clip=None, start=0, every=12, frames=240, scale=2, settings=(), extra_env=None):
+def command(scene, out_dir, package, card_id, *, clip=None, start=None, every=None, frames=None, scale=2, settings=(), extra_env=None):
     """argv for one scene run; `frames` is the LAST frame (shots at start, start+every ... up to it), not a count.
     Raises ValueError on an unknown scene or a bad frame range."""
     if scene not in SCENES:
         raise ValueError(f"scene must be one of {SCENES}, not {scene!r}")
+    d_start, d_every, d_frames = WINDOW[scene]
+    start, every, frames = d_start if start is None else start, d_every if every is None else every, d_frames if frames is None else frames
     if frames < 1 or every < 1 or start < 0:
         raise ValueError("frames and every must be at least 1, start at least 0")
     argv = [sys.executable, "-I", str(FIELD_ATTACK), str(out_dir), "--cards", f"58,{card_id},{card_id},332,683",

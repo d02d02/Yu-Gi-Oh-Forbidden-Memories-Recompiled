@@ -21,6 +21,11 @@ class TestCommand(unittest.TestCase):
         self.assertIn("mod.3d-monsters.attack=0", a)
         self.assertNotIn("MEMORIES_NATIVE_CLIP=attack", a)
 
+    def test_default_windows(self):
+        a = preview.command("arena", "o", "p", 1)
+        self.assertEqual(a[a.index("--start") + 1], "1250")
+        self.assertEqual(a[a.index("--frames") + 1], "1650")
+
     def test_bad_input(self):
         for kw in ({"frames": 0}, {"every": 0}, {"start": -1}):
             with self.assertRaises(ValueError):
