@@ -109,3 +109,11 @@ and the planned fixes are the studio's (`native-models-feasibility.md`); this ex
 
 A dragon (non-humanoid) and Goku (humanoid with hair), each from the raw model to the captures above: the exact commands, the
 problems met and their fixes, the pictures. They need the models themselves (a rigged glb each) from their authors.
+
+#### The dragon through the Studio (2026-10-24, tested)
+1. FM Editor, Studio tab, Open glb `tmp/agent/dragon/dragon.glb` (recipe saved beside it: `dragon.recipe.json`).
+2. S0 Intake: Category C4 (detection said C2 at 40%; the humanoid slots check fails for C1-C3 on a creature). Set author, license, URL (S9 provenance check).
+3. S4 Size: mode `extent`, value 600 (the footprint check only warns for wings). S5 Clips: `acts.attack.source = Fly_New` (the asset has no attack clip; the build maps every act to Fly_New). S6 then reads the real clip length (227 frames).
+4. S9 Package: Build package (builds twice, ~1 min, must be byte-identical; sets `pkg.path`). Export report writes `report.md`.
+5. S8 Validate: Run on Field attack / Arena attack (needs `MEMORIES_DISC`; route A launches the game headless, 17-55 s), then Looks right or Report a problem.
+Result: the dragon flies and attacks in the field and the arena at about normal-monster size with its own texture; camera unchanged. Still open: S2 chains warning (68 bones in 4 trees, unjudged), 4 bone-stretch warnings in S5, no real attack/hit/death clips (the user supplies them or procedural acts), licence text.
