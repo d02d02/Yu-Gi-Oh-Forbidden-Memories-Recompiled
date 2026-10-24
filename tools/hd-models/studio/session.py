@@ -224,7 +224,11 @@ class Session:
     def export_report(self, path):
         """Write the Markdown report of every stage, the last build and the scene runs to path."""
         rec = self.studio.recipe
-        text = report.render(self.studio.findings, rec.get("acks", []), rec.get("meta", {}),
+        for stage in ("S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9"):
+            if stage not in self.studio.findings:
+                self.run_stage(stage)
+        meta = {"name": rec.get("pkg", {}).get("name") or self.glb.stem, **rec.get("meta", {})}
+        text = report.render(self.studio.findings, rec.get("acks", []), meta,
                              getattr(self, "last_build", None), rec.get("runs", []))
         Path(path).write_text(text, encoding="utf-8")
         return text
