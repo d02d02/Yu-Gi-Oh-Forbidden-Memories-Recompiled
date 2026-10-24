@@ -191,7 +191,7 @@ class Session:
                 return [audit.finding("S5.model", "fail", "The model did not open.", "Open a rigged glb.")]
             loops = rec.get("acts", {}).get("idle", {}).get("loop") and ["idle"] or ()
             sampled = clipdata.sample_all(self._model, loops=loops)
-            return clips.run_s5(sampled, self._model.parents)["findings"]
+            return self._missing_act_findings(rec) + clips.run_s5(sampled, self._model.parents)["findings"]
         if stage == "S8":
             disc = bool(os.environ.get("MEMORIES_DISC"))
             return runs.run_s8(rec, self._sha256, disc)["findings"]
@@ -205,6 +205,23 @@ class Session:
         if contact:
             lengths["attack"] = contact["row_length"]
         return look.run_s7(rec, lengths)["findings"]
+
+    def _missing_act_findings(self, rec):
+        """S5.missing-act: an act with no source in the recipe and no clip of the model named for it (the game then plays the idle)."""
+        import native_convert
+        names = [an.get("name", "") for an in self._model.doc.get("animations", [])]
+        lower = [n.lower() for n in names]
+        out = []
+        for act in native_convert.spec.ACTS:
+            if (rec.get("acts", {}).get(act) or {}).get("source"):
+                continue
+            words = native_convert.ACT_WORDS.get(act, ())
+            if act == "idle":
+                if not names:
+                    out.append(audit.finding("S5.missing-act", "fail", "The model has no clip for idle.", "Choose a clip, a library clip, or a procedural act."))
+            elif not any(w in n for w in words for n in lower):
+                out.append(audit.finding("S5.missing-act", "warn", f"No clip for {act}: the idle plays instead.", "Choose a clip, a library clip, or a procedural act.", value=act))
+        return out
 
     def _attack_clip_frames(self, rec):
         """Frame count (30 fps) of the clip the attack act names; 30 when no such clip is known."""
