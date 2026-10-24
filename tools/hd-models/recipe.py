@@ -486,6 +486,7 @@ def convert_args(recipe) -> dict:
     if isinstance(acts, dict):
         keep_root = False
         clip_names = {}
+        procedural = []
         for act_name in spec.ACTS:
             act = acts.get(act_name)
             if isinstance(act, dict):
@@ -495,8 +496,12 @@ def convert_args(recipe) -> dict:
                 source = act.get("source")
                 if isinstance(source, str) and source:
                     clip_names[act_name] = source
+                elif isinstance(source, dict) and isinstance(source.get("procedural"), str):
+                    procedural.append(f"{act_name}={source['procedural']}")
         if keep_root:
             result["keep_root_motion"] = True
+        if procedural:
+            result["procedural"] = procedural
         if clip_names:
             # comma-joined, de-duplicated clip names in spec.ACTS order
             seen = set()

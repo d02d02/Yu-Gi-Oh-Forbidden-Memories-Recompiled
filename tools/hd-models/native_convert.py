@@ -689,6 +689,35 @@ def convert(a):
             best = int(np.argmax(speed.max(0)))
             strikes = strike_frames(speed[:, best])
             notes.append(f"strike frames from {names[hand_names[best]]}'s speed: {strikes}")
+    for rule in a.procedural or []:
+        from studio import procedural   # noqa: E402  (only a procedural act needs it)
+        act, _, kind = rule.partition("=")
+        base_clip = next((b for b in clip_blobs if b[0] == acts.get("idle")), clip_blobs[0] if clip_blobs else None)
+        if act not in spec.ACTS or base_clip is None or parents[root] >= 0:
+            raise Problem(f"--procedural {rule}: ACT=KIND needs an act of {', '.join(spec.ACTS)}, an idle (or any) clip and a root joint without a parent")
+        if len(clip_blobs) >= spec.MAX_CLIPS:
+            raise Problem(f"--procedural {rule}: the game takes at most {spec.MAX_CLIPS} clips")
+        cname = f"proc_{act}"
+        n_frames = int(spec.FPS)
+        track = procedural.sample(kind, n_frames, stature, **({"strike_frame": n_frames // 2} if kind == "lunge" else {}))
+        lin = A / s
+        data = np.stack([base_clip[2][f % base_clip[1]] for f in range(n_frames)]).copy()
+        for f, step in enumerate(track):
+            qx, qy, qz, qw = step["rot"]
+            delta = np.eye(4)
+            delta[:3, :3] = lin @ quat_to_mat(np.array([qx, qy, qz, qw])) @ np.linalg.inv(lin)
+            delta[:3, 3] = A @ np.array(step["pos"])
+            loc = np.eye(4)
+            loc[:3, :3] = quat_to_mat(data[f, root, 3:7].astype(float))
+            loc[:3, 3] = data[f, root, :3]
+            new = delta @ loc
+            data[f, root, :3] = new[:3, 3]
+            data[f, root, 3:] = mat_to_quat(new[:3, :3])
+        clip_blobs.append((cname, n_frames, data))
+        acts[act] = cname
+        if kind == "lunge" and act == "attack":
+            strikes = [n_frames // 2]
+        notes.append(f"{act}: procedural {kind} over {base_clip[0]} ({n_frames} frames)")
     if not clip_blobs:
         notes.append("no clips: the model stands in its bind pose")
 
@@ -749,6 +778,7 @@ def main(argv=None):
     ap.add_argument("--scale", type=float, help="game units per glTF unit, instead of a fit")
     ap.add_argument("--texture-max", type=int, default=spec.TEXTURE_MAX, help="the texture's largest side (default 2048)")
     ap.add_argument("--follow", action="append", help="BONE=SOURCE[@FRACTION]: BONE turns with SOURCE (beyond SOURCE's parent)")
+    ap.add_argument("--procedural", action="append", help="ACT=KIND (recoil, collapse, brace, lunge, rise): the act plays a procedural move of the root over the idle clip")
     ap.add_argument("--no-center", action="store_true", help="keep the hips on the origin (default: the idle pose's feet)")
     ap.add_argument("--keep-root-motion", action="store_true", help="keep the root's horizontal travel in the clips")
     ap.add_argument("--no-pbr", action="store_true", help="leave the normal and metal/roughness maps out")

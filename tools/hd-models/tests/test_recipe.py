@@ -598,6 +598,14 @@ class TestConvertArgs(unittest.TestCase):
             "model": {"category": "C5"},
         }
 
+    def test_procedural_sources_become_rules(self):
+        r = self._valid_base()
+        r["acts"] = {"hit": {"source": {"procedural": "recoil"}}, "destroyed": {"source": {"procedural": "collapse"}},
+                     "idle": {"source": "Idle"}}
+        out = recipe.convert_args(r)
+        self.assertEqual(out["procedural"], ["hit=recoil", "destroyed=collapse"])
+        self.assertEqual(out["clips"], "Idle")
+
     def test_convert_args_empty_returns_empty(self):
         recipe = self._valid_base()
         self.assertEqual(recipe_module.convert_args(recipe), {})

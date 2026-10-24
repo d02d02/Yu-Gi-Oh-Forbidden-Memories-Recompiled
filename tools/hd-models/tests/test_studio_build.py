@@ -34,6 +34,7 @@ class TestFlags(unittest.TestCase):
         args = {"follow": ["hip", "spine"]}
         out = build.flags(args)
         self.assertEqual(out, ["--follow", "hip", "--follow", "spine"])
+        self.assertEqual(build.flags({"procedural": ["hit=recoil", "win=rise"]}), ["--procedural", "hit=recoil", "--procedural", "win=rise"])
 
     def test_sorted_order(self):
         args = {"scale": 1.0, "clips": "walk", "rig": "humanoid"}

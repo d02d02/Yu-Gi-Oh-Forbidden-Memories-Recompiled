@@ -23,6 +23,7 @@ _FLAGS = {
     "scale": "--scale",
     "texture_max": "--texture-max",
     "follow": "--follow",
+    "procedural": "--procedural",
     "no_center": "--no-center",
     "keep_root_motion": "--keep-root-motion",
     "no_pbr": "--no-pbr",
@@ -34,7 +35,7 @@ _FLAGS = {
 # Dests whose value is a boolean: bare flag when True, nothing when False.
 _BOOL_DESTS = {"no_center", "keep_root_motion", "no_pbr"}
 # Dests whose value is a list: repeat the flag per item.
-_LIST_DESTS = {"follow"}
+_LIST_DESTS = {"follow", "procedural"}
 
 
 def flags(args):
