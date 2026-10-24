@@ -206,11 +206,14 @@ class Session:
         return look.run_s7(rec, lengths)["findings"]
 
     def build_s9(self, out_dir, runner=None):
-        """Build the mod twice into out_dir, store the S9 findings, and set pkg.path to the first build ("a")."""
+        """Build the mod twice into out_dir, then apply_build."""
         rec = self.studio.recipe
         cards = [int(c) for c in rec.get("model", {}).get("cards") or []]
         kw = {"runner": runner} if runner else {}
-        result = build.run_build_s9(rec, self.glb, out_dir, cards, **kw)
+        return self.apply_build(build.run_build_s9(rec, self.glb, out_dir, cards, **kw), out_dir)
+
+    def apply_build(self, result, out_dir):
+        """Store the S9 findings of a build and set pkg.path to the first build ("a"). Main thread only."""
         self.studio.set_findings("S9", result["findings"], self.stage_inputs("S9"))
         if result["build"]["ok"]:
             self.edit("pkg.path", str(Path(out_dir) / "a"))

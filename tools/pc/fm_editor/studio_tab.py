@@ -4,6 +4,7 @@ No engine viewport yet (SM4): the stages are judged from their checks."""
 from __future__ import annotations
 
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -14,9 +15,9 @@ from .widgets import px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
-    from studio import checkrows, knobs, preview, rail, runs, session as session_module
+    from studio import build, checkrows, knobs, preview, rail, runs, session as session_module
 except ImportError:      # the tools are not next to the editor (a frozen build): the tab says so
-    checkrows = knobs = preview = rail = runs = session_module = None
+    build = checkrows = knobs = preview = rail = runs = session_module = None
 
 TICK_MS = 300
 CHIP_COLOUR = {"fail": "#b00020", "warn": "#9a6700", "acked": "#555555", "info": "#555555", "pass": "#1a7f37"}
@@ -151,6 +152,8 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
+        if stage == "S9":
+            self.add_build_button()
         if stage == "S8":
             self.add_run_list()
         self.widgets = {}
@@ -164,6 +167,35 @@ class StudioTab(Tab):
         self.undo_button.state(["!disabled"] if studio.undo_stack else ["disabled"])
         self.redo_button.state(["!disabled"] if getattr(studio, "redo_stack", None) else ["disabled"])
         self.saved.configure(text={"saved": "Saved", "unsaved": "Saving..."}.get(studio.save_state, studio.save_state))
+
+    def add_build_button(self):
+        """S9: build the mod twice (new_native_mod.py) in a thread; the findings and pkg.path land when it ends."""
+        busy = getattr(self, "building", False)
+        button = ttk.Button(self.form, text="Building..." if busy else "Build package", command=self.build_package)
+        button.pack(anchor="w", pady=2)
+        if busy:
+            button.state(["disabled"])
+        path = knobs.value(self.session.studio.recipe, "pkg.path")
+        if path:
+            ttk.Label(self.form, text=f"Built: {path}", style="Note.TLabel").pack(anchor="w")
+
+    def build_package(self):
+        base = self.session.recipe_path.parent if self.session.recipe_path else self.session.glb.parent
+        self.building = True
+        self.draw_stage()
+
+        rec = self.session.studio.recipe
+        glb, out = self.session.glb, base / "build"
+        cards = [int(c) for c in rec.get("model", {}).get("cards") or []]
+        self.build_out = out
+
+        def work():
+            try:
+                self.build_result = build.run_build_s9(rec, glb, out, cards)
+            except (ValueError, OSError) as e:
+                self.build_result = {"error": str(e)}
+        self.build_thread = threading.Thread(target=work, daemon=True)
+        self.build_thread.start()
 
     def add_run_list(self):
         """S8: one row per scene or act with its status, a Run button (route A: the game is launched per run) and marks."""
@@ -291,6 +323,14 @@ class StudioTab(Tab):
             if self.session is not None:
                 ran = self.session.run_due()
                 self.session.autosave()
+                if getattr(self, "building", False) and not self.build_thread.is_alive():
+                    self.building = False
+                    result = self.build_result
+                    if "error" in result:
+                        self.heading.configure(text=result["error"])
+                    else:
+                        self.session.apply_build(result, self.build_out)
+                    ran = True
                 if ran:
                     self.refresh()
         finally:
