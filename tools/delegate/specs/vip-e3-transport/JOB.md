@@ -1,17 +1,20 @@
-# VIP job e3-transport (phase 1: MAKE IT WORK, no hardening yet)
+# Job vip-e3-transport
 
-Goal: Route B of the Studio engine needs live control of the native model preview. Add to the recompiled game a transport the studio can drive over the EXISTING control channel (`src/pc/debug/control.c`, client `tools/pc/yfm_control.py`): set act or clip by name, pause/resume, speed, scrub to a phase (0..1 of the act row) or to a clip frame, and report the current act/clip/phase. Read `notes/studio/engine-needs.md` (E1, E3, E7 and the Route B lines) first.
+## Goal
+Live control of the native model preview in the recompiled game (Studio Route B, need E3): set act or clip by name, pause/resume, speed, scrub to a phase (0..1 of the act row) or a clip frame, report the state. Driven over the existing control channel (`src/pc/debug/control.c`, client `tools/pc/yfm_control.py`). Phase 1 = make it work, small, gated. No hardening, no E4-E9.
 
-Read: `src/pc/render/native_anim.c` (the director, `strike_warp`, phase from `anim_frame`; MEMORIES_NATIVE_CLIP free clock), `src/pc/render/gl_picture.c` around 1895-1910, `src/pc/debug/control.c`, `tools/pc/yfm_control.py`, `tools/hd-models/field_attack.py`, `tools/hd-models/library_shot.py`, `notes/adding-a-model.md`, `notes/build.md`.
+## Facts (pasted; read other code only by `grep -n` then at most 40 lines)
+- Hook point: `float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out)` in `src/pc/render/native_anim.c` (~line 109). It returns the clip time `t`. `forced` = MEMORIES_NATIVE_CLIP (free clock `d->id/30`). Otherwise phase = `d->info.anim_frame / (16 * d->info.anim_length)` clamped 0..1; attack rows go through `strike_warp(...)` and a Black-Luster-only piecewise warp keyed on `anim_frame/16`; else `phase*(frames-1)/fps`. The caller is `gl_picture.c` ~2383: `t = NativeAnim_Choose(d, mesh, nat_env.clip, &clip);`.
+- Scrub rule: a scrubbed phase must feed the SAME inputs the game uses. Implement the phase override by computing a substitute `anim_frame` (phase*16*anim_length) and running the normal path, so a scrubbed frame equals the same frame in real play. Do not return `phase*(frames-1)/fps` directly for attack rows.
+- Transport state is process-global, default inactive: inactive means NativeAnim_Choose behaves byte-for-byte as before. Pause = freeze the current inputs (hold last t / last anim_frame). Speed scales the free clock only (a free-running clip); for row-driven play pause + phase are the controls.
+- Put the command parsing in a pure function in native_anim.c, e.g. `int NativeAnim_Command(const char *line, char *reply, size_t n)` ("anim clip NAME|auto", "anim pause", "anim resume", "anim speed X" (0.05..8), "anim phase P" (0..1), "anim frame N", "anim get"), so it is unit-testable without the engine. control.c only forwards lines starting with "anim " to it and sends the reply (`ok ...` / `err ...`, see `send_error` in control.c). Keep control.c edits minimal and list each in your report.
+- C unit test: `tests/pc/native_anim_test.c` (exists; compiled with `src/pc/render/native_anim.c`, `-Wall -Wextra -Wpedantic -Werror`). Add cases there. Run: `bash verify.sh c`. Build the whole game: `bash verify.sh build` (35 s, output `tmp/pc/e3-build/memories-pc.exe`). `verify.sh` is protected; do not edit it.
+- Client: `tools/pc/yfm_control.py`, class `Game`, `command(line) -> reply`, `shot(path)`, `hash()`. Add `anim_clip/anim_pause/anim_resume/anim_speed/anim_phase/anim_frame/anim_get`. Test with a fake socket in `tools/pc/tests/test_yfm_anim.py` (stdlib unittest, run `python tools/pc/tests/test_yfm_anim.py`).
+- Demo (item 6): `tools/hd-models/transport_demo.py` modelled on `tools/hd-models/field_attack.py` (read its header and `grep -n "def "`). Needs the disc (`MEMORIES_DISC` is set by the caller) and the installed mod `studio-preview`; `--selftest` must run WITHOUT the disc (checks argument handling and the hash-compare helper on synthetic data). Without the selftest flag it pauses the dragon attack, scrubs phases 0, .25, .5, .75, 1, shots each, free-runs to the same phase, prints hashes.
+- Python is `python` (not python3) on this machine. Use LF endings. Do not push.
 
-Constraints (phase 1):
-* Everything gated: with the control channel off or no transport command sent, behaviour and frame output are unchanged. Keep edits to existing functions minimal and list each one in your report.
-* Scrubbing must feed the same `phase`/`anim_frame` inputs the game uses, so a scrubbed frame equals the same frame in real play (the game squeezes the whole attack clip over the attack row; do not bypass that).
-* Add the matching methods to `tools/pc/yfm_control.py` and a small script that demonstrates: pause the dragon attack in the library or field scene, scrub to 5 phases, `shot` each, show frames differ and match a free-run capture at the same phase.
-* No hardening, fuzzing or sanitizer work yet; no E7 streaming, E4, E5, E6, E8 in this job.
-* Work in your own git worktree on branch `feat/e3-transport`; never push; commit in small steps.
-* Build and run on Windows: see `notes/build.md`; set `MEMORIES_DISC=C:\Users\mda\games\iso\ygofm-us.bin` per command. Dragon mod already installed as `tmp/pc/game32/mods/studio-preview` (card 364).
+## Limits
+Edit only: `src/pc/render/native_anim.c`, `native_anim.h`, `src/pc/debug/control.c` (forwarding only), `tests/pc/native_anim_test.c`, `tools/pc/yfm_control.py`, `tools/pc/tests/test_yfm_anim.py`, `tools/hd-models/transport_demo.py`, `notes/studio/engine-needs.md`, `notes/adding-a-model.md`. Anything else: write BLOCKED with the reason.
 
-Acceptance: the demo script runs from a clean build, prints the five phases with distinct frame hashes, and a free-run capture at the same phase gives the same hash (or you explain and measure the difference). Report: files changed, existing functions touched, how to run the demo, open problems.
-
-You own every action from here to the report: reading, design within this brief, code, tests, Windows build, running the game and demo with the disc, judging your own captured frames, debugging to green, small commits, updating the notes you affect (`notes/studio/engine-needs.md`, `notes/adding-a-model.md` if relevant), appending a dated entry to `progress.md`, and the final report. Prepare the user's eye check (launcher command, what to look at) but do not ask for it until the demo passes on your side. Do not push.
+## Acceptance
+All checks green; `bash verify.sh all` passes. Final message: files changed, every existing function touched (name + why), how to run the demo, open problems.
