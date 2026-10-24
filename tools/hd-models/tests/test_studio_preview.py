@@ -10,6 +10,13 @@ from studio import preview
 
 
 class TestCommand(unittest.TestCase):
+    def test_library_scene(self):
+        c = preview.command("library", "out", 364)
+        self.assertIn("library_shot.py", c[2])
+        self.assertEqual(c[c.index("--card") + 1], "364")
+        self.assertNotIn("--cards", c)
+        self.assertIn("mod.studio-preview=1", c)
+
     def test_field_and_arena(self):
         f = preview.command("field", "out", 364)
         self.assertNotIn("--arena", f)
@@ -30,7 +37,7 @@ class TestCommand(unittest.TestCase):
             with self.assertRaises(ValueError):
                 preview.command("field", "o", 1, **kw)
         with self.assertRaises(ValueError):
-            preview.command("library", "o", 1)
+            preview.command("turntable", "o", 1)
 
     def test_no_disc_refuses(self):
         self.assertFalse(preview.disc_available({}))

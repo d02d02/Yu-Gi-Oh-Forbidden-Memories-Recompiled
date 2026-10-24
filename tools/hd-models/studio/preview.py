@@ -12,8 +12,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FIELD_ATTACK = HERE.parent / "field_attack.py"
-SCENES = ("field", "arena")
-WINDOW = {"field": (60, 12, 240), "arena": (1250, 80, 1650)}   # (start, every, last frame) that show the fight (measured)        # the library turntable is a separate recipe (progress.md), not built here
+LIBRARY_SHOT = HERE.parent / "library_shot.py"
+SCENES = ("library", "field", "arena")
+WINDOW = {"library": (20, 20, 120), "field": (60, 12, 240), "arena": (1250, 80, 1650)}   # (start, every, last frame) that show the fight (measured)        # the library turntable is a separate recipe (progress.md), not built here
 
 
 MOD_ID = "studio-preview"
@@ -49,8 +50,12 @@ def command(scene, out_dir, card_id, *, mod_id=MOD_ID, start=None, every=None, f
     start, every, frames = d_start if start is None else start, d_every if every is None else every, d_frames if frames is None else frames
     if frames < 1 or every < 1 or start < 0:
         raise ValueError("frames and every must be at least 1, start at least 0")
-    argv = [sys.executable, "-I", str(FIELD_ATTACK), str(out_dir), "--cards", f"58,{card_id},{card_id},332,683",
-            "--scale", str(scale), "--start", str(start), "--every", str(every), "--frames", str(frames)]
+    if scene == "library":
+        argv = [sys.executable, "-I", str(LIBRARY_SHOT), str(out_dir), "--card", str(card_id), "--scale", str(scale),
+                "--start", str(start), "--every", str(every), "--frames", str(frames)]
+    else:
+        argv = [sys.executable, "-I", str(FIELD_ATTACK), str(out_dir), "--cards", f"58,{card_id},{card_id},332,683",
+                "--scale", str(scale), "--start", str(start), "--every", str(every), "--frames", str(frames)]
     if scene == "arena":
         argv += ["--arena", "--setting", "mod.3d-monsters.attack=0"]
     for other in disable:
