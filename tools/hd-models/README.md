@@ -10,6 +10,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 |---|---|
 | `recipe.py` | reads and validates a studio `recipe.json`, maps it to converter arguments and model.json members |
 | `studio/audit.py` | S0-S3 checks over a glTF (licence, mesh/skin, skeleton mapping, materials); `studio/state.py` stage machine |
+| `studio/timemap.py` | S6 time map: default_map, monotonic/stretch/strike checks, row<->clip mapping, suggest_point, run_s6 |
 | `studio/placement.py` | S4 (size and placement) maths: `fit`, `footprint_ratio`, `check_footprint`, `check_ground`, `check_uniform_scale`, `run_s4` over a glb, headless |
 | `studio/rail.py`, `knobs.py`, `checkrows.py`, `studio/session.py`, `run_audit.py` | the Model Studio's UI-free view layer for S0-S3: rail rows, knob tables, check rows, editing/undo/debounce session and the `run_audit.py` CLI |
 | `new_native_mod.py MODEL.glb --card 364 --out mods/my-mod [-- converter options]` | the whole mod: converts into `models/<model>/` and writes or updates `mod.json`'s `native_models`, then checks it |

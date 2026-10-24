@@ -38,4 +38,4 @@ The delegation harness has no display, so a Tk check would skip and pass vacuous
 | SM3a, SM3b | done (view layer by the harness; Studio tab `tools/pc/fm_editor/studio_tab.py`; the user has not walked it yet) |
 | SM4 | not started (engine, Claude) |
 | SM5 | S4 maths `placement.py` done (harness); S5 clips and viewer parts open |
-| SM6-SM8 | not started; `sm6-timemap` is the next harness job |
+| SM6-SM8 | sm6-timemap landed (timemap.py, 23 tests); UI and engine pieces remain |
