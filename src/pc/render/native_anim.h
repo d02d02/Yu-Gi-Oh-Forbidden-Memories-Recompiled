@@ -36,4 +36,42 @@ float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char 
 /* The rows (4 x NATIVE_SKIN_ROWS x 4 floats) for draw `d` at time `t` of `clip`. */
 void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, const NativeAnimFrame *frame,
                      float *rows);
+
+/* Transport state for live control of the native model preview (E3).
+ * Inactive = byte-for-byte identical to the old behaviour. */
+typedef struct NativeAnimTransport {
+    int active;                 /* 0 = inactive (default), 1 = active */
+    const char *forced_clip;    /* clip name to force, or NULL for auto (game-decided) */
+    int paused;                 /* 1 = freeze at current anim_frame / free clock */
+    float speed;                /* free-clock speed multiplier (0.05..8), default 1 */
+    float phase_override;       /* phase (0..1) to scrub to, -1 = none */
+    int frame_override;         /* clip frame to jump to, -1 = none */
+    int last_anim_frame;        /* held anim_frame when paused (row-driven) */
+    int last_anim_length;       /* row length of the last chosen clip, for reporting */
+    float last_phase;           /* phase the last chosen clip used, for reporting */
+    unsigned last_id;           /* held draw id when paused (free clock) */
+} NativeAnimTransport;
+
+/* Global transport state (process-wide, single preview). */
+extern NativeAnimTransport native_anim_transport;
+
+/* Initialise transport to inactive defaults. */
+void NativeAnim_TransportInit(void);
+
+/* Setters (clamp/validate). */
+void NativeAnim_TransportSetActive(int active);
+void NativeAnim_TransportSetForcedClip(const char *name);  /* NULL or "" = auto */
+void NativeAnim_TransportSetPaused(int paused);
+void NativeAnim_TransportSetSpeed(float speed);            /* 0.05..8 */
+void NativeAnim_TransportSetPhase(float phase);            /* 0..1, -1 = clear */
+void NativeAnim_TransportSetFrame(int frame);              /* >=0, -1 = clear */
+
+/* Get a human-readable status line into `reply` (max `n` bytes). */
+void NativeAnim_TransportGet(char *reply, size_t n);
+
+/* Parse one "anim ..." command line: "anim clip NAME|auto", "anim pause", "anim resume",
+ * "anim speed X", "anim phase P", "anim frame N", "anim get".
+ * Returns 0 on success (reply is "ok ..."), -1 on error (reply is "err ..."). */
+int NativeAnim_Command(const char *line, char *reply, size_t n);
+
 #endif

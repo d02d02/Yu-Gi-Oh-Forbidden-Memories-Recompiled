@@ -12,6 +12,7 @@
 #include "pc/platform/menu.h"
 #include "pc/platform/settings.h"
 #include "pc/sdk/display.h"
+#include "pc/render/native_anim.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -305,6 +306,18 @@ int Control_Apply(char *text)
 /* One command. 1 when the game is to run (step, quit), 0 to read the next. */
 static int handle(char *text)
 {
+    /* Forward "anim ..." commands to the native animation transport. */
+    if (strncmp(text, "anim ", 5) == 0) {
+        char reply_buf[256];
+        int rc = NativeAnim_Command(text, reply_buf, sizeof(reply_buf));
+        if (rc == 0) {
+            send_line(reply_buf);
+        } else {
+            send_error(reply_buf + 4); /* skip "err " */
+        }
+        return 0;
+    }
+
     ControlCommand command;
     char error[160];
     /* A poke or a jump changes what the game does next, and the pads alone

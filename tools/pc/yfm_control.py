@@ -569,6 +569,52 @@ class Game:
         """FNV-1a of VRAM, as MEMORIES_FRAME_HASHES writes it."""
         return int(self.command("hash"), 16)
 
+    # Native animation transport (E3).
+    @staticmethod
+    def _anim_value(reply: str) -> str:
+        return reply.split("=", 1)[1] if "=" in reply else reply
+
+    def anim_clip(self, name: str | None) -> str:
+        """Set the forced clip (`name`) or auto (None/"auto"). Returns the clip name."""
+        if name is None:
+            name = "auto"
+        return self._anim_value(self.command(f"anim clip {name}"))
+
+    def anim_pause(self) -> None:
+        """Pause the animation (freeze current frame)."""
+        self.command("anim pause")
+
+    def anim_resume(self) -> None:
+        """Resume the animation."""
+        self.command("anim resume")
+
+    def anim_speed(self, speed: float) -> float:
+        """Set the free-clock speed multiplier (0.05..8). Returns the speed."""
+        return float(self._anim_value(self.command(f"anim speed {speed}")))
+
+    def anim_phase(self, phase: float) -> float | None:
+        """Scrub to a phase (0..1 of the act row). Returns the phase, None if cleared."""
+        value = self._anim_value(self.command(f"anim phase {phase}"))
+        return None if value == "cleared" else float(value)
+
+    def anim_frame(self, frame: int) -> int | None:
+        """Jump to a clip frame (>=0). Returns the frame, None if cleared."""
+        value = self._anim_value(self.command(f"anim frame {frame}"))
+        return None if value == "cleared" else int(value)
+
+    def anim_get(self) -> dict:
+        """Get the current transport state as a dict."""
+        reply = self.command("anim get")
+        state = {}
+        for part in reply.split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                try:
+                    state[key] = float(value) if "." in value else int(value)
+                except ValueError:
+                    state[key] = value
+        return state
+
     def locate(self, where: int | str) -> int | str:
         """What peek and poke send for `where`: a guest address as it is, and
         a name as "@name" when the game keeps the variable itself (what the

@@ -7,7 +7,7 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 |---|---|---|---|
 | E1 | Load a package or recipe result at runtime, with replace (no restart) | all engine stages | restart needed; `MEMORIES_NATIVE_MODEL` forces one package |
 | E2 | Draw a model without a captured disc slot (synthetic injection point) | viewer without game state | none |
-| E3 | Commands: set act, set clip by name, set phase/row phase, pause, speed, scrub | S4-S8 transport, S5, S6 | clip is an env var read once, free-running clock |
+| E3 | Commands: set act, set clip by name, set phase/row phase, pause, speed, scrub | S4-S8 transport, S5, S6 | **done** (E3 transport): `anim clip|pause|resume|speed|phase|frame|get` over `yfm_control`; phase/frame feed the normal `anim_frame` path, inactive = unchanged |
 | E4 | Camera presets (field, arena, side, top, free orbit) | S4, S7 | game camera; `NativeShot` is the nearest hook |
 | E5 | Line/wire drawing in the 3D pass: bones, footprint grid, ghost outline, markers, bbox | S2, S4, S6 | none; overlay API draws text and rectangles only |
 | E6 | Read back data: bounding boxes, lowest point, joint positions per frame | S4 checks, S6 | none |

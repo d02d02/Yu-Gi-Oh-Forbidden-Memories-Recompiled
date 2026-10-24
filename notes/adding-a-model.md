@@ -71,6 +71,28 @@ Then change `model.json` (no reconvert) in this order, and only as far as needed
 
 `MEMORIES_TRACE=model` gives the event log; `MEMORIES_NATIVE_SKIN_LOG=1` says where the model's axes point on screen.
 
+## 4b. Live controls on a running preview (E3)
+
+With the recompiled game (Route B) the preview can be driven while it runs, over the same control channel as
+`shot`/`hash`. In Python (`tools/pc/yfm_control.py`, class `Game`):
+
+```
+game.anim_pause()                 # freeze the current frame
+game.anim_phase(0.25)             # scrub: 0..1 of the act's row (same anim_frame path as play)
+game.anim_frame(40)               # or an absolute clip frame; phase(..)/frame(-1) clears
+game.anim_speed(0.5)              # free-running clips only (0.05..8)
+game.anim_clip("Fly_New")         # force a clip by name; anim_clip(None) = auto
+game.anim_resume()
+game.anim_get()                   # {"clip": .., "paused": .., "phase": .., "frame": .., "speed": ..}
+```
+
+The raw commands are `anim clip NAME|auto`, `anim pause`, `anim resume`, `anim speed X`, `anim phase P`,
+`anim frame N` and `anim get`; bad input answers `err ...`. With no client connected the game is untouched, and
+until the first `anim` command the transport is inactive, so playback is exactly as before. For an attack, pause,
+scrub to the phases you want and `shot()` each, then compare with a free run: `tools/hd-models/transport_demo.py`
+does that for the dragon (`python -I tools/hd-models/transport_demo.py OUTDIR`; needs `MEMORIES_DISC` and the
+installed `studio-preview` mod; `--selftest` needs neither).
+
 ## 5. Done when (the validation)
 
 - `native_check.py mods/my-model` says 0 errors and 0 warnings.

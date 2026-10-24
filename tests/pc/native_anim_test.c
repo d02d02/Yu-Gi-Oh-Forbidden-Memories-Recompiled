@@ -6,6 +6,7 @@
 #include "pc/render/native_anim.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures;
@@ -347,6 +348,209 @@ int main(void)
         moved.scale = 2.0f;
         pose_mesh(400, 0x40000, 0, &moved);
         CHECK(near(bone_row(0, 0)[3], 30.0f) && near(bone_row(0, 2)[3], 980.0f));
+    }
+
+    /* Transport (E3): inactive = unchanged behaviour. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(0);
+        set_draw(1, 0, 3, 3, 30 * 16, 150);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Sword_Attack") == 0 && near(t, 11.0f / 30.0f));
+        /* Forced clip via env still works when transport inactive. */
+        set_draw(60, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, "Sword_Attack", &clip);
+        CHECK(clip && strcmp(clip->name, "Sword_Attack") == 0 && near(t, 2.0f - 47.0f / 30.0f));
+    }
+
+    /* Transport active: forced clip overrides env forced. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetForcedClip("Hit_Chest");
+        set_draw(1, 0, 3, 3, 0, 10); /* would be attack row */
+        t = NativeAnim_Choose(&draw, &mesh, "Sword_Attack", &clip); /* env forced ignored */
+        CHECK(clip && strcmp(clip->name, "Hit_Chest") == 0);
+        /* Free clock runs on draw id, not game frame. */
+        set_draw(30, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float expected = (30.0f / 30.0f) - (float)(int)(30.0f / 30.0f / (2.0f / 30.0f)) * (2.0f / 30.0f);
+        CHECK(near(t, expected));
+        /* Clear forced clip -> back to game-decided. */
+        NativeAnim_TransportSetForcedClip(NULL);
+        set_draw(1, 0, 3, 3, 30 * 16, 150);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Sword_Attack") == 0 && near(t, 11.0f / 30.0f));
+    }
+
+    /* Transport pause/resume on free-running clip. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetForcedClip("Sword_Attack");
+        set_draw(10, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float t10 = t;
+        set_draw(20, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float t20 = t;
+        CHECK(!near(t, t10)); /* advanced */
+        NativeAnim_TransportSetPaused(1);
+        set_draw(30, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, t20)); /* frozen at id=20 */
+        NativeAnim_TransportSetPaused(0);
+        set_draw(40, 0, 0, 3, 0, 10);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(!near(t, t20)); /* resumes from id=40 */
+    }
+
+    /* Transport speed on free-running clip. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetForcedClip("Sword_Attack");
+        NativeAnim_TransportSetSpeed(2.0f);
+        set_draw(30, 0, 0, 3, 0, 10); /* id=30, speed=2 -> effective id=60 */
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float expected = (60.0f / 30.0f) - (float)(int)(60.0f / 30.0f / (47.0f / 30.0f)) * (47.0f / 30.0f);
+        CHECK(near(t, expected));
+        NativeAnim_TransportSetSpeed(0.5f);
+        set_draw(30, 0, 0, 3, 0, 10); /* id=30, speed=0.5 -> effective id=15 */
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        expected = (15.0f / 30.0f) - (float)(int)(15.0f / 30.0f / (47.0f / 30.0f)) * (47.0f / 30.0f);
+        CHECK(near(t, expected));
+        /* Speed clamped to 0.05..8. */
+        NativeAnim_TransportSetSpeed(10.0f);
+        CHECK(near(native_anim_transport.speed, 8.0f));
+        NativeAnim_TransportSetSpeed(0.01f);
+        CHECK(near(native_anim_transport.speed, 0.05f));
+    }
+
+    /* Transport phase override on row-driven clip (attack row: feeds strike_warp). */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        /* Phase 0.5 on row 3 (attack, length 150) -> anim_frame = 0.5 * 16 * 150 = 1200 -> disc frame 75.
+         * strike_warp: contact=75, strike=11 -> t = strike * frame/contact / fps = 11 * 75/75 / 30 = 11/30. */
+        set_draw(1, 0, 3, 3, 0, 150);
+        draw.info.contact_frame = 75;
+        mesh.strike_count = 1;
+        mesh.strike[0] = 11;
+        NativeAnim_TransportSetPhase(0.5f);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Sword_Attack") == 0 && near(t, 11.0f / 30.0f));
+        /* Phase 0 -> anim_frame=0 -> t=0. */
+        NativeAnim_TransportSetPhase(0.0f);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, 0.0f));
+        /* Phase 1 -> anim_frame=2400 -> disc frame 150 -> t = (strike + (last-strike)*(150-75)/(150-75))/fps = 46/30. */
+        NativeAnim_TransportSetPhase(1.0f);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, 46.0f / 30.0f));
+        /* Phase out of range -> cleared. */
+        NativeAnim_TransportSetPhase(1.5f);
+        CHECK(native_anim_transport.phase_override < 0);
+        NativeAnim_TransportSetPhase(-0.1f);
+        CHECK(native_anim_transport.phase_override < 0);
+        mesh.strike_count = 0;
+    }
+
+    /* Transport phase override on BLS measured warp (row 3, Sword_Attack, 47 frames). */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        set_draw(1, 0, 3, 3, 0, 150);
+        draw.info.contact_frame = -1; /* triggers BLS warp */
+        /* Phase 0.2 -> anim_frame = 0.2 * 16 * 150 = 480 -> disc frame 30.
+         * BLS warp: disc[2]=30 -> clip[2]=11 -> t=11/30. */
+        NativeAnim_TransportSetPhase(0.2f);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Sword_Attack") == 0 && near(t, 11.0f / 30.0f));
+        /* Phase 0.4 -> anim_frame = 0.4 * 16 * 150 = 960 -> disc frame 60.
+         * Between disc[2]=30 (clip=11) and disc[3]=61 (clip=22): (60-30)/(61-30) * (22-11) + 11 = 21.66. */
+        NativeAnim_TransportSetPhase(0.4f);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float expected_bls = (11.0f + (22.0f - 11.0f) * (60.0f - 30.0f) / (61.0f - 30.0f)) / 30.0f;
+        CHECK(near(t, expected_bls));
+    }
+
+    /* Transport frame override on row-driven clip. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        set_draw(1, 0, 5, 3, 0, 10); /* hit row, clip Hit_Chest (2 frames) */
+        /* Frame 1 (second frame of 2) -> phase = 1/(2-1) = 1 -> anim_frame = 1 * 16 * 10 = 160. */
+        NativeAnim_TransportSetFrame(1);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(clip && strcmp(clip->name, "Hit_Chest") == 0 && near(t, 1.0f / 30.0f));
+        /* Frame 0 -> phase = 0 -> t=0. */
+        NativeAnim_TransportSetFrame(0);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, 0.0f));
+        /* Frame out of range -> clamped to last frame. */
+        NativeAnim_TransportSetFrame(100);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, 1.0f / 30.0f));
+        /* Clear frame override. */
+        NativeAnim_TransportSetFrame(-1);
+        CHECK(native_anim_transport.frame_override < 0);
+    }
+
+    /* Transport pause on row-driven clip holds last anim_frame. */
+    {
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        set_draw(1, 0, 3, 3, 30 * 16, 150); /* anim_frame=480, phase=0.2 */
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        float t_at_480 = t;
+        NativeAnim_TransportSetPaused(1);
+        set_draw(2, 0, 3, 3, 150 * 16, 150); /* game advances to end of row */
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, t_at_480)); /* frozen at anim_frame=480 */
+        NativeAnim_TransportSetPaused(0);
+        t = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+        CHECK(near(t, 46.0f / 30.0f)); /* now at game's anim_frame=2400 */
+    }
+
+    /* NativeAnim_Command parsing. */
+    {
+        char reply[256];
+        NativeAnim_TransportInit();
+        CHECK(native_anim_transport.active == 0);
+        CHECK(NativeAnim_Command("anim pause", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.active == 1);   /* a transport command turns it on */
+        NativeAnim_TransportInit();
+        NativeAnim_TransportSetActive(1);
+        CHECK(NativeAnim_Command("anim clip Sword_Attack", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok clip=Sword_Attack") != NULL);
+        CHECK(NativeAnim_Command("anim clip auto", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok clip=auto") != NULL);
+        CHECK(NativeAnim_Command("anim pause", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok paused") != NULL);
+        CHECK(NativeAnim_Command("anim resume", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok resumed") != NULL);
+        CHECK(NativeAnim_Command("anim speed 2.5", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok speed=2.500") != NULL);
+        CHECK(NativeAnim_Command("anim phase 0.5", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok phase=0.500") != NULL);
+        CHECK(NativeAnim_Command("anim frame 10", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok frame=10") != NULL);
+        CHECK(NativeAnim_Command("anim get", reply, sizeof(reply)) == 0);
+        CHECK(strstr(reply, "ok active=1") != NULL);
+        /* Errors. */
+        CHECK(NativeAnim_Command("anim clip", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err clip needs a name") != NULL);
+        CHECK(NativeAnim_Command("anim speed", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err speed needs a number") != NULL);
+        CHECK(NativeAnim_Command("anim phase", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err phase needs a number") != NULL);
+        CHECK(NativeAnim_Command("anim frame", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err frame needs an integer") != NULL);
+        CHECK(NativeAnim_Command("anim unknown", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err unknown anim subcommand") != NULL);
+        CHECK(NativeAnim_Command("notanim clip", reply, sizeof(reply)) == -1);
+        CHECK(strstr(reply, "err not an anim command") != NULL);
     }
 
     if (failures) {

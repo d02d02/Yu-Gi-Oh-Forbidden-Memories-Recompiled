@@ -2,6 +2,7 @@
 #include "pc/render/native_anim.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 NativeAct NativeAnim_Act(int row, int attack_row)
@@ -105,39 +106,96 @@ static float strike_warp(const NativeMesh *mesh, const NativeClip *c, float fram
 
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
  * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
- * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star. */
+ * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star.
+ * Transport (E3): when active, forced_clip/paused/speed/phase_override/frame_override override the normal path.
+ * A scrubbed phase/frame feeds the SAME inputs the game uses (substitute anim_frame), so strike_warp and the BLS warp apply. */
 float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out)
 {
     int row = d->info.anim_index, attack = d->info.attack_row == 4 ? 4 : 3;
     const NativeClip *c;
     float phase, t;
-    if (forced && *forced) {
+    int use_forced = 0;
+
+    /* Determine which clip to use. Transport forced_clip takes priority over the env forced. */
+    if (native_anim_transport.active && native_anim_transport.forced_clip) {
+        c = named(mesh, native_anim_transport.forced_clip);
+        if (!c && mesh->clip_count) c = &mesh->clips[0];
+        use_forced = 1;
+    } else if (forced && *forced) {
         c = named(mesh, forced);
         if (!c && mesh->clip_count) c = &mesh->clips[0];
+        use_forced = 1;
     } else {
         c = NativeAnim_ActClip(mesh, NativeAnim_Act(row, d->info.attack_row));
     }
     *clip_out = c;
     if (!c || c->frames < 1) return 0.0f;
-    if (forced && *forced) {
+
+    /* Free-running clip (forced by env or transport): uses draw id as clock, scaled by speed. */
+    if (use_forced) {
         float length = (float)c->frames / c->fps;
-        t = (float)d->id / 30.0f;
-        return t - (float)(int)(t / length) * length;
+        if (native_anim_transport.active && native_anim_transport.paused) {
+            /* Freeze at the last seen draw id. */
+            t = (float)native_anim_transport.last_id / 30.0f * native_anim_transport.speed;
+        } else {
+            t = (float)d->id / 30.0f * native_anim_transport.speed;
+            if (native_anim_transport.active) native_anim_transport.last_id = d->id;
+        }
+        t = t - (float)(int)(t / length) * length;
+        native_anim_transport.last_anim_length = c->frames;
+        native_anim_transport.last_phase = length > 0.0f ? t / length : 0.0f;
+        native_anim_transport.last_anim_frame = (int)(native_anim_transport.last_phase * (float)c->frames);
+        return t;
     }
-    phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
+
+    /* Row-driven clip: phase comes from anim_frame / (16 * anim_length).
+     * Transport can override phase or frame, or pause to hold the last anim_frame. */
+    if (native_anim_transport.active) {
+        if (native_anim_transport.paused) {
+            /* Hold the last anim_frame. */
+            phase = d->info.anim_length > 0
+                ? (float)native_anim_transport.last_anim_frame / (16.0f * (float)d->info.anim_length)
+                : 0.0f;
+        } else if (native_anim_transport.frame_override >= 0) {
+            /* Scrub to a specific clip frame: compute the anim_frame that yields this frame. */
+            float target_frame = (float)native_anim_transport.frame_override;
+            if (target_frame >= (float)c->frames) target_frame = (float)(c->frames - 1);
+            /* Invert the normal path: frame = phase * (frames - 1) => phase = frame / (frames - 1).
+             * Then anim_frame = phase * 16 * anim_length. */
+            phase = target_frame / (float)(c->frames - 1);
+            native_anim_transport.last_anim_frame = (int)(phase * 16.0f * (float)d->info.anim_length);
+        } else if (native_anim_transport.phase_override >= 0.0f) {
+            /* Scrub to a phase: compute substitute anim_frame = phase * 16 * anim_length. */
+            phase = native_anim_transport.phase_override;
+            native_anim_transport.last_anim_frame = (int)(phase * 16.0f * (float)d->info.anim_length);
+        } else {
+            /* Normal game-driven phase. */
+            phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
+            native_anim_transport.last_anim_frame = d->info.anim_frame;
+        }
+    } else {
+        phase = d->info.anim_length > 0 ? (float)d->info.anim_frame / (16.0f * (float)d->info.anim_length) : 0.0f;
+    }
     phase = phase < 0.0f ? 0.0f : phase > 1.0f ? 1.0f : phase;
+    native_anim_transport.last_anim_length = d->info.anim_length;
+    native_anim_transport.last_phase = phase;
+
+    /* Attack rows: strike_warp and BLS piecewise warp use anim_frame/16.
+     * Our substituted anim_frame (via last_anim_frame) feeds the same path. */
+    int anim_frame_16 = native_anim_transport.active && (native_anim_transport.paused ||
+                          native_anim_transport.phase_override >= 0.0f ||
+                          native_anim_transport.frame_override >= 0)
+                          ? native_anim_transport.last_anim_frame
+                          : d->info.anim_frame;
+
     if (NativeAnim_Act(row, d->info.attack_row) == NATIVE_ACT_ATTACK) {
-        /* The blow's frame known (a code mod's, NativeInstance.contact_frame): the package's strike lands on it. */
-        t = strike_warp(mesh, c, (float)d->info.anim_frame / 16.0f, d->info.contact_frame, d->info.anim_length);
+        t = strike_warp(mesh, c, (float)anim_frame_16 / 16.0f, d->info.contact_frame, d->info.anim_length);
         if (t >= 0.0f) return t;
     }
     if (row == 3 && attack == 3 && strcmp(c->name, "Sword_Attack") == 0 && c->frames == 47) {
-        /* Piecewise time warp keyed to the game's events (disc frames of row 3: contact window opens at 29, closes at 61, second
-         * contact at 95, row ends at 150) and the clip's own (hand-speed peak at frame 11, hold until 22, second swing at 30).
-         * Measured on Black Luster Soldier's row 3 only: row 4 has no measurement yet, so its clip runs evenly over the row. */
         static const float disc[6] = {0.0f, 25.0f, 30.0f, 61.0f, 95.0f, 150.0f};
         static const float clip[6] = {0.0f, 8.0f, 11.0f, 22.0f, 30.0f, 46.0f};
-        float frame = (float)d->info.anim_frame / 16.0f;
+        float frame = (float)anim_frame_16 / 16.0f;
         int k;
         if (frame >= disc[5]) return clip[5] / c->fps;
         for (k = 0; k < 5 && frame >= disc[k + 1]; k++) continue;
@@ -331,5 +389,213 @@ void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeCl
             }
         }
     }
+}
+
+/* Transport state for live control (E3). */
+NativeAnimTransport native_anim_transport = {
+    .active = 0,
+    .forced_clip = NULL,
+    .paused = 0,
+    .speed = 1.0f,
+    .phase_override = -1.0f,
+    .frame_override = -1,
+    .last_anim_frame = 0,
+    .last_anim_length = 0,
+    .last_phase = 0.0f,
+    .last_id = 0
+};
+
+void NativeAnim_TransportInit(void)
+{
+    native_anim_transport.active = 0;
+    native_anim_transport.forced_clip = NULL;
+    native_anim_transport.paused = 0;
+    native_anim_transport.speed = 1.0f;
+    native_anim_transport.phase_override = -1.0f;
+    native_anim_transport.frame_override = -1;
+    native_anim_transport.last_anim_frame = 0;
+    native_anim_transport.last_anim_length = 0;
+    native_anim_transport.last_phase = 0.0f;
+    native_anim_transport.last_id = 0;
+}
+
+void NativeAnim_TransportSetActive(int active)
+{
+    native_anim_transport.active = active ? 1 : 0;
+    if (!native_anim_transport.active) {
+        native_anim_transport.paused = 0;
+        native_anim_transport.phase_override = -1.0f;
+        native_anim_transport.frame_override = -1;
+    }
+}
+
+void NativeAnim_TransportSetForcedClip(const char *name)
+{
+    if (!name || !*name) {
+        native_anim_transport.forced_clip = NULL;
+    } else {
+        native_anim_transport.forced_clip = name;
+    }
+}
+
+void NativeAnim_TransportSetPaused(int paused)
+{
+    native_anim_transport.paused = paused ? 1 : 0;
+}
+
+void NativeAnim_TransportSetSpeed(float speed)
+{
+    if (speed < 0.05f) speed = 0.05f;
+    if (speed > 8.0f) speed = 8.0f;
+    native_anim_transport.speed = speed;
+}
+
+void NativeAnim_TransportSetPhase(float phase)
+{
+    if (phase < 0.0f || phase > 1.0f) {
+        native_anim_transport.phase_override = -1.0f;
+    } else {
+        native_anim_transport.phase_override = phase;
+    }
+}
+
+void NativeAnim_TransportSetFrame(int frame)
+{
+    if (frame < 0) {
+        native_anim_transport.frame_override = -1;
+    } else {
+        native_anim_transport.frame_override = frame;
+    }
+}
+
+void NativeAnim_TransportGet(char *reply, size_t n)
+{
+    const char *clip = native_anim_transport.forced_clip ? native_anim_transport.forced_clip : "auto";
+    snprintf(reply, n, "ok active=%d clip=%s paused=%d speed=%.3f phase=%s frame=%s af=%d al=%d at=%.4f",
+             native_anim_transport.active,
+             clip,
+             native_anim_transport.paused,
+             native_anim_transport.speed,
+             native_anim_transport.phase_override >= 0 ? "set" : "none",
+             native_anim_transport.frame_override >= 0 ? "set" : "none",
+             native_anim_transport.last_anim_frame,
+             native_anim_transport.last_anim_length,
+             native_anim_transport.last_phase);
+}
+
+/* Helper: skip whitespace. */
+static const char *skip_ws(const char *s)
+{
+    while (*s == ' ' || *s == '\t') s++;
+    return s;
+}
+
+/* Parse "anim ..." command. */
+int NativeAnim_Command(const char *line, char *reply, size_t n)
+{
+    line = skip_ws(line);
+    if (strncmp(line, "anim ", 5) != 0) {
+        snprintf(reply, n, "err not an anim command");
+        return -1;
+    }
+    line = skip_ws(line + 5);
+
+    if (strncmp(line, "clip", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+        line = skip_ws(line + 4);
+        if (*line == '\0') {
+            snprintf(reply, n, "err clip needs a name");
+            return -1;
+        }
+        NativeAnim_TransportSetActive(1);
+        if (strcmp(line, "auto") == 0) {
+            NativeAnim_TransportSetForcedClip(NULL);
+        } else {
+            NativeAnim_TransportSetForcedClip(line);
+        }
+        snprintf(reply, n, "ok clip=%s", native_anim_transport.forced_clip ? native_anim_transport.forced_clip : "auto");
+        return 0;
+    }
+
+    if (strcmp(line, "pause") == 0) {
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetPaused(1);
+        snprintf(reply, n, "ok paused");
+        return 0;
+    }
+
+    if (strcmp(line, "resume") == 0) {
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetPaused(0);
+        snprintf(reply, n, "ok resumed");
+        return 0;
+    }
+
+    if (strncmp(line, "speed", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        line = skip_ws(line + 5);
+        if (*line == '\0') {
+            snprintf(reply, n, "err speed needs a number");
+            return -1;
+        }
+        char *end;
+        float v = strtof(line, &end);
+        if (end == line) {
+            snprintf(reply, n, "err speed needs a number");
+            return -1;
+        }
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetSpeed(v);
+        snprintf(reply, n, "ok speed=%.3f", native_anim_transport.speed);
+        return 0;
+    }
+
+    if (strncmp(line, "phase", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        line = skip_ws(line + 5);
+        if (*line == '\0') {
+            snprintf(reply, n, "err phase needs a number");
+            return -1;
+        }
+        char *end;
+        float v = strtof(line, &end);
+        if (end == line) {
+            snprintf(reply, n, "err phase needs a number");
+            return -1;
+        }
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetPhase(v);
+        if (native_anim_transport.phase_override >= 0)
+            snprintf(reply, n, "ok phase=%.3f", native_anim_transport.phase_override);
+        else
+            snprintf(reply, n, "ok phase=cleared");
+        return 0;
+    }
+
+    if (strncmp(line, "frame", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        line = skip_ws(line + 5);
+        if (*line == '\0') {
+            snprintf(reply, n, "err frame needs an integer");
+            return -1;
+        }
+        char *end;
+        long v = strtol(line, &end, 10);
+        if (end == line) {
+            snprintf(reply, n, "err frame needs an integer");
+            return -1;
+        }
+        NativeAnim_TransportSetActive(1);
+        NativeAnim_TransportSetFrame((int)v);
+        if (native_anim_transport.frame_override >= 0)
+            snprintf(reply, n, "ok frame=%d", native_anim_transport.frame_override);
+        else
+            snprintf(reply, n, "ok frame=cleared");
+        return 0;
+    }
+
+    if (strcmp(line, "get") == 0) {
+        NativeAnim_TransportGet(reply, n);
+        return 0;
+    }
+
+    snprintf(reply, n, "err unknown anim subcommand: %.32s", line);
+    return -1;
 }
 
