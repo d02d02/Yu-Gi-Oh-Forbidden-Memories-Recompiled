@@ -22,6 +22,8 @@ none, say "none: the agent writes its own tests per item".>
 Everything else, including progress.md structure (only tick items and add Result/Failed lines) and the "Given" files.
 
 ## Constraints
+- `protected.txt` (optional, in the spec dir, one path per line): files the agent cannot edit (the write-guard plugin blocks it). Always list the README and every shared module the job must not change.
+- Prefer one new test file per item (`tests/test_<job>_<n>.py`) so items never share a file; the check then runs that file.
 - Test file: never edit or move its tail (`if __name__ == "__main__":` + `unittest.main()`), never delete or overwrite an existing test class; add new classes above the tail with edits that only add lines. (after-iter.py restores dropped classes, but do not rely on it.)
 - Python 3.12 in this Linux shell; numpy and Pillow are installed. No GPU, no game window, no disc image.
 - Match the surrounding code's style; no new dependencies.

@@ -25,20 +25,54 @@ def items():
     for i, ln in enumerate(lines):
         m = LINE.match(ln)
         if m:
-            out.append({"line": i, "done": m.group(1) == "x", "n": m.group(2), "check": None})
+            out.append({"line": i, "done": m.group(1) == "x", "n": m.group(2), "check": None, "symbols": [], "min_tests": 0})
         elif out and ln.strip().startswith("check:"):
             out[-1]["check"] = ln.strip()[len("check:"):].strip()
+        elif out and ln.strip().startswith("symbols:"):  # symbols: path::name, name, path2::name
+            out[-1]["symbols"] = [x.strip() for x in ln.strip()[len("symbols:"):].split(",") if x.strip()]
+        elif out and ln.strip().startswith("min_tests:"):
+            out[-1]["min_tests"] = int(ln.strip()[len("min_tests:"):].strip() or 0)
     return out
 
 
-def passes(cmd):
+def missing_symbols(item):
+    """`path::name` entries of a `symbols:` line: each needs a `def name` or `class name` in that file (the last path repeats)."""
+    path, miss = None, []
+    for ent in item["symbols"]:
+        if "::" in ent:
+            path, ent = ent.split("::", 1)
+        try:
+            src = open(path, encoding="utf-8").read() if path else ""
+        except OSError:
+            src = ""
+        if not re.search(rf"^\s*(def|class)\s+{re.escape(ent.strip())}\b", src, re.M):
+            miss.append(f"{path}::{ent.strip()}")
+    return miss
+
+
+def passes(item):
+    """True only on positive evidence: exit 0, and for a test command that tests ran (and at least min_tests), and symbols exist."""
+    cmd = item["check"]
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=240)
-        if "test_" in cmd and not re.search(r"Ran [1-9]\d* test", r.stdout + r.stderr):
-            return False  # a test command that ran no tests (missing main tail, wrong -k) is not a pass
-        return r.returncode == 0
     except subprocess.TimeoutExpired:
+        item["why"] = "check timed out"
         return False
+    out = r.stdout + r.stderr
+    if "test_" in cmd:
+        m = re.search(r"Ran (\d+) test", out)
+        if not m or int(m.group(1)) == 0 or int(m.group(1)) < item["min_tests"]:
+            item["why"] = "no tests ran (or fewer than min_tests)"
+            item["harness_fault"] = not m or int(m.group(1)) == 0
+            return False
+    if r.returncode != 0:
+        item["why"] = (out.strip().splitlines() or ["check failed"])[-1][:120]
+        return False
+    miss = missing_symbols(item)
+    if miss:
+        item["why"] = "missing " + ", ".join(miss)
+        return False
+    return True
 
 
 def untick(item, reason):
@@ -69,22 +103,46 @@ repair_tests()
 
 ticked, unticked = [], []
 for item in reversed(items()):  # reversed so inserted lines do not shift the ones still to process
-    if item["done"] and item["check"] and not passes(item["check"]):
-        untick(item, f"re-check after iteration {it} did not pass")
+    if item["done"] and item["check"] and not passes(item):
+        untick(item, f"re-check after iteration {it} did not pass: {item.get('why', '')}")
         unticked.append(item["n"])
 while True:  # items() is re-read each pass because inserted lines shift positions
     todo = next((x for x in items() if not x["done"]), None)
-    if not todo or not todo["check"] or not passes(todo["check"]):
+    if not todo or not todo["check"] or not passes(todo):
         break
     lines[todo["line"]] = lines[todo["line"]].replace("- [ ]", "- [x]", 1)
     lines.insert(todo["line"] + 1, f"  Result: verified by the loop after iteration {it}")
     ticked.append(todo["n"])
 
 open("progress.md", "w", encoding="utf-8").write("\n".join(lines))
-if os.path.exists("RALPH_DONE") and any(not x["done"] for x in items()):  # the agent declared victory early; the checks decide
-    os.remove("RALPH_DONE")
-    subprocess.run(["git", "rm", "-q", "--cached", "--ignore-unmatch", "RALPH_DONE"], capture_output=True)
-    print("[after-iter] removed a premature RALPH_DONE")
+# RALPH_DONE and BLOCKED are written by the agent only (ralph.sh removes them at start): validate, never trust.
+def drop(name, why):
+    os.remove(name)
+    subprocess.run(["git", "rm", "-q", "--cached", "--ignore-unmatch", name], capture_output=True)
+    print(f"[after-iter] rejected {name}: {why}")
+
+
+if os.path.exists("RALPH_DONE"):
+    todo = [x for x in items() if not x["done"]]
+    if todo:
+        drop("RALPH_DONE", f"{len(todo)} item(s) still open")
+    elif os.path.exists("verify.sh") and subprocess.run(["bash", "verify.sh"], capture_output=True, timeout=600).returncode != 0:
+        drop("RALPH_DONE", "verify.sh fails")
+if os.path.exists("BLOCKED"):
+    first = next((x for x in items() if not x["done"]), None)
+    if first is None:
+        drop("BLOCKED", "no open item")
+    else:
+        nfail = 0
+        for ln in lines[first["line"] + 1:]:
+            if LINE.match(ln):
+                break
+            nfail += ln.strip().startswith("Failed:")
+        passes(first)
+        if first.get("harness_fault"):
+            drop("BLOCKED", "the check ran no tests: a harness or test-file fault, not the item; fix the tests and retry")
+        elif nfail < 2:
+            drop("BLOCKED", f"only {nfail} Failed: line(s) on item {first['n']}; needs 2 real attempts")
 
 git = ["git", "-c", "user.name=ralph", "-c", "user.email=ralph@local"]
 subprocess.run(["git", "add", "-A", "--", ".", ":(exclude,glob)**/__pycache__/**", ":(exclude)RALPH_DONE", ":(exclude)BLOCKED"], capture_output=True)

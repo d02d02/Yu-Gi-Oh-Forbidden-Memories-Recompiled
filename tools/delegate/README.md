@@ -45,3 +45,11 @@ The loop commits to its own branch and never pushes; the Windows checkout is nev
 
 ## Measured (smoke job, same spec)
 Before tuning 54 requests / 258k tokens / 22 failed / 3 iterations; after (Groq `reasoning_content` fix, lean OpenCode config for the loop) 26 requests / 121k tokens / 3 failed / 2 iterations. See `notes/delegation.md` for the causes.
+
+## Harness guards (2026-10-24)
+| Guard | Where | Stops |
+|---|---|---|
+| `write-guard.js` (OpenCode plugin, installed in `llm-router/opencode/plugins/`) | before every agent edit/write | edits of `JOB.md`, `verify.sh`, `protected.txt` and its paths; touching a test file's `__main__` tail; dropping an existing test class |
+| `after-iter.py` `passes()` | after every iteration | a pass without tests having run (`Ran N`, N>0, >= `min_tests`), or with a `symbols:` entry missing |
+| `after-iter.py` control files | after every iteration | `RALPH_DONE` while items are open or `verify.sh` fails; `BLOCKED` with fewer than 2 `Failed:` lines or when the check ran no tests |
+| `after-iter.py` `repair_tests()` | after every iteration | restores a dropped test class or the `__main__` tail |
