@@ -81,6 +81,10 @@ while True:  # items() is re-read each pass because inserted lines shift positio
     ticked.append(todo["n"])
 
 open("progress.md", "w", encoding="utf-8").write("\n".join(lines))
+if os.path.exists("RALPH_DONE") and any(not x["done"] for x in items()):  # the agent declared victory early; the checks decide
+    os.remove("RALPH_DONE")
+    subprocess.run(["git", "rm", "-q", "--cached", "--ignore-unmatch", "RALPH_DONE"], capture_output=True)
+    print("[after-iter] removed a premature RALPH_DONE")
 
 git = ["git", "-c", "user.name=ralph", "-c", "user.email=ralph@local"]
 subprocess.run(["git", "add", "-A", "--", ".", ":(exclude,glob)**/__pycache__/**", ":(exclude)RALPH_DONE", ":(exclude)BLOCKED"], capture_output=True)
