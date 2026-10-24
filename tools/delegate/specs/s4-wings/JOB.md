@@ -13,6 +13,10 @@ S4 footprint check (`tools/hd-models/studio/placement.py`, `check_footprint`, `r
 - Vertex access: read `class Model` in `tools/hd-models/studio/audit.py` with `grep -n "self\." ` (at most 40 lines) to find how positions are exposed; do NOT edit audit.py (protected). If positions are not exposed, compute them in placement.py from the Model's glTF accessors using helpers already in audit.py; if impossible, write BLOCKED with the reason.
 - Tests build a tiny synthetic glb in the existing test file's style (read the top 40 lines of tests/test_studio_placement.py first): a body box plus a wide thin "wing" slab in the upper half must give no footprint warning when the body fits, and a warning when the body is too wide.
 
+## Hard rules
+- Write files with LF endings only (no CRLF conversion of any file; never run a bulk reformat or `git add -A` of untouched files). Touch only the files in Limits.
+- The code change is the point: an item is not done until the function exists and the new tests exercise it.
+
 ## Limits
 Edit only: `tools/hd-models/studio/placement.py`, `tools/hd-models/tests/test_studio_placement.py`, `notes/studio/studio-view.md` (one line in the S4 footprint description). Anything else: write BLOCKED.
 
