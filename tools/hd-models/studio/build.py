@@ -24,6 +24,7 @@ _FLAGS = {
     "texture_max": "--texture-max",
     "follow": "--follow",
     "procedural": "--procedural",
+    "attack_range": "--attack-range",
     "no_center": "--no-center",
     "keep_root_motion": "--keep-root-motion",
     "no_pbr": "--no-pbr",

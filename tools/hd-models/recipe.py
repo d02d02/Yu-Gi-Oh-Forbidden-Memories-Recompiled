@@ -441,6 +441,10 @@ def convert_args(recipe) -> dict:
         if center is False:
             result["no_center"] = True
 
+    timing = recipe.get("timing")
+    if isinstance(timing, dict) and timing.get("attack_range") is not None:
+        result["attack_range"] = timing["attack_range"]
+
     # rig.profile -> rig; rig.root -> root; rig.follow -> follow
     rig = recipe.get("rig")
     if isinstance(rig, dict):

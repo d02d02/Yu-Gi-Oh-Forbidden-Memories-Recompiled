@@ -624,12 +624,15 @@ def convert(a):
     clip_blobs, strikes = [], []
     for cname in want:
         chans, dur = clip_channels(cname)
-        frames = int(round(dur * spec.FPS)) + 1
+        t0 = 0.0
+        if a.attack_range and cname == acts.get("attack"):
+            t0, dur = (min(max(float(v), 0.0), dur) for v in a.attack_range.split(":"))
+        frames = int(round((dur - t0) * spec.FPS)) + 1
         data = np.zeros((frames, nb, 7), np.float32)
         hands = np.zeros((frames, len(hand_names), 3))
         start = None
         for f in range(frames):
-            t = min(f / spec.FPS, dur)
+            t = min(t0 + f / spec.FPS, dur)
             trs = {}
             for i in range(len(nodes)):
                 tt, qq, ss = scene.rest[i]
@@ -779,6 +782,7 @@ def main(argv=None):
     ap.add_argument("--texture-max", type=int, default=spec.TEXTURE_MAX, help="the texture's largest side (default 2048)")
     ap.add_argument("--follow", action="append", help="BONE=SOURCE[@FRACTION]: BONE turns with SOURCE (beyond SOURCE's parent)")
     ap.add_argument("--procedural", action="append", help="ACT=KIND (recoil, collapse, brace, lunge, rise): the act plays a procedural move of the root over the idle clip")
+    ap.add_argument("--attack-range", help="FROM:TO clip seconds kept of the attack clip; the game plays the whole clip over the attack row, so a shorter range plays slower")
     ap.add_argument("--no-center", action="store_true", help="keep the hips on the origin (default: the idle pose's feet)")
     ap.add_argument("--keep-root-motion", action="store_true", help="keep the root's horizontal travel in the clips")
     ap.add_argument("--no-pbr", action="store_true", help="leave the normal and metal/roughness maps out")
