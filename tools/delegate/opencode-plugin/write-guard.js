@@ -13,7 +13,7 @@ export const WriteGuard = async () => ({
     const a = output.args || {}
     const file = a.filePath || a.path
     if (!file) return
-    const rel = path.relative(process.cwd(), path.resolve(file)).replace(/\/g, "/")
+    const rel = path.relative(process.cwd(), path.resolve(file)).split(path.sep).join("/")
     let protectedList = []
     try { protectedList = fs.readFileSync("protected.txt", "utf8").split("\n").map((x) => x.trim()).filter(Boolean) } catch {}
     if (["JOB.md", "verify.sh", "protected.txt"].includes(rel) || protectedList.some((p) => rel === p || rel.endsWith("/" + p)))
