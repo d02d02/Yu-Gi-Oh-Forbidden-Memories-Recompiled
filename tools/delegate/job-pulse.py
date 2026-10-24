@@ -48,6 +48,8 @@ try:
 except sqlite3.Error:
     ledger = None
 primed = False  # the first pass only records history silently
+ever_alive = False  # the loop may start after the monitor: wait up to 180 s for it before reporting END
+started_at = time.time()
 VERBOSE = "--verbose" in sys.argv
 EXIT_ON_ALERT = "--exit-on-alert" in sys.argv
 kill_idle_s = arg("--kill-idle", 0) * 60
@@ -216,7 +218,9 @@ while True:
         say(f"START {len(seen_sessions)} sessions so far, items {it[0]} done/{it[1]} left, commits {cm}", 1)
         last_activity = time.time()
         ledger_since = time.time()
-    if not alive():
+    if alive():
+        ever_alive = True
+    if not alive() and (ever_alive or seen_sessions or time.time() - started_at > 180):
         state = "DONE" if os.path.exists(f"{W}/RALPH_DONE") else "BLOCKED" if os.path.exists(f"{W}/BLOCKED") else "STOPPED"
         per = f", {tok_in // it[0]:,} in per item" if it[0] else ""
         say(f"END {state}; items {it[0]} done/{it[1]} left, commits {cm}, tokens in {tok_in:,} out {tok_out:,}{per}", 2)
