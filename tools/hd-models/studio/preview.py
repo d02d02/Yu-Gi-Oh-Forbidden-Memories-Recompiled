@@ -23,7 +23,8 @@ def env_for(package, card_id, clip=None, extra=None):
 
 
 def command(scene, out_dir, package, card_id, *, clip=None, start=0, every=12, frames=240, scale=2, settings=(), extra_env=None):
-    """argv for one scene run. Raises ValueError on an unknown scene or a bad frame range."""
+    """argv for one scene run; `frames` is the LAST frame (shots at start, start+every ... up to it), not a count.
+    Raises ValueError on an unknown scene or a bad frame range."""
     if scene not in SCENES:
         raise ValueError(f"scene must be one of {SCENES}, not {scene!r}")
     if frames < 1 or every < 1 or start < 0:
