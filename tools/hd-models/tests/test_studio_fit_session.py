@@ -95,5 +95,27 @@ class TestFitSession(unittest.TestCase):
         self.assertEqual(s.studio.state("S7"), "stale")
 
 
+class TestBuildS9(unittest.TestCase):
+    def test_build_sets_pkg_path(self):
+        import tempfile
+        s = make({"model": {"cards": [364]}, "pkg": {"name": "demo"}, "meta": {"author": "a", "license": "MIT", "url": "u"}})
+        def runner(argv):
+            out = Path(argv[argv.index("--out") + 1]); out.mkdir(parents=True, exist_ok=True)
+            (out / "mod.json").write_text("{}")
+            return 0, "ok"
+        with tempfile.TemporaryDirectory() as d:
+            r = s.build_s9(d, runner)
+            self.assertTrue(r["build"]["ok"])
+            self.assertEqual(s.studio.recipe["pkg"]["path"], str(Path(d) / "a"))
+
+    def test_failed_build_keeps_path_unset(self):
+        import tempfile
+        s = make({"model": {"cards": [364]}, "pkg": {"name": "demo"}})
+        with tempfile.TemporaryDirectory() as d:
+            r = s.build_s9(d, lambda argv: (1, "boom"))
+            self.assertEqual(ids(r["findings"]), ["S9.build"])
+            self.assertNotIn("path", s.studio.recipe["pkg"])
+
+
 if __name__ == "__main__":
     unittest.main()

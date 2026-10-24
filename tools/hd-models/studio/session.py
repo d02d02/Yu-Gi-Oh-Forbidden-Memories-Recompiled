@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from . import audit
+from . import build
 from . import clipdata
 from . import clips
 from . import look
@@ -203,6 +204,17 @@ class Session:
         if contact:
             lengths["attack"] = contact["row_length"]
         return look.run_s7(rec, lengths)["findings"]
+
+    def build_s9(self, out_dir, runner=None):
+        """Build the mod twice into out_dir, store the S9 findings, and set pkg.path to the first build ("a")."""
+        rec = self.studio.recipe
+        cards = [int(c) for c in rec.get("model", {}).get("cards") or []]
+        kw = {"runner": runner} if runner else {}
+        result = build.run_build_s9(rec, self.glb, out_dir, cards, **kw)
+        self.studio.set_findings("S9", result["findings"], self.stage_inputs("S9"))
+        if result["build"]["ok"]:
+            self.edit("pkg.path", str(Path(out_dir) / "a"))
+        return result
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""
