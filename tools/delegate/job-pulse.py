@@ -41,7 +41,8 @@ idle_s = arg("--idle", 4) * 60
 every = arg("--every", 20)
 iter_timeout = arg("--iter-timeout", 1800)
 W = os.path.expanduser(f"~/work/{job}")
-LL = "/mnt/c/Users/mda/llm-router"
+WIN = os.name == "nt"
+LL = "C:/Users/mda/llm-router" if WIN else "/mnt/c/Users/mda/llm-router"   # same layout on WSL and Windows (Git Bash)
 db = sqlite3.connect(os.path.expanduser("~/.local/share/opencode/opencode.db"))
 try:
     ledger = sqlite3.connect(f"{LL}/data/ledger.sqlite")
@@ -73,7 +74,7 @@ def say(msg, lvl=0):  # lvl 2 = act now, 1 = progress, 0 = noise (only with --ve
         sys.exit(0 if " END " in line else 3)  # the exit wakes a plain background command, no Monitor re-arm needed
 
 
-LEDGER = "/mnt/c/Users/mda/llm-router/data/ledger.sqlite"
+LEDGER = f"{LL}/data/ledger.sqlite"
 
 
 def pending_age():
@@ -89,6 +90,11 @@ def pending_age():
 def kill_hung_call():
     """Kill this job's `opencode run` so the loop starts a fresh session; returns how many were killed."""
     n = 0
+    if WIN:   # no /proc, and WMI is unreliable here: opencode is a native opencode.exe, one job at a time, so end them all
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+            "Get-Process -Name opencode -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.Id }"],
+            capture_output=True, text=True)
+        return len(out.stdout.split())
     for pid in os.listdir("/proc"):
         if pid.isdigit():
             try:
@@ -102,7 +108,9 @@ def kill_hung_call():
 
 def alive():
     try:
-        os.kill(int(open(f"{LL}/logs/ralph-{job}.pid").read().strip()), 0)
+        pid = int(open(f"{LL}/logs/ralph-{job}.pid").read().strip())
+        if not WIN:
+            os.kill(pid, 0)   # ralph.sh removes the pid file on exit, which is the liveness signal on Windows (MSYS pids are not Windows pids)
         return True
     except (OSError, ValueError):
         return False

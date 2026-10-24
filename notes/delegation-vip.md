@@ -1,13 +1,15 @@
-# VIP delegation (highest-quality models)
+# VIP delegation (best free / non-Anthropic models, Windows worktree)
+
+**Hard rule: VIP agents never spend Anthropic tokens.** Do not launch them with the Agent tool. (2026-10-24: one was launched that way by mistake and stopped; it had made no changes.) Open: how the harness runs a model in a Windows worktree with the build, GL and disc; settle that before the first VIP job.
 
 Two classes of delegation. Pick by the table; the supervisor (Claude Code) writes the brief either way and verifies the result itself.
 
 | | Standard | VIP |
 |---|---|---|
-| Who works | free-tier models in the llm-router + OpenCode Ralph loop (`notes/delegation.md`) | the best models available (Agent tool, strongest `model`, own git worktree) |
+| Who works | free-tier models in the llm-router + OpenCode Ralph loop (`notes/delegation.md`) | the best NON-ANTHROPIC / free-API models the router offers, run through the harness (OpenCode), never the Claude Code Agent tool |
 | Work | pure-Python modules with a spec and tests, mechanical refactors, Tk widgets from wireframes | anything in `src/` (C engine, render, control channel), anything that needs the Windows build, GL window or disc, anything that modifies upstream code |
 | Where | WSL clone `~/work/<id>`, no build, no GL, no disc | Windows worktree of this repo, full toolchain, `MEMORIES_DISC` per command |
-| Cost | free, many iterations | paid; few, large, well-briefed jobs |
+| Cost | free, many iterations | free or non-Anthropic tokens only, never the user's Claude account; few, large, well-briefed jobs |
 | Brief | spec dir + checklist + `verify.sh` | `JOB.md` (goal, files, constraints, acceptance) + a verify command the supervisor runs |
 
 ## Two phases for engine work

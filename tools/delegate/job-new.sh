@@ -5,8 +5,9 @@
 # Optional paths.txt in the spec dir limits the checkout (less to wander through); the spec files are always added.
 # The Windows checkout is never touched; the job's commits come back with `git fetch` (see notes/delegation.md).
 set -eu
+. "$(dirname "$0")/env.sh"
 id="${1:?job id}"; spec="${2:?spec dir}"; base="${3:-feat/native-models-plug-and-play}"
-SRC=/mnt/c/Users/mda/games/Yu-Gi-Oh-Forbidden-Memories-Recompiled
+SRC="$DG_SRC"; [ "$DG_WIN" = 1 ] && SRC="$(cygpath -m "$SRC")"
 W="$HOME/work/$id"
 [ -e "$W" ] && { echo "job exists: $W" >&2; exit 1; }
 for f in progress.md JOB.md verify.sh; do [ -f "$spec/$f" ] || { echo "spec needs $f" >&2; exit 1; }; done

@@ -246,8 +246,8 @@ def s0(model, recipe):
     license_text = (meta.get("license") or "").strip()
     if not license_text:
         suggestion = f" The file says: {fill['license']}" if fill.get("license") else ""
-        out.append(finding("S0.licence", "fail", "The licence is empty.",
-                           "Add the licence so it is stored in the package and shown in the Library." + suggestion))
+        out.append(finding("S0.licence", "info", "The licence is empty.",
+                           "Optional: add the licence so it is stored in the package and shown in the Library." + suggestion))
     elif re.search(r"\bby\b", license_text, re.I) and not (meta.get("author") or "").strip():
         out.append(finding("S0.attribution", "warn", "The licence requires attribution but the author is empty.", "Add the author name.", value=license_text))
     cat = detect_category(model)

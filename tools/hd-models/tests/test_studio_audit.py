@@ -131,8 +131,8 @@ class TestFixtures(unittest.TestCase):
 class TestS0(unittest.TestCase):
     """Tests for S0 checks: licence, attribution, category, category-confidence, skins, ok."""
 
-    def test_licence_fail_when_empty(self):
-        """S0.licence fails when recipe meta.license is empty."""
+    def test_licence_info_when_empty(self):
+        """S0.licence is informational (never fails) when recipe meta.license is empty."""
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             p = variant(tmp, lambda doc: None)  # no-op, no extras
@@ -140,7 +140,7 @@ class TestS0(unittest.TestCase):
             findings = results["S0"]["findings"]
             fail_finding = next((f for f in findings if f["id"] == "S0.licence"), None)
             self.assertIsNotNone(fail_finding)
-            self.assertEqual(fail_finding["level"], "fail")
+            self.assertEqual(fail_finding["level"], "info")
 
     def test_licence_pass_when_set(self):
         """S0.licence passes when recipe meta.license is set."""

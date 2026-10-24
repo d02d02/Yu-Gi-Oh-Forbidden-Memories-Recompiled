@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compact job state (about 8 lines): the only thing the supervisor reads while a job runs.
 #   wsl bash .../tools/delegate/job-status.sh <id>
-id="${1:?job id}"; W="$HOME/work/$id"; LL=/mnt/c/Users/mda/llm-router
+id="${1:?job id}"; W="$HOME/work/$id"; . "$(dirname "$0")/env.sh"; LL="$DG_LL"
 base="$(cat "$HOME/work/$id.base" 2>/dev/null)"
 pid="$(cat "$LL/logs/ralph-$id.pid" 2>/dev/null)"
 if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then st="RUNNING pid=$pid"

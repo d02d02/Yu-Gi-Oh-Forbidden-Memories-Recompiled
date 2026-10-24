@@ -99,13 +99,13 @@ class TestCheckRows(unittest.TestCase):
         result = checkrows.check_rows(studio, "S0")
         rows = result["rows"]
         summary = result["summary"]
-        # Should have fail (licence, category) and warn (category-confidence)
-        self.assertEqual(summary["fail"], 2, f"expected 2 fail, got {summary}")
+        # Licence is info only; fail (category) and warn (category-confidence)
+        self.assertEqual(summary["fail"], 1, f"expected 1 fail, got {summary}")
         self.assertEqual(summary["warn"], 1, f"expected 1 warn, got {summary}")
-        self.assertEqual(summary["info"], 0, f"expected 0 info, got {summary}")
+        self.assertEqual(summary["info"], 1, f"expected 1 info, got {summary}")
         # Order: fail, warn, acked, info
         chips = [r["chip"] for r in rows]
-        self.assertEqual(chips, ["fail", "fail", "warn"])
+        self.assertEqual(chips, ["fail", "warn", "info"])
         # Check fix_targets
         fix_targets = {r["id"]: r["fix_target"] for r in rows}
         self.assertEqual(fix_targets.get("S0.licence"), "meta.license")
@@ -172,9 +172,9 @@ class TestCheckRows(unittest.TestCase):
         # Should collapse to one row with id "info*"
         self.assertEqual(len(info_rows), 1)
         self.assertEqual(info_rows[0]["id"], "info*")
-        self.assertEqual(info_rows[0]["message"], "5 checks passed")  # 5 extra added
+        self.assertEqual(info_rows[0]["message"], "6 checks passed")  # licence info + 5 extra
         self.assertTrue("collapsed" in info_rows[0])
-        self.assertEqual(len(info_rows[0]["collapsed"]), 5)
+        self.assertEqual(len(info_rows[0]["collapsed"]), 6)
 
 
 class TestSessionOpen(unittest.TestCase):
@@ -317,7 +317,7 @@ class TestSessionOpen(unittest.TestCase):
             self.assertEqual(sess.studio.state("S0"), "todo")
             ran = sess.open_stage("S0")
             self.assertTrue(ran)
-            self.assertEqual(sess.studio.state("S0"), "fail")  # licence fail
+            self.assertEqual(sess.studio.state("S0"), "pass")  # licence is info only
 
     def test_open_stage_silent_when_unchanged(self):
         import tempfile
@@ -328,11 +328,11 @@ class TestSessionOpen(unittest.TestCase):
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
             sess.run_stage("S0")
-            self.assertEqual(sess.studio.state("S0"), "fail")
+            self.assertEqual(sess.studio.state("S0"), "pass")
             # Reopen with same inputs should not run
             ran = sess.open_stage("S0")
             self.assertFalse(ran)
-            self.assertEqual(sess.studio.state("S0"), "fail")
+            self.assertEqual(sess.studio.state("S0"), "pass")
 
     def test_open_stage_runs_when_stale_and_inputs_changed(self):
         import tempfile
@@ -508,7 +508,7 @@ class TestWalk(unittest.TestCase):
 
     def test_walk(self):
         sess = self.sess
-        self.assertEqual(sess.studio.state("S0"), "fail")  # S0 fails on the licence
+        self.assertEqual(sess.studio.state("S0"), "pass")  # an empty licence does not fail S0
         sess.edit("meta.license", "CC-BY-4.0"); sess.edit("meta.author", "Tester")
         sess.change_category("C1")
         sess.run_stage("S0")
@@ -519,13 +519,13 @@ class TestWalk(unittest.TestCase):
             if row["level"] == "warn" and not row["acknowledged"]:
                 sess.acknowledge(row["id"], row.get("value"))
         self.assertTrue(rail.footer(sess.studio, "S1")["next_enabled"])
-        # Undo back until the licence edit is undone, then re-open to reveal the fail
+        # Undo back until the licence edit is undone: S0 still passes
         while sess.studio.undo_stack:
             sess.undo()
             if sess.studio.recipe.get("meta", {}).get("license") is None:
                 break
         sess.open_stage("S0")
-        self.assertEqual(sess.studio.state("S0"), "fail")
+        self.assertEqual(sess.studio.state("S0"), "pass")
 
 
 if __name__ == "__main__":
