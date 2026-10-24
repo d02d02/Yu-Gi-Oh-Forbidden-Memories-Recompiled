@@ -198,13 +198,24 @@ class Session:
         if stage == "S9":   # no build yet: only what the recipe itself can show (provenance)
             return package.run_s9(rec.get("meta", {}), "")["findings"]
         if stage == "S6":
-            frames = rec.get("acts", {}).get("attack", {}).get("clip_frames", 30)  # stand-in until E6 reads the clip
+            frames = self._attack_clip_frames(rec)
             return timemap.run_s6(rec, "attack", frames, card_id, rows)["findings"]
         # without a reference row for the card the range cannot be judged: every act in the moves gets no upper bound
         lengths = {s.get("act"): 10 ** 9 for s in rec.get("shots", []) if isinstance(s, dict)}
         if contact:
             lengths["attack"] = contact["row_length"]
         return look.run_s7(rec, lengths)["findings"]
+
+    def _attack_clip_frames(self, rec):
+        """Frame count (30 fps) of the clip the attack act names; 30 when no such clip is known."""
+        attack = rec.get("acts", {}).get("attack", {})
+        name = attack.get("source")
+        if self._model is not None and isinstance(name, str):
+            try:
+                return int(round(clipdata.clip_length(self._model, name) * clipdata.DEFAULT_FPS)) + 1
+            except KeyError:
+                pass
+        return attack.get("clip_frames", 30)
 
     def build_s9(self, out_dir, runner=None):
         """Build the mod twice into out_dir, then apply_build."""

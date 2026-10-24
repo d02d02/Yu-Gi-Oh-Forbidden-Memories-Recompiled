@@ -129,5 +129,11 @@ class TestExportReport(unittest.TestCase):
         self.assertTrue(text.startswith("# Model report"))
 
 
+class TestAttackClipFrames(unittest.TestCase):
+    def test_falls_back_without_a_model_or_a_named_clip(self):
+        self.assertEqual(make({})._attack_clip_frames({}), 30)
+        self.assertEqual(make({})._attack_clip_frames({"acts": {"attack": {"source": "X", "clip_frames": 44}}}), 44)
+
+
 if __name__ == "__main__":
     unittest.main()
