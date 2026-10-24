@@ -9,4 +9,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export RALPH_ITER_TIMEOUT="${RALPH_ITER_TIMEOUT:-1800}"
 export RALPH_AFTER_ITER="$HERE/after-iter.py"
 python3 /mnt/c/Users/mda/llm-router/scripts/budget.py 2>&1 | sed -n 1,8p   # quota left before starting
-exec bash /mnt/c/Users/mda/llm-router/scripts/ralph.sh "$HOME/work/$id" "$HERE/delegate-prompt.txt" "$max"
+# The pulse monitor runs inside this command, so one background call is the whole job. On a wake alert (STUCK-LOOP,
+# ABORT-RUN, STALLED-ITEM) the loop is stopped and the alert is printed: this command ends and re-invokes the supervisor.
+bash /mnt/c/Users/mda/llm-router/scripts/ralph.sh "$HOME/work/$id" "$HERE/delegate-prompt.txt" "$max" & rp=$!
+python3 "$HERE/job-pulse.py" "$id" --exit-on-alert --kill-idle 8 >"$HOME/work/$id.alerts" 2>&1 & pp=$!
+wait -n "$rp" "$pp" && rc=0 || rc=$?
+if [ "$rc" = 3 ] && kill -0 "$rp" 2>/dev/null; then   # pulse ended first with a wake alert
+  kill "$rp" 2>/dev/null; pkill -P "$rp" 2>/dev/null || true; echo "ALERT, loop stopped:"; tail -5 "$HOME/work/$id.alerts"; exit 3
+fi
+kill "$pp" 2>/dev/null || true
+wait "$rp" 2>/dev/null || true; exit "$rc"
