@@ -93,6 +93,7 @@ _PROBLEM_STAGE = {
 }
 
 _VALID_PROBLEMS = set(_PROBLEM_STAGE.keys())
+PROBLEMS = tuple(_PROBLEM_STAGE)
 _VALID_RESULTS = {"seen", "problem"}
 
 

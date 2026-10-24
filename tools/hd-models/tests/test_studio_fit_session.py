@@ -42,6 +42,18 @@ class TestLaterStages(unittest.TestCase):
         self.assertEqual(ids(s.run_stage("S4"))[0][:3], "S4.")   # this test file is not a glb
 
 
+class TestRunMarks(unittest.TestCase):
+    def test_add_run_mark(self):
+        s = make({})
+        m = s.add_run_mark("library", "seen", now=5.0)
+        self.assertEqual(s.studio.recipe["runs"], [m])
+        s.add_run_mark("field", "problem", "clipping", now=6.0)
+        self.assertEqual(len(s.studio.recipe["runs"]), 2)
+        self.assertEqual(s.studio.state("S8") in ("stale", "not run", "pass", "fail", "warn"), True)
+        with self.assertRaises(ValueError):
+            s.add_run_mark("field", "problem")
+
+
 class TestParseText(unittest.TestCase):
     def test_round_trip(self):
         for control, text, value in (("ints", "10, 20", [10, 20]), ("floats", "0.6, 1.8", [0.6, 1.8]),

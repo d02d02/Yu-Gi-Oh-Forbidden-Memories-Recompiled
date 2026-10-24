@@ -159,6 +159,12 @@ class Session:
         except (OSError, ValueError):
             return {}
 
+    def add_run_mark(self, row, result, problem=None, now=None):
+        """Record that a scene row was seen or has a problem, against the current source hash. Returns the mark."""
+        mark = runs.make_mark(row, result, self._sha256, time.time() if now is None else now, problem)
+        self.edit("runs", list(self.studio.recipe.get("runs", [])) + [mark])
+        return mark
+
     def _run_fit_stage(self, stage):
         """S4 reads the glb; S6-S9 read the recipe and the reference pack."""
         rec = self.studio.recipe

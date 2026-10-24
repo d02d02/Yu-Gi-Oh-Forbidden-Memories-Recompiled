@@ -14,9 +14,9 @@ from .widgets import px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
-    from studio import checkrows, knobs, rail, session as session_module
+    from studio import checkrows, knobs, preview, rail, runs, session as session_module
 except ImportError:      # the tools are not next to the editor (a frozen build): the tab says so
-    checkrows = knobs = rail = session_module = None
+    checkrows = knobs = preview = rail = runs = session_module = None
 
 TICK_MS = 300
 CHIP_COLOUR = {"fail": "#b00020", "warn": "#9a6700", "acked": "#555555", "info": "#555555", "pass": "#1a7f37"}
@@ -151,6 +151,8 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
+        if stage == "S8":
+            self.add_run_list()
         self.widgets = {}
         for k in knobs.knobs(stage):
             self.add_knob(k)
@@ -162,6 +164,54 @@ class StudioTab(Tab):
         self.undo_button.state(["!disabled"] if studio.undo_stack else ["disabled"])
         self.redo_button.state(["!disabled"] if getattr(studio, "redo_stack", None) else ["disabled"])
         self.saved.configure(text={"saved": "Saved", "unsaved": "Saving..."}.get(studio.save_state, studio.save_state))
+
+    def add_run_list(self):
+        """S8: one row per scene or act with its status, a Run button (route A: the game is launched per run) and marks."""
+        rec = self.session.studio.recipe
+        package = knobs.value(rec, "pkg.path")
+        cards = rec.get("model", {}).get("cards") or []
+        disc = preview.disc_available()
+        table = runs.status_table(rec.get("runs", []), self.session._sha256, disc)
+        for row in runs.run_rows(disc):
+            line = ttk.Frame(self.form)
+            line.pack(fill="x", pady=1)
+            ttk.Label(line, text=row["label"], width=24).pack(side="left")
+            ttk.Label(line, text=table[row["id"]], width=10).pack(side="left")
+            scene = row["id"] if row["id"] in preview.SCENES else ("arena" if row["id"].startswith("act:") else None)
+            ready = scene and package and cards and (disc or not row["needs_disc"])
+            run = ttk.Button(line, text="Run", command=lambda r=row, s=scene: self.run_scene(r, s))
+            run.pack(side="left")
+            if not ready:
+                run.state(["disabled"])
+            for text, result in (("Looks right", "seen"), ("Report a problem", "problem")):
+                ttk.Button(line, text=text, command=lambda r=row, res=result: self.mark_row(r, res)).pack(side="left", padx=2)
+        if not package:
+            ttk.Label(self.form, text="Build the package (S9) to enable Run.", style="Note.TLabel").pack(anchor="w")
+        elif not disc:
+            ttk.Label(self.form, text="Library turntable only; set MEMORIES_DISC for field and arena.", style="Note.TLabel").pack(anchor="w")
+
+    def run_scene(self, row, scene):
+        rec = self.session.studio.recipe
+        out = Path(self.session.recipe_path.parent if self.session.recipe_path else ".") / "runs" / row["id"].replace(":", "-")
+        clip = row["id"][4:] if row["id"].startswith("act:") else None
+        try:
+            self.job = preview.start(scene, out, knobs.value(rec, "pkg.path"), rec["model"]["cards"][0], clip=clip)
+        except (RuntimeError, OSError) as e:
+            self.heading.configure(text=str(e))
+
+    def mark_row(self, row, result):
+        problem = None
+        if result == "problem":
+            problem = self.ask_problem()
+            if problem is None:
+                return
+        self.session.add_run_mark(row["id"], result, problem)
+        self.draw_stage()
+
+    def ask_problem(self):
+        from tkinter import simpledialog
+        choice = simpledialog.askstring("Report a problem", "One of: " + ", ".join(runs.PROBLEMS), parent=self.right)
+        return choice if choice in runs.PROBLEMS else None
 
     def add_knob(self, k):
         recipe = self.session.studio.recipe
