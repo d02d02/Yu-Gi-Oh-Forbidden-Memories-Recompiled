@@ -1,0 +1,64 @@
+"""S6 and S7 through the Session: knobs, inputs, findings from the recipe and the reference pack."""
+import sys
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent)); sys.path.insert(0, str(HERE))
+from studio import knobs, session, state
+
+
+def make(recipe):
+    return session.Session(__file__, state.Studio(recipe), None, None)
+
+
+def ids(findings):
+    return [f["id"] for f in findings]
+
+
+class TestFitKnobs(unittest.TestCase):
+    def test_knobs_by_stage(self):
+        self.assertEqual(len(knobs.knobs("S7")), 9)
+        self.assertEqual(len(knobs.knobs("S6")), 3)
+        for k in knobs.knobs("S6") + knobs.knobs("S7"):
+            self.assertEqual(state.stage_of_path(k["path"]), k["stage"], k["path"])
+
+
+class TestParseText(unittest.TestCase):
+    def test_round_trip(self):
+        for control, text, value in (("ints", "10, 20", [10, 20]), ("floats", "0.6, 1.8", [0.6, 1.8]),
+                                     ("pairs", "0:0, 30:60", [[0, 0], [30, 60]]), ("json", '[{"act": "attack"}]', [{"act": "attack"}])):
+            self.assertEqual(knobs.parse_text(control, text), value)
+            self.assertEqual(knobs.parse_text(control, knobs.show_text(control, value)), value)
+
+    def test_bad_text_raises(self):
+        for control, text in (("ints", "a"), ("pairs", "1-2"), ("json", "{}"), ("json", "[")):
+            with self.assertRaises(ValueError):
+                knobs.parse_text(control, text)
+
+
+class TestFitSession(unittest.TestCase):
+    def test_s7_clean_and_bad(self):
+        s = make({"model": {"cards": [1]}})
+        self.assertEqual(s.run_stage("S7"), [])
+        move = {"act": "attack", "from": 0, "to": 9999, "yaw": 0, "pitch": 0, "distance": 100, "height": 0,
+                "ease": "linear", "other": False}
+        s = make({"model": {"cards": [1]}, "shots": [move]})
+        self.assertIn("S7.move-range", ids(s.run_stage("S7")))   # card 1 attack row is 270 frames
+
+    def test_s6_runs_and_stores(self):
+        s = make({"model": {"cards": [1]}, "acts": {"attack": {"strike": [10]}}})
+        s.run_stage("S6")
+        self.assertIn("S6", s.studio.findings)
+        self.assertIn("acts", s.stage_inputs("S6"))
+
+    def test_edit_marks_s7_stale(self):
+        s = make({"model": {"cards": [1]}})
+        s.run_stage("S7")
+        s.edit("look.ambient", 30)
+        self.assertEqual(s.studio.recipe["look"]["ambient"], 30)
+        self.assertEqual(s.studio.state("S7"), "stale")
+
+
+if __name__ == "__main__":
+    unittest.main()

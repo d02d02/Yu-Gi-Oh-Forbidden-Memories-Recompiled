@@ -69,7 +69,37 @@ S3_KNOBS = [
      "choices": None, "unit": None, "auto": "off", "help": "Disable PBR materials"},
 ]
 
-ALL_KNOBS = S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS
+S6_KNOBS = [
+    {"path": "acts.attack.strike", "stage": "S6", "label": "Strike frame (clip)", "control": "ints",
+     "choices": None, "unit": "frames", "auto": "", "help": "Clip frame of the blow; the disc contact frame maps to it"},
+    {"path": "acts.attack.timemap", "stage": "S6", "label": "Time map points", "control": "pairs",
+     "choices": None, "unit": None, "auto": "straight line", "help": "clip:row pairs, e.g. 0:0, 30:60"},
+    {"path": "timing.stretch_range", "stage": "S6", "label": "Allowed stretch (min, max)", "control": "floats",
+     "choices": None, "unit": None, "auto": "0.6, 1.8", "help": "Speed range the time map may use"},
+]
+
+S7_KNOBS = [
+    {"path": "look.ambient", "stage": "S7", "label": "Ambient light", "control": "number",
+     "choices": None, "unit": "%", "auto": "20", "help": "Ambient light share"},
+    {"path": "look.light_gain", "stage": "S7", "label": "Light gain", "control": "number",
+     "choices": None, "unit": "%", "auto": "100", "help": "Scene light multiplier"},
+    {"path": "look.normal_strength", "stage": "S7", "label": "Normal strength", "control": "number",
+     "choices": None, "unit": "%", "auto": "180", "help": "Normal map strength in the scene"},
+    {"path": "look.highlight", "stage": "S7", "label": "Highlight", "control": "number",
+     "choices": None, "unit": "%", "auto": "100", "help": "Specular highlight strength"},
+    {"path": "look.flip_green", "stage": "S7", "label": "Flip green (normals)", "control": "toggle",
+     "choices": None, "unit": None, "auto": "on", "help": "Flip the green channel of normal maps"},
+    {"path": "look.camera_near", "stage": "S7", "label": "Camera near", "control": "number",
+     "choices": None, "unit": "units", "auto": "1000", "help": "Near plane distance"},
+    {"path": "look.camera_keep", "stage": "S7", "label": "Camera keep", "control": "number",
+     "choices": None, "unit": "%", "auto": "50", "help": "Share of the arena camera kept"},
+    {"path": "look.camera_scale", "stage": "S7", "label": "Camera scale", "control": "number",
+     "choices": None, "unit": "%", "auto": "100", "help": "Camera distance scale"},
+    {"path": "shots", "stage": "S7", "label": "Camera moves", "control": "json",
+     "choices": None, "unit": None, "auto": "", "help": "Up to 8 moves: act, from, to, yaw, pitch, distance, height, ease, other"},
+]
+
+ALL_KNOBS = S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS + S6_KNOBS + S7_KNOBS
 KNOB_BY_PATH = {k["path"]: k for k in ALL_KNOBS}
 
 
@@ -83,7 +113,85 @@ def knobs(stage):
         return S2_KNOBS
     if stage == "S3":
         return S3_KNOBS
+    if stage == "S6":
+        return S6_KNOBS
+    if stage == "S7":
+        return S7_KNOBS
     return []
+
+
+def parse_text(control, text):
+    """Typed value for a text-entry control, or raise ValueError. Shown form is `show_text`."""
+    text = text.strip()
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    if control == "ints":
+        return [int(p) for p in parts]
+    if control == "floats":
+        return [float(p) for p in parts]
+    if control == "pairs":
+        out = []
+        for p in parts:
+            a, b = p.split(":")
+            out.append([int(a), int(b)])
+        return out
+    if control == "json":
+        import json
+        value = json.loads(text)
+        if not isinstance(value, list):
+            raise ValueError("a list is expected")
+        return value
+    raise ValueError(control)
+
+
+def show_text(control, value):
+    """Text for a typed value: the inverse of parse_text."""
+    if value is None:
+        return ""
+    if control == "pairs":
+        return ", ".join(f"{a}:{b}" for a, b in value)
+    if control == "json":
+        import json
+        return json.dumps(value)
+    if isinstance(value, list):
+        return ", ".join(map(str, value))
+    return str(value)
+
+
+def parse_text(control, text):
+    """Typed value for a text-entry control, or raise ValueError. Shown form is `show_text`."""
+    text = text.strip()
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    if control == "ints":
+        return [int(p) for p in parts]
+    if control == "floats":
+        return [float(p) for p in parts]
+    if control == "pairs":
+        out = []
+        for p in parts:
+            a, b = p.split(":")
+            out.append([int(a), int(b)])
+        return out
+    if control == "json":
+        import json
+        value = json.loads(text)
+        if not isinstance(value, list):
+            raise ValueError("a list is expected")
+        return value
+    raise ValueError(control)
+
+
+def show_text(control, value):
+    """Text for a typed value: the inverse of parse_text."""
+    if value is None:
+        return ""
+    if control == "pairs":
+        return ", ".join(f"{a}:{b}" for a, b in value)
+    if control == "json":
+        import json
+        return json.dumps(value)
+    if isinstance(value, list):
+        return ", ".join(map(str, value))
+    return str(value)
 
 
 def knob(path):

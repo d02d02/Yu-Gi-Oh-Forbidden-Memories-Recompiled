@@ -4,11 +4,14 @@ The Tk tab drives this object; it is UI-free and testable headless.
 """
 import copy
 import hashlib
+import json
 import os
 import time
 from pathlib import Path
 
 from . import audit
+from . import look
+from . import timemap
 from . import state
 import recipe
 
@@ -124,10 +127,51 @@ class Session:
             base.update({
                 "mat": copy.deepcopy(rec.get("mat", {})),
             })
+        elif stage == "S6":
+            base.update({
+                "acts": copy.deepcopy(rec.get("acts", {})),
+                "timing": copy.deepcopy(rec.get("timing", {})),
+                "cards": copy.deepcopy(rec.get("model", {}).get("cards", [])),
+            })
+        elif stage == "S7":
+            base.update({
+                "look": copy.deepcopy(rec.get("look", {})),
+                "shots": copy.deepcopy(rec.get("shots", [])),
+                "cards": copy.deepcopy(rec.get("model", {}).get("cards", [])),
+            })
         return base
+
+    @staticmethod
+    def _arena_rows():
+        """Disc reference rows from the SM0 pack (no disc needed); {} when absent."""
+        try:
+            with open(Path(__file__).parent / "reference" / "arena_rows.json", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def _run_fit_stage(self, stage):
+        """S6 and S7 read the recipe and the reference pack, not the glb."""
+        rec = self.studio.recipe
+        cards = rec.get("model", {}).get("cards") or []
+        card_id = str(cards[0]) if cards else ""
+        rows = self._arena_rows()
+        contact = timemap.contact_for(rows, card_id, "attack")
+        if stage == "S6":
+            frames = rec.get("acts", {}).get("attack", {}).get("clip_frames", 30)  # stand-in until E6 reads the clip
+            return timemap.run_s6(rec, "attack", frames, card_id, rows)["findings"]
+        # without a reference row for the card the range cannot be judged: every act in the moves gets no upper bound
+        lengths = {s.get("act"): 10 ** 9 for s in rec.get("shots", []) if isinstance(s, dict)}
+        if contact:
+            lengths["attack"] = contact["row_length"]
+        return look.run_s7(rec, lengths)["findings"]
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""
+        if stage in ("S6", "S7"):
+            findings = self._run_fit_stage(stage)
+            self.studio.set_findings(stage, findings, self.stage_inputs(stage))
+            return findings
         if self._model is None:
             # Model failed to load; audit_all will produce S0.load fail
             results = audit.audit_all(self.glb, self.studio.recipe)

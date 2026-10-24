@@ -178,8 +178,8 @@ class StudioTab(Tab):
             var = tk.StringVar(value=str(current) if current is not None else str(k["auto"]))
             widget = ttk.Combobox(row, textvariable=var, values=k["choices"] or [], state="readonly", width=18)
             widget.bind("<<ComboboxSelected>>", lambda e: self.set(k, var.get()))
-        elif control in ("number", "text", "list", "chips"):
-            shown = ", ".join(map(str, current)) if isinstance(current, list) else ("" if current is None else str(current))
+        elif control in ("number", "text", "list", "chips", "ints", "floats", "pairs", "json"):
+            shown = knobs.show_text(control, current)
             var = tk.StringVar(value=shown)
             widget = ttk.Entry(row, textvariable=var, width=24)
             widget.bind("<Return>", lambda e: self.commit_knob(k, var.get()))
@@ -198,6 +198,16 @@ class StudioTab(Tab):
         if k["control"] == "number":
             try:
                 value = float(text) if "." in text else int(text)
+            except ValueError:
+                return
+        elif k["control"] in ("ints", "floats", "pairs", "json"):
+            try:
+                value = knobs.parse_text(k["control"], text)
+            except ValueError:
+                return
+        elif k["control"] in ("ints", "floats", "pairs", "json"):
+            try:
+                value = knobs.parse_text(k["control"], text)
             except ValueError:
                 return
         elif k["control"] in ("list", "chips"):
