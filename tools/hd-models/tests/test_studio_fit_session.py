@@ -20,7 +20,8 @@ class TestFitKnobs(unittest.TestCase):
     def test_knobs_by_stage(self):
         self.assertEqual(len(knobs.knobs("S7")), 9)
         self.assertEqual(len(knobs.knobs("S6")), 3)
-        for k in knobs.knobs("S6") + knobs.knobs("S7"):
+        self.assertEqual(len(knobs.knobs("S5")), 9)
+        for k in knobs.knobs("S5") + knobs.knobs("S6") + knobs.knobs("S7"):
             self.assertEqual(state.stage_of_path(k["path"]), k["stage"], k["path"])
 
 
@@ -115,6 +116,17 @@ class TestBuildS9(unittest.TestCase):
             r = s.build_s9(d, lambda argv: (1, "boom"))
             self.assertEqual(ids(r["findings"]), ["S9.build"])
             self.assertNotIn("path", s.studio.recipe["pkg"])
+
+
+class TestExportReport(unittest.TestCase):
+    def test_writes_markdown(self):
+        import tempfile
+        s = make({"meta": {"author": "a", "license": "MIT", "url": "u"}})
+        s.run_stage("S9")
+        with tempfile.TemporaryDirectory() as d:
+            text = s.export_report(Path(d) / "r.md")
+            self.assertEqual((Path(d) / "r.md").read_text(encoding="utf-8"), text)
+        self.assertTrue(text.startswith("# Model report"))
 
 
 if __name__ == "__main__":

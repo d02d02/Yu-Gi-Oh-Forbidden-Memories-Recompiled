@@ -12,3 +12,6 @@ Expected results come from the code, not from having seen the screen. A mismatch
 | 6 | Game window, arena attack, same package | The arena fight | Dragon drawn in the arena at a sensible size, facing the opponent, animating; camera unchanged from vanilla. |
 
 After 5 and 6 I record your result in the S8 marks.
+
+| 8 | Studio tab, dragon, S9 | "Build package" and "Export report" buttons | Build runs ~1 min with the button greyed, then "Built: <path>" appears and S8 Run buttons enable. Export report writes `report.md` next to the glb (heading shows the path). |
+| 9 | RDP: play the built dragon mod in the real game window (View > Internal 2x) | Field and arena attack | Same as rows 5-6, judged by the user's eyes: size, grey texture, wing clipping, facing. I only read capture frames; they looked right. |

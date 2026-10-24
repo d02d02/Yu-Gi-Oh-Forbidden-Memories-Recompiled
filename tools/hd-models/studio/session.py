@@ -16,6 +16,7 @@ from . import clips
 from . import look
 from . import package
 from . import placement
+from . import report
 from . import runs
 from . import timemap
 from . import state
@@ -215,9 +216,18 @@ class Session:
     def apply_build(self, result, out_dir):
         """Store the S9 findings of a build and set pkg.path to the first build ("a"). Main thread only."""
         self.studio.set_findings("S9", result["findings"], self.stage_inputs("S9"))
+        self.last_build = result["build"]
         if result["build"]["ok"]:
             self.edit("pkg.path", str(Path(out_dir) / "a"))
         return result
+
+    def export_report(self, path):
+        """Write the Markdown report of every stage, the last build and the scene runs to path."""
+        rec = self.studio.recipe
+        text = report.render(self.studio.findings, rec.get("acks", []), rec.get("meta", {}),
+                             getattr(self, "last_build", None), rec.get("runs", []))
+        Path(path).write_text(text, encoding="utf-8")
+        return text
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""

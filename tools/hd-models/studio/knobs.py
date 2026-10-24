@@ -69,6 +69,18 @@ S3_KNOBS = [
      "choices": None, "unit": None, "auto": "off", "help": "Disable PBR materials"},
 ]
 
+S5_ACTS = ("idle", "enter", "attack", "hit", "destroyed", "win", "guard")
+S5_KNOBS = [
+    {"path": f"acts.{act}.source", "stage": "S5", "label": f"Clip: {act}", "control": "text",
+     "choices": None, "unit": None, "auto": "the model's own clip of that name", "help": f"Clip name for the {act} act"}
+    for act in S5_ACTS
+] + [
+    {"path": "acts.idle.loop", "stage": "S5", "label": "Idle loops", "control": "toggle",
+     "choices": None, "unit": None, "auto": "off", "help": "Check the idle clip closes its loop"},
+    {"path": "acts.attack.root_motion", "stage": "S5", "label": "Attack root motion", "control": "select",
+     "choices": ["remove", "keep"], "unit": None, "auto": "remove", "help": "Remove travel from the attack clip, or keep it"},
+]
+
 S6_KNOBS = [
     {"path": "acts.attack.strike", "stage": "S6", "label": "Strike frame (clip)", "control": "ints",
      "choices": None, "unit": "frames", "auto": "", "help": "Clip frame of the blow; the disc contact frame maps to it"},
@@ -125,7 +137,7 @@ S9_KNOBS = [
      "choices": None, "unit": None, "auto": "on", "help": "Add the card entry to mod.json"},
 ]
 
-ALL_KNOBS = S4_KNOBS + S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS + S6_KNOBS + S7_KNOBS + S9_KNOBS
+ALL_KNOBS = S4_KNOBS + S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS + S5_KNOBS + S6_KNOBS + S7_KNOBS + S9_KNOBS
 KNOB_BY_PATH = {k["path"]: k for k in ALL_KNOBS}
 
 
@@ -141,6 +153,8 @@ def knobs(stage):
         return S3_KNOBS
     if stage == "S4":
         return S4_KNOBS
+    if stage == "S5":
+        return S5_KNOBS
     if stage == "S6":
         return S6_KNOBS
     if stage == "S7":

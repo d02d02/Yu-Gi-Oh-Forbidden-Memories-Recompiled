@@ -175,9 +175,16 @@ class StudioTab(Tab):
         button.pack(anchor="w", pady=2)
         if busy:
             button.state(["disabled"])
+        ttk.Button(self.form, text="Export report", command=self.export_report).pack(anchor="w", pady=2)
         path = knobs.value(self.session.studio.recipe, "pkg.path")
         if path:
             ttk.Label(self.form, text=f"Built: {path}", style="Note.TLabel").pack(anchor="w")
+
+    def export_report(self):
+        base = self.session.recipe_path.parent if self.session.recipe_path else self.session.glb.parent
+        target = base / "report.md"
+        self.session.export_report(target)
+        self.heading.configure(text=f"Report saved: {target}")
 
     def build_package(self):
         base = self.session.recipe_path.parent if self.session.recipe_path else self.session.glb.parent
