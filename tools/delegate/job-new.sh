@@ -5,7 +5,6 @@
 # Optional paths.txt in the spec dir limits the checkout (less to wander through); the spec files are always added.
 # The Windows checkout is never touched; the job's commits come back with `git fetch` (see notes/delegation.md).
 set -eu
-export MSYS_NO_PATHCONV=1   # Git Bash would turn the leading / of sparse-checkout patterns into a Windows path
 . "$(dirname "$0")/env.sh"
 id="${1:?job id}"; spec="${2:?spec dir}"; base="${3:-feat/native-models-plug-and-play}"
 SRC="$DG_SRC"; [ "$DG_WIN" = 1 ] && SRC="$(cygpath -m "$SRC")"
@@ -15,7 +14,7 @@ for f in progress.md JOB.md verify.sh; do [ -f "$spec/$f" ] || { echo "spec need
 mkdir -p "$HOME/work"
 if [ -f "$spec/paths.txt" ]; then   # optional: only these paths are checked out (gitignore-style patterns, one per line)
   git clone -q --depth 1 --no-checkout --branch "$base" "file://$SRC" "$W"
-  git -C "$W" sparse-checkout set --no-cone --stdin < <(cat "$spec/paths.txt"; echo /progress.md; echo /JOB.md; echo /verify.sh)
+  MSYS_NO_PATHCONV=1 git -C "$(cygpath -m "$W" 2>/dev/null || echo "$W")" sparse-checkout set --no-cone --stdin < <(cat "$spec/paths.txt"; echo /progress.md; echo /JOB.md; echo /verify.sh)
   git -C "$W" checkout -q
 else
   git clone -q --depth 1 --branch "$base" "file://$SRC" "$W"
