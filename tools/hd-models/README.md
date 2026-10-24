@@ -14,6 +14,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `studio/look.py` | S7 look defaults and camera-move list: default_look, normalize_look, move count/range/values/extreme checks, brightness check, run_s7 |
 | `studio/runs.py` | S8 run list and marks: run_rows, make_mark, owning_stage, row_status, status_table, coverage/problem/stale/disc checks, run_s8 |
 | `studio/package.py` | S9 package checks: parse_native_check, native/budget/identical/provenance checks, valid_package_name, run_s9 |
+| `studio/preview.py` | Route A live preview: field_attack.py command for a package and scene, disc check, frame listing (no game change) |
 | `studio/placement.py` | S4 (size and placement) maths: `fit`, `footprint_ratio`, `check_footprint`, `check_ground`, `check_uniform_scale`, `run_s4` over a glb, headless |
 | `studio/rail.py`, `knobs.py`, `checkrows.py`, `studio/session.py`, `run_audit.py` | the Model Studio's UI-free view layer for S0-S3: rail rows, knob tables, check rows, editing/undo/debounce session and the `run_audit.py` CLI |
 | `new_native_mod.py MODEL.glb --card 364 --out mods/my-mod [-- converter options]` | the whole mod: converts into `models/<model>/` and writes or updates `mod.json`'s `native_models`, then checks it |

@@ -39,3 +39,9 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 | D1 | Disc ground truth: row length per act per monster class, contact frame per attack, camera shots | S6, S7 |
 | D2 | BLS outline and the card footprint dimensions | S4 |
 | D3 | A test corpus (one glb per category) | all |
+
+## Decision 2026-10-24: two engine routes, both validated, decide at the end
+* **Route A, no game changes:** the studio launches the game per preview with env vars (`MEMORIES_NATIVE_MODEL`, `_CLIP`, `MEMORIES_MOD_3D_MONSTERS_*`) and captures frames with `MEMORIES_WINDOW_SHOT` / `field_attack.py`. No live scrub; slower. Built first (`studio/preview.py`).
+* **Route B, engine hooks E1-E9:** live control channel in the recompiled game. Built only after A is measured.
+* Both get the same acceptance test (same model, same act, same frames); pick on speed, robustness and maintenance cost.
+* **Route A status 2026-10-24:** `studio/preview.py` (command builder, disc check, frame list; 4 tests). NOT yet run against the game: no disc on this machine. Validation to do on the disc machine: run `preview.start("field", out, <pkg>/model.json, 364)`, time it, compare frames with a plain `field_attack.py --native` run (must match), measure launch-to-first-frame seconds. Record numbers here for the A-vs-B decision.
