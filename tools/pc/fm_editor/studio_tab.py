@@ -193,9 +193,9 @@ class StudioTab(Tab):
     def run_scene(self, row, scene):
         rec = self.session.studio.recipe
         out = Path(self.session.recipe_path.parent if self.session.recipe_path else ".") / "runs" / row["id"].replace(":", "-")
-        clip = row["id"][4:] if row["id"].startswith("act:") else None
         try:
-            self.job = preview.start(scene, out, knobs.value(rec, "pkg.path"), rec["model"]["cards"][0], clip=clip)
+            preview.install(knobs.value(rec, "pkg.path"), preview.game_mods())   # pkg.path is the built mod folder (S9)
+            self.job = preview.start(scene, out, rec["model"]["cards"][0])
         except (RuntimeError, OSError) as e:
             self.heading.configure(text=str(e))
 
