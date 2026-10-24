@@ -49,7 +49,7 @@ class TestRunMarks(unittest.TestCase):
         self.assertEqual(s.studio.recipe["runs"], [m])
         s.add_run_mark("field", "problem", "clipping", now=6.0)
         self.assertEqual(len(s.studio.recipe["runs"]), 2)
-        self.assertEqual(s.studio.state("S8") in ("stale", "not run", "pass", "fail", "warn"), True)
+        self.assertEqual(s.studio.recipe["runs"][1]["problem"], "clipping")
         with self.assertRaises(ValueError):
             s.add_run_mark("field", "problem")
 
