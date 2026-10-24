@@ -24,6 +24,24 @@ class TestFitKnobs(unittest.TestCase):
             self.assertEqual(state.stage_of_path(k["path"]), k["stage"], k["path"])
 
 
+class TestLaterStages(unittest.TestCase):
+    def test_knob_counts_and_paths(self):
+        for stage in ("S4", "S9"):
+            for k in knobs.knobs(stage):
+                self.assertEqual(state.stage_of_path(k["path"]), stage, k["path"])
+
+    def test_s8_s9_findings(self):
+        s = make({"meta": {"author": "a", "license": "MIT", "url": "u"}})
+        self.assertEqual(ids(s.run_stage("S9")), [])
+        self.assertIn("S8.coverage", ids(s.run_stage("S8")))
+        s = make({})
+        self.assertIn("S9.provenance", ids(s.run_stage("S9")))
+
+    def test_s4_bad_glb_is_a_finding_not_a_crash(self):
+        s = make({"size": {"mode": "scale", "value": 100}})
+        self.assertEqual(ids(s.run_stage("S4"))[0][:3], "S4.")   # this test file is not a glb
+
+
 class TestParseText(unittest.TestCase):
     def test_round_trip(self):
         for control, text, value in (("ints", "10, 20", [10, 20]), ("floats", "0.6, 1.8", [0.6, 1.8]),

@@ -99,7 +99,33 @@ S7_KNOBS = [
      "choices": None, "unit": None, "auto": "", "help": "Up to 8 moves: act, from, to, yaw, pitch, distance, height, ease, other"},
 ]
 
-ALL_KNOBS = S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS + S6_KNOBS + S7_KNOBS
+S4_KNOBS = [
+    {"path": "size.mode", "stage": "S4", "label": "Size mode", "control": "select",
+     "choices": ["height", "extent", "scale"], "unit": None, "auto": "height", "help": "How the model is fitted to game units"},
+    {"path": "size.value", "stage": "S4", "label": "Size value", "control": "number",
+     "choices": None, "unit": None, "auto": "", "help": "Target for the mode (above 0)"},
+    {"path": "size.origin_height", "stage": "S4", "label": "Origin height", "control": "number",
+     "choices": None, "unit": "units", "auto": "0", "help": "Lift of the model's origin above the ground"},
+    {"path": "size.scale_pct", "stage": "S4", "label": "Extra scale", "control": "number",
+     "choices": None, "unit": "%", "auto": "100", "help": "Final scale, 10 to 500"},
+    {"path": "size.offset", "stage": "S4", "label": "Offset (x, y, z)", "control": "ints",
+     "choices": None, "unit": "units", "auto": "0, 0, 0", "help": "Shift: x right, y down, z forward"},
+    {"path": "size.ground_offset", "stage": "S4", "label": "Ground offset", "control": "number",
+     "choices": None, "unit": "units", "auto": "0", "help": "Expected gap between the soles and the ground"},
+    {"path": "size.floating", "stage": "S4", "label": "Floats", "control": "toggle",
+     "choices": None, "unit": None, "auto": "off", "help": "The model hovers on purpose (no ground check)"},
+    {"path": "size.center", "stage": "S4", "label": "Centre footprint", "control": "toggle",
+     "choices": None, "unit": None, "auto": "off", "help": "Centre the model over its origin"},
+]
+
+S9_KNOBS = [
+    {"path": "pkg.name", "stage": "S9", "label": "Package name", "control": "text",
+     "choices": None, "unit": None, "auto": "from the model name", "help": "Folder name: letters, digits, - and _"},
+    {"path": "pkg.write_mod", "stage": "S9", "label": "Write mod.json entry", "control": "toggle",
+     "choices": None, "unit": None, "auto": "on", "help": "Add the card entry to mod.json"},
+]
+
+ALL_KNOBS = S4_KNOBS + S0_KNOBS + S1_KNOBS + S2_KNOBS + S3_KNOBS + S6_KNOBS + S7_KNOBS + S9_KNOBS
 KNOB_BY_PATH = {k["path"]: k for k in ALL_KNOBS}
 
 
@@ -113,10 +139,14 @@ def knobs(stage):
         return S2_KNOBS
     if stage == "S3":
         return S3_KNOBS
+    if stage == "S4":
+        return S4_KNOBS
     if stage == "S6":
         return S6_KNOBS
     if stage == "S7":
         return S7_KNOBS
+    if stage == "S9":
+        return S9_KNOBS
     return []
 
 

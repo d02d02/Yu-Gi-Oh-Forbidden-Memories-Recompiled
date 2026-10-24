@@ -11,6 +11,9 @@ from pathlib import Path
 
 from . import audit
 from . import look
+from . import package
+from . import placement
+from . import runs
 from . import timemap
 from . import state
 import recipe
@@ -127,6 +130,12 @@ class Session:
             base.update({
                 "mat": copy.deepcopy(rec.get("mat", {})),
             })
+        elif stage == "S4":
+            base.update({"size": copy.deepcopy(rec.get("size", {}))})
+        elif stage == "S8":
+            base.update({"runs": copy.deepcopy(rec.get("runs", []))})
+        elif stage == "S9":
+            base.update({"pkg": copy.deepcopy(rec.get("pkg", {})), "meta": copy.deepcopy(rec.get("meta", {}))})
         elif stage == "S6":
             base.update({
                 "acts": copy.deepcopy(rec.get("acts", {})),
@@ -151,12 +160,25 @@ class Session:
             return {}
 
     def _run_fit_stage(self, stage):
-        """S6 and S7 read the recipe and the reference pack, not the glb."""
+        """S4 reads the glb; S6-S9 read the recipe and the reference pack."""
         rec = self.studio.recipe
         cards = rec.get("model", {}).get("cards") or []
         card_id = str(cards[0]) if cards else ""
         rows = self._arena_rows()
         contact = timemap.contact_for(rows, card_id, "attack")
+        if stage == "S4":
+            size = dict(rec.get("size", {}))
+            if size.get("mode") == "scale":   # the recipe says "scale", the fit says "percent"
+                size["mode"] = "percent"
+            try:
+                return placement.run_s4(str(self.glb), {**rec, "size": size})["findings"]
+            except (ValueError, audit.AuditError) as e:
+                return [audit.finding("S4.fit", "fail", f"The size could not be fitted: {e}", "Set a size mode and value.")]
+        if stage == "S8":
+            disc = bool(os.environ.get("MEMORIES_DISC"))
+            return runs.run_s8(rec, self._sha256, disc)["findings"]
+        if stage == "S9":   # no build yet: only what the recipe itself can show (provenance)
+            return package.run_s9(rec.get("meta", {}), "")["findings"]
         if stage == "S6":
             frames = rec.get("acts", {}).get("attack", {}).get("clip_frames", 30)  # stand-in until E6 reads the clip
             return timemap.run_s6(rec, "attack", frames, card_id, rows)["findings"]
@@ -168,7 +190,7 @@ class Session:
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""
-        if stage in ("S6", "S7"):
+        if stage in ("S4", "S6", "S7", "S8", "S9"):
             findings = self._run_fit_stage(stage)
             self.studio.set_findings(stage, findings, self.stage_inputs(stage))
             return findings
