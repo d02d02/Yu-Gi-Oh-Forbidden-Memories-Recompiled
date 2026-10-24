@@ -1,0 +1,25 @@
+# Job sm11-procedural
+
+## Goal
+One module `tools/hd-models/studio/procedural.py` and tests: procedural root-motion tracks for acts a model has no clip for (the Studio's S5 "procedural" source). Pure Python 3.12, stdlib `unittest` and `math` only (no numpy, no tkinter, no glb). A track is a list with one entry per frame: `{"pos": (x, y, z), "rot": (qx, qy, qz, qw), "scale": s}`, an OFFSET applied on top of the model's rest/idle pose at its root: position in model units, rotation as a unit quaternion, uniform scale multiplier. Tests: `tools/hd-models/tests/test_studio_procedural.py`, one class per item.
+
+## Facts (do NOT read other studio modules; this module is self-contained)
+- Run: `python3 tools/hd-models/tests/test_studio_procedural.py -k TestEase` from the repo root. Test header: `HERE = Path(__file__).resolve().parent; sys.path.insert(0, str(HERE.parent)); sys.path.insert(0, str(HERE))`, then `from studio import procedural`. The file MUST end with `if __name__ == "__main__":\n    unittest.main()`.
+- Axes: y up. `forward=(fx, fz)` is a horizontal unit vector, default `(0.0, 1.0)` (the model faces +z). "Tip back" means rotate about the horizontal axis perpendicular to forward so the head moves opposite to forward: axis = `(fz, 0, -fx)`... use `axis_back(forward)` = `(-fz, 0.0, fx)` normalised and pick the sign so a positive angle moves the top of the model AWAY from forward (test: rotating the point (0,1,0) by `tip(forward, +angle)` gives a vector whose dot with forward is negative).
+- `height` is the model's height in model units (a positive number); all offsets scale with it. `frames` is the track length (integer >= 2); frame 0 is time 0 and the last frame is time 1.
+- Every track must satisfy: length == frames; all numbers finite; `rot` unit length within 1e-6; `scale` > 0.
+- Durations are in frames at 30 fps, supplied by the caller.
+
+## Items (see progress.md)
+1. Math helpers: `ease(t, kind)` (kind "linear", "in", "out", "inout"; t clamped to 0..1; 0 -> 0, 1 -> 1; "in" is t*t, "out" is 1-(1-t)^2, "inout" is smoothstep 3t^2-2t^3), `quat_axis_angle(axis, angle)` (axis normalised inside; zero axis raises ValueError), `quat_mul(a, b)` (Hamilton product, (x, y, z, w) order), `quat_rotate(q, v)`, `tip(forward, angle)` (a quaternion tipping the model backwards by `angle` radians as described in Facts), `IDENTITY = (0.0, 0.0, 0.0, 1.0)`.
+2. `recoil(frames, height, forward=(0.0, 1.0), strength=0.08)`: the model is pushed back along -forward by `strength * height` at 30% of the track (ease out), tips back 0.12 rad at the same moment, then returns to identity at the last frame (ease inout). Frame 0 and the last frame are exactly identity (pos zeros, rot IDENTITY, scale 1.0).
+3. `collapse(frames, height, forward=(0.0, 1.0), sink=0.35)`: tips back from 0 to 1.4 rad over the first 60% (ease in), while pos y falls to `-sink * height` and pos moves back along -forward by `0.25 * height`; then HOLDS the final pose to the end. Frame 0 is identity. The final frame has y == `-sink * height`.
+4. `brace(frames, height, forward=(0.0, 1.0), crouch=0.12)`: crouch (pos y down by `crouch * height`, scale y is not available so only `scale` 1.0) and lean forward 0.15 rad (negative tip), reached by 40% (ease out), held until 80%, then back to identity at the last frame. First and last frame identity.
+5. `lunge(frames, height, strike_frame, forward=(0.0, 1.0), reach=0.3)`: anticipation (frames 0..strike*0.5: pos back along -forward by `0.1 * height`, tip back 0.1 rad, ease in), then the lunge to the strike frame (pos forward by `reach * height`, tip forward 0.2 rad, ease out), then recovery to identity at the last frame (ease inout). `strike_frame` must satisfy `0 < strike_frame < frames - 1` else `ValueError`. At `strike_frame` the pos along forward equals `reach * height` (within 1e-6). First and last frame identity.
+6. `rise(frames, height, bob=0.05)` and `sample(kind, frames, height, **kw)` and `check_track(track, frames)`. `rise` is the win pose: pos y goes up by `bob * height` and back down, one full sine period over the track (`bob * height * sin(2*pi*t)` is NOT used: use `bob * height * sin(pi*t)` so it is one hump), scale 1.0 + 0.02 at the hump, identity at both ends. `sample` dispatches on kind in `procedural.KINDS = ("recoil", "collapse", "brace", "lunge", "rise")` and raises `ValueError` on an unknown kind. `check_track(track, frames)` returns a list of problem strings (empty when the track satisfies the Facts' invariants): wrong length, non-finite number, rot not unit, scale <= 0. Tests: every kind's track passes `check_track`; a hand-broken track fails with the right message mentioning "length", "finite", "unit" or "scale".
+
+## Constraints
+One item per session; WRITE small: a new file at most 60 lines per write, grow it by edits of at most 60 lines. Do not edit anything except `studio/procedural.py` and `tests/test_studio_procedural.py`. Never edit any other file, in particular not `tests/test_studio_audit.py`, README.
+
+## Acceptance
+`bash verify.sh` exits 0.
