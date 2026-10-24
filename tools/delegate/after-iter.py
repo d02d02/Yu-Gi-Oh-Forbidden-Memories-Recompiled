@@ -54,7 +54,7 @@ def passes(item):
     """True only on positive evidence: exit 0, and for a test command that tests ran (and at least min_tests), and symbols exist."""
     cmd = item["check"]
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=240)
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240)
     except subprocess.TimeoutExpired:
         item["why"] = "check timed out"
         return False
@@ -82,12 +82,12 @@ def untick(item, reason):
 
 def repair_tests():
     """The agent sometimes drops an existing test class or the `if __name__` tail while growing a test file; put them back."""
-    r = subprocess.run(["git", "ls-files", "-m", "-o", "--exclude-standard", "--", "*test_*.py"], capture_output=True, text=True)
-    r2 = subprocess.run(["git", "ls-files", "--", "*test_*.py"], capture_output=True, text=True)
+    r = subprocess.run(["git", "ls-files", "-m", "-o", "--exclude-standard", "--", "*test_*.py"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    r2 = subprocess.run(["git", "ls-files", "--", "*test_*.py"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     for f in sorted(set(r.stdout.split()) | set(r2.stdout.split())):
         if not os.path.exists(f):
             continue
-        old = subprocess.run(["git", "show", f"HEAD:{f}"], capture_output=True, text=True).stdout
+        old = subprocess.run(["git", "show", f"HEAD:{f}"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
         new = open(f, encoding="utf-8").read()
         tail = "\nif __name__ == \"__main__\":\n    unittest.main()\n"
         body = new.split("\nif __name__")[0].rstrip("\n") + "\n"
