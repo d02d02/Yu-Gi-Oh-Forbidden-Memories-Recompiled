@@ -6,7 +6,9 @@ Read JOB.md first. One item per session; the check is the line under the item.
 Not started.
 
 ## Items
-- [ ] 1. `Frame` dataclass and `FrameStream.frames()` with change detection (hash), rate cap, max_frames, close(); fake-game tests for: yields only changed frames, rate cap via injected clock, max_frames, close, ControlError ends the stream and sets error
+- [ ] 1. `Frame` dataclass and `FrameStream.frames()` with change detection (hash) and max_frames; fake-game tests: yields only changed frames (first poll always yields), seq counts from 0, max_frames stops
+  check: python tools/hd-models/tests/test_studio_stream.py
+- [ ] 1b. rate cap via injected `clock`/`sleep`, `close()`, `ControlError` ends the stream and sets `self.error`; tests for each
   check: python tools/hd-models/tests/test_studio_stream.py
 - [ ] 2. `stats()` and `latest()`; tests incl. a slow consumer (no pile-up: frames skipped, not queued)
   check: python tools/hd-models/tests/test_studio_stream.py
