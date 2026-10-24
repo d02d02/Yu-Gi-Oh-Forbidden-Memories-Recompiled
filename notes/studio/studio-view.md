@@ -68,7 +68,7 @@ Per stage: `todo` (never run) | `pass` | `warn` | `fail` | `stale`.
 **Checks**
 | id | Fails/warns when | Fix line |
 |---|---|---|
-| `S4.footprint` | warn if the chosen fit pose exceeds the footprint by >10%; fail by >60% | "Fit with a smaller pose, lower the scale to N%, or switch to Extent." |
+| `S4.footprint` | warn if the chosen fit pose exceeds the footprint by >10% (never fail: proxy box, wings exceed it) | "Fit with a smaller pose, lower the scale to N%, or switch to Extent." |
 | `S4.footprint-attack` | warn if the widest attack pose exceeds 1.5x the footprint | "Lower scale or accept clipping into the neighbour." |
 | `S4.head-clearance` | fail if the head is cut by the near plane in the arena preset | "Lower the height or raise camera distance in S7." |
 | `S4.ground` | warn if the lowest idle point is more than 8 units off the ground (no floater flag) | "Set ground offset to N or mark the model as floating." |

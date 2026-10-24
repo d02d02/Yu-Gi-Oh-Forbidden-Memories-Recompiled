@@ -62,14 +62,14 @@ def footprint_ratio(extent_x, extent_z):
 def check_footprint(extent_x, extent_z):
     """Findings for a model's footprint vs the disc footprint proxy.
 
-    None when r <= 1.10; warn when 1.10 < r <= 1.60; fail above 1.60.
+    None when r <= 1.10; warn above (never fail: the box is a proxy and wings exceed it).
     r = max(extent_x/191, extent_z/236). Percentages are rounded to whole
     numbers: N = how much wider than the card, M = scale to fit the card.
     """
     ratio = footprint_ratio(extent_x, extent_z)["ratio"]
     if ratio <= 1.10:
         return None
-    level = "warn" if ratio <= 1.60 else "fail"
+    level = "warn"
     wider_pct = round((ratio - 1) * 100)
     scale_pct = round(100 / ratio)
     message = f"Model is {wider_pct}% wider than the card footprint."

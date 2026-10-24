@@ -113,10 +113,10 @@ class TestCheckFootprint(unittest.TestCase):
         r = placement.check_footprint(191 * 1.60, 236)  # r ~ 1.60
         self.assertEqual(r["level"], "warn")
 
-    def test_fail_above_1_60(self):
+    def test_warn_only_above_1_60(self):
         r = placement.check_footprint(191 * 1.70, 236)  # r ~ 1.70
         self.assertEqual(r["id"], "S4.footprint")
-        self.assertEqual(r["level"], "fail")
+        self.assertEqual(r["level"], "warn")
         self.assertEqual(r["message"], "Model is 70% wider than the card footprint.")
         self.assertEqual(r["fix"], "Fit with a smaller pose, lower the scale to 59%, or switch to Extent.")
         self.assertEqual(r["value"], 70)
@@ -260,12 +260,12 @@ class TestRunS4(unittest.TestCase):
         self.assertIsInstance(r["findings"], list)
         self.assertAlmostEqual(r["fit"]["height"], 373.0)
 
-    def test_height_mode_footprint_fail(self):
+    def test_height_mode_footprint_warn(self):
         r = placement.run_s4(self.glb, {"size": {"mode": "height"}})
         self.assertAlmostEqual(r["fit"]["scale"], 373 / 1.75, delta=1e-3)
         fp = [f for f in r["findings"] if f["id"] == "S4.footprint"]
         self.assertEqual(len(fp), 1)
-        self.assertEqual(fp[0]["level"], "fail")
+        self.assertEqual(fp[0]["level"], "warn")
         self.assertEqual(fp[0]["message"], "Model is 67% wider than the card footprint.")
         self.assertEqual(fp[0]["value"], 67)
         self.assertFalse([f for f in r["findings"] if f["id"] == "S4.ground"])
