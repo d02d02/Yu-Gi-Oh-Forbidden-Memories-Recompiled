@@ -701,3 +701,6 @@ class TestIntegration(unittest.TestCase):
             # but the structure should be valid
             self.assertIn("ok", report["build"])
             self.assertIn("reasons", report["build"])
+
+if __name__ == "__main__":
+    unittest.main()
