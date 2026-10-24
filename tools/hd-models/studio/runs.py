@@ -173,9 +173,12 @@ def check_coverage(table: dict[str, str], disc_available: bool) -> list[dict[str
 
     rows = run_rows(disc_available)
     not_run = []
+    waiting = []
     for row in rows:
         row_id = row["id"]
         if row["needs_disc"] and not disc_available:
+            if table.get(row_id) == "not run":
+                waiting.append(row_id)
             continue
         if table.get(row_id) == "not run":
             not_run.append(row_id)
@@ -188,6 +191,9 @@ def check_coverage(table: dict[str, str], disc_available: bool) -> list[dict[str
                 fix="Run the remaining rows.",
             )
         ]
+    if waiting:   # not a fail (nothing can run without the disc), but never a clean pass
+        return [audit.finding("S8.coverage", "warn", f"Waiting for the disc: {len(waiting)} rows not run.",
+                              fix="Set MEMORIES_DISC and run them.")]
     return []
 
 

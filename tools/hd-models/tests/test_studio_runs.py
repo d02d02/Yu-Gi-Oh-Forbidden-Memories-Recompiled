@@ -155,11 +155,11 @@ class TestCoverage(unittest.TestCase):
         self.assertIn("Not run yet:", f["message"])
         self.assertEqual(f["fix"], "Run the remaining rows.")
 
-    def test_check_coverage_disc_absent_skips_disc_rows(self):
+    def test_check_coverage_disc_absent_warns_not_passes(self):
         marks = [runs.make_mark("library", "seen", "h", 1.0)]
         table = runs.status_table(marks, "h", False)
         findings = runs.check_coverage(table, False)
-        self.assertEqual(findings, [])
+        self.assertEqual([(f["id"], f["level"]) for f in findings], [("S8.coverage", "warn")])
 
     def test_check_coverage_disc_absent_library_not_run_reported(self):
         marks = []
