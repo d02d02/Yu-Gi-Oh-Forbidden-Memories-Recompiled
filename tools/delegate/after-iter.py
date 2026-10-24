@@ -34,6 +34,8 @@ def items():
 def passes(cmd):
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=240)
+        if "test_" in cmd and not re.search(r"Ran [1-9]\d* test", r.stdout + r.stderr):
+            return False  # a test command that ran no tests (missing main tail, wrong -k) is not a pass
         return r.returncode == 0
     except subprocess.TimeoutExpired:
         return False
@@ -46,8 +48,11 @@ def untick(item, reason):
 
 def repair_tests():
     """The agent sometimes drops an existing test class or the `if __name__` tail while growing a test file; put them back."""
-    r = subprocess.run(["git", "diff", "--name-only", "HEAD"], capture_output=True, text=True)
-    for f in [x for x in r.stdout.split() if re.search(r"(^|/)test_[^/]*\.py$", x) and os.path.exists(x)]:
+    r = subprocess.run(["git", "ls-files", "-m", "-o", "--exclude-standard", "--", "*test_*.py"], capture_output=True, text=True)
+    r2 = subprocess.run(["git", "ls-files", "--", "*test_*.py"], capture_output=True, text=True)
+    for f in sorted(set(r.stdout.split()) | set(r2.stdout.split())):
+        if not os.path.exists(f):
+            continue
         old = subprocess.run(["git", "show", f"HEAD:{f}"], capture_output=True, text=True).stdout
         new = open(f, encoding="utf-8").read()
         tail = "\nif __name__ == \"__main__\":\n    unittest.main()\n"
