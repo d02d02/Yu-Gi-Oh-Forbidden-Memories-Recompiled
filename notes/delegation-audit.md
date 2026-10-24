@@ -101,3 +101,15 @@ Rule: before restarting a job run `wsl pgrep -af ralph.sh`; if a loop for the jo
 Failures: 429 15, other 1
 
 Request size (mean chars) by quarter: 98,615 -> 93,889 -> 68,916 -> 65,684
+
+### Router report: `sm5-placement` (2026-10-24 00:46)
+112 calls over 24 min, 112 ok (100%), 2,431,237 tokens, 0 wasted (0%).
+
+| model | calls | ok | p50 | p95 |
+|---|---|---|---|---|
+| openrouter/poolside/laguna-s-2.1:free | 112 | 112 | 4.8s | 44.3s |
+
+Request size (mean chars) by quarter: 31,543 -> 28,978 -> 34,228 -> 141,388
+
+### Read guard result (2026-10-24)
+`sm5-placement` (6 items, specs with pasted facts, "write small" rule, OpenCode plugin `tools/delegate/opencode-plugin/token-guard.js` + the reading rule in `delegate-prompt.txt`): 833k input tokens, 139k per item, 20 minutes, one pass. Earlier jobs: recipe-v1 316k, sm2-audit 383k, sm3-model 691k per item. Also noted: the agent mangled one README row (stray leading space) — always diff the README after landing.

@@ -29,3 +29,13 @@ Order notes
 
 ## SM3 split (2026-10-23)
 The delegation harness has no display, so a Tk check would skip and pass vacuously. SM3 is therefore two parts. **SM3a** (delegated, job `sm3-model`, spec `tools/delegate/specs/sm3-model`): the UI-free layer in `tools/hd-models/studio/`: `rail.py` (rail rows, footer gating), `knobs.py` (S0-S3 knob tables as data), `checkrows.py` (check rows with fix targets), `session.py` (open a glb, run stages on a cached model, inputs digest and silent return of unchanged stale stages, 300 ms debounce, autosave, undo), `run_audit.py` (the subprocess the tab polls). **SM3b** (not delegated): the thin Tk tab on those modules in `tools/pc/fm_editor/`, written and checked on the Windows machine.
+
+## Status (2026-10-24)
+| Step | State |
+|---|---|
+| SM0 | done except the card footprint (proxy = BLS bbox); reference pack in `tools/hd-models/studio/reference/`; finding: arena camera is per-monster script data, not per class |
+| SM1, SM2 | done (recipe.py, state.py, audit.py) |
+| SM3a, SM3b | done (view layer by the harness; Studio tab `tools/pc/fm_editor/studio_tab.py`; the user has not walked it yet) |
+| SM4 | not started (engine, Claude) |
+| SM5 | S4 maths `placement.py` done (harness); S5 clips and viewer parts open |
+| SM6-SM8 | not started; `sm6-timemap` is the next harness job |
