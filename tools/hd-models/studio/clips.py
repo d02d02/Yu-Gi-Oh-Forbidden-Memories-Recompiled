@@ -115,6 +115,9 @@ def bone_stretch(P, parents):
     if not P:
         return {"ratio_min": 1.0, "ratio_max": 1.0, "joint": 0}
     frame0 = P[0]
+    longest = max((sum((a - b) ** 2 for a, b in zip(frame0[j], frame0[parents[j]])) ** 0.5
+                   for j in range(1, len(frame0)) if parents[j] >= 0), default=0.0)
+    floor = longest * 0.01   # a bone under 1% of the longest is a joint marker, not a bone: its ratio means nothing
     ratio_min = 1.0
     ratio_max = 1.0
     best_dev = -1.0
@@ -126,7 +129,7 @@ def bone_stretch(P, parents):
         f0x, f0y, f0z = frame0[j]
         px, py, pz = frame0[p]
         base = ((f0x - px) ** 2 + (f0y - py) ** 2 + (f0z - pz) ** 2) ** 0.5
-        if base == 0.0:
+        if base == 0.0 or base < floor:
             continue
         b_min = 1.0
         b_max = 1.0

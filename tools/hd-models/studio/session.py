@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 
 from . import audit
+from . import clipdata
+from . import clips
 from . import look
 from . import package
 from . import placement
@@ -130,6 +132,8 @@ class Session:
             base.update({
                 "mat": copy.deepcopy(rec.get("mat", {})),
             })
+        elif stage == "S5":
+            base.update({"acts": copy.deepcopy(rec.get("acts", {}))})
         elif stage == "S4":
             base.update({"size": copy.deepcopy(rec.get("size", {}))})
         elif stage == "S8":
@@ -180,6 +184,12 @@ class Session:
                 return placement.run_s4(str(self.glb), {**rec, "size": size})["findings"]
             except (ValueError, audit.AuditError) as e:
                 return [audit.finding("S4.fit", "fail", f"The size could not be fitted: {e}", "Set a size mode and value.")]
+        if stage == "S5":
+            if self._model is None:
+                return [audit.finding("S5.model", "fail", "The model did not open.", "Open a rigged glb.")]
+            loops = rec.get("acts", {}).get("idle", {}).get("loop") and ["idle"] or ()
+            sampled = clipdata.sample_all(self._model, loops=loops)
+            return clips.run_s5(sampled, self._model.parents)["findings"]
         if stage == "S8":
             disc = bool(os.environ.get("MEMORIES_DISC"))
             return runs.run_s8(rec, self._sha256, disc)["findings"]
@@ -196,7 +206,7 @@ class Session:
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""
-        if stage in ("S4", "S6", "S7", "S8", "S9"):
+        if stage in ("S4", "S5", "S6", "S7", "S8", "S9"):
             findings = self._run_fit_stage(stage)
             self.studio.set_findings(stage, findings, self.stage_inputs(stage))
             return findings

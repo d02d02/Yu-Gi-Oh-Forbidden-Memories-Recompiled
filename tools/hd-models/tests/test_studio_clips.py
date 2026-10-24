@@ -297,5 +297,12 @@ class TestRunS5(unittest.TestCase):
         # Ensure sorted name order in stats
         self.assertEqual(list(res["stats"].keys()), sorted(clips_dict.keys()))
 
+class TestStretchFloor(unittest.TestCase):
+    def test_tiny_bones_are_ignored(self):
+        parents = [-1, 0, 1]
+        P = [[(0, 0, 0), (10, 0, 0), (10.001, 0, 0)], [(0, 0, 0), (10, 0, 0), (10.5, 0, 0)]]
+        self.assertEqual(clips.bone_stretch(P, parents)["ratio_max"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,11 @@ class TestRunMarks(unittest.TestCase):
             s.add_run_mark("field", "problem")
 
 
+class TestS5(unittest.TestCase):
+    def test_no_model_is_a_finding(self):
+        self.assertEqual(ids(make({}).run_stage("S5")), ["S5.model"])
+
+
 class TestParseText(unittest.TestCase):
     def test_round_trip(self):
         for control, text, value in (("ints", "10, 20", [10, 20]), ("floats", "0.6, 1.8", [0.6, 1.8]),
