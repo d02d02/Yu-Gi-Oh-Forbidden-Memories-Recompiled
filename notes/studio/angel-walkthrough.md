@@ -51,3 +51,4 @@ Model: `tmp/agent/angel/work/angel_rigged.glb` (no clips; mesh and skeleton from
 * Open: user is still walking S8 (Run buttons); window flash per shot needs Route B capture from a running game; Browse button, last error in check row, procedural idle fallback not built; R1-R7 after Route B.
 * Permissions: added allow rules to `~/.claude/settings.json` (python, git, harness scripts, Stop-Process, Get-Process).
 * Validated 2026-10-25: library turntable (multiple rotated views) OK. Game window no longer flashes: `MEMORIES_WINDOW_HIDDEN=1` (sdl.c, opt-in) set by library_shot.py. Original model on first frame = hypothesis: first frame after a state load is the saved original picture, native model draws from the next frame (unverified).
+* Validated 2026-10-25: all Run buttons (S8) look right; capture windows hidden and silent (library_shot, field_attack, attack_*). User now at S9.
