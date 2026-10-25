@@ -553,7 +553,139 @@ int main(void)
         CHECK(strstr(reply, "err not an anim command") != NULL);
     }
 
-    if (failures) {
+    /* Parser torture: the command parser must never crash, must NUL-terminate within n, must never
+     * write past the buffer (a canary byte after the n-byte region is never written), and an `err`
+     * reply must leave the transport state byte-for-byte unchanged. */
+    {
+        char reply[256];
+        char before[256], after[256];
+
+        /* Malformed top-level lines all error and do not crash. */
+        CHECK(NativeAnim_Command("", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim ", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("   \t ", reply, sizeof(reply)) == -1);
+
+        /* A 4000-char line is rejected and the reply stays NUL-terminated. */
+        {
+            char big[4001];
+            memset(big, 'x', sizeof(big) - 1);
+            big[0] = 'a'; big[1] = 'n'; big[2] = 'i'; big[3] = 'm'; big[4] = ' ';
+            big[sizeof(big) - 1] = '\0';
+            memset(reply, 0xAB, sizeof(reply));
+            CHECK(NativeAnim_Command(big, reply, sizeof(reply)) == -1);
+            CHECK(memchr(reply, '\0', sizeof(reply)) != NULL);
+        }
+
+        /* The reply buffer is never overrun and is NUL-terminated whenever n > 0. */
+        {
+            static const char *const cmds[] = {
+                "anim get",
+                "anim clip Sword_Attack",
+                "anim speed nan",
+                "anim pause",
+                "anim unknown junk"
+            };
+            static const size_t sizes[] = {0, 1, 2, 8, 64};
+            size_t ci, si;
+            for (ci = 0; ci < sizeof(cmds) / sizeof(cmds[0]); ci++) {
+                for (si = 0; si < sizeof(sizes) / sizeof(sizes[0]); si++) {
+                    size_t ns = sizes[si];
+                    unsigned char buf[80];
+                    memset(buf, 0xAB, sizeof(buf));
+                    NativeAnim_Command(cmds[ci], (char *)buf, ns);
+                    CHECK(buf[ns] == 0xAB); /* the canary byte after the buffer is never written */
+                    if (ns > 0) CHECK(memchr(buf, '\0', ns) != NULL); /* always NUL-terminated within n */
+                }
+            }
+        }
+
+        /* Numbers: non-finite and trailing garbage are rejected; in-range values clamp. */
+        NativeAnim_TransportInit();
+        CHECK(NativeAnim_Command("anim speed 2.5", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim speed nan", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim speed inf", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim speed 1e99", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim speed 1,5", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim speed -1", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.speed >= 0.05f);
+        CHECK(NativeAnim_Command("anim speed 0", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.speed >= 0.05f);
+        CHECK(NativeAnim_Command("anim speed 9", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.speed <= 8.0f);
+        CHECK(NativeAnim_Command("anim speed 0x10", reply, sizeof(reply)) == 0); /* hex 16 clamps to 8 */
+        CHECK(native_anim_transport.speed <= 8.0f);
+        CHECK(NativeAnim_Command("anim phase 1.0000001", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.phase_override < 0); /* out of range clears */
+        CHECK(NativeAnim_Command("anim phase -0.0001", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.phase_override < 0);
+        CHECK(NativeAnim_Command("anim phase abc", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim phase nan", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim phase 0.5", reply, sizeof(reply)) == 0);
+        CHECK(near(native_anim_transport.phase_override, 0.5f));
+        CHECK(NativeAnim_Command("anim frame -5", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.frame_override < 0); /* negative clears */
+        CHECK(NativeAnim_Command("anim frame 99999999999", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim frame 1.5", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim frame 12", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.frame_override == 12);
+
+        /* Tabs are whitespace at every boundary. */
+        NativeAnim_TransportInit();
+        CHECK(NativeAnim_Command("anim\tpause", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.paused == 1);
+        CHECK(NativeAnim_Command("anim\tspeed\t2", reply, sizeof(reply)) == 0);
+        CHECK(near(native_anim_transport.speed, 2.0f));
+        CHECK(NativeAnim_Command("  anim\tclip\tauto ", reply, sizeof(reply)) == 0);
+        CHECK(native_anim_transport.forced_clip == NULL);
+
+        /* An err reply leaves the state unchanged (compare "anim get" before and after). */
+        NativeAnim_TransportInit();
+        CHECK(NativeAnim_Command("anim clip Sword_Attack", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim speed 2.5", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim phase 0.5", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim frame 10", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim pause", reply, sizeof(reply)) == 0);
+        CHECK(NativeAnim_Command("anim get", before, sizeof(before)) == 0);
+        CHECK(NativeAnim_Command("anim speed nan", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim phase abc", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim frame 1.5", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim frame 99999999999", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim bogus", reply, sizeof(reply)) == -1);
+        CHECK(NativeAnim_Command("anim get", after, sizeof(after)) == 0);
+        CHECK(strcmp(before, after) == 0);
+        NativeAnim_TransportInit();
+    }
+
+        /* Scrub parity: active phase matches inactive frame (differential test) */
+        {
+            const float phases[] = {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f};
+            const int lengths[] = {5, 10, 47};
+            int rows_to_test[2] = {0, 3}; /* 0 non-attack, 3 attack */
+            for (size_t pi = 0; pi < sizeof(phases)/sizeof(phases[0]); ++pi) {
+                for (size_t li = 0; li < sizeof(lengths)/sizeof(lengths[0]); ++li) {
+                    int len = lengths[li];
+                    float P = phases[pi];
+                    for (size_t ri = 0; ri < sizeof(rows_to_test)/sizeof(rows_to_test[0]); ++ri) {
+                        int row = rows_to_test[ri];
+                        /* active transport */
+                        NativeAnim_TransportInit();
+                        NativeAnim_TransportSetActive(1);
+                        NativeAnim_TransportSetPhase(P);
+                        set_draw(1, 0, row, 3, 0, len);
+                        float t_active = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+                        /* inactive transport */
+                        NativeAnim_TransportInit();
+                        int frame = (int)(P * 16.0f * (float)len + 0.5f);
+                        set_draw(1, 0, row, 3, frame, len);
+                        float t_inactive = NativeAnim_Choose(&draw, &mesh, NULL, &clip);
+                        CHECK(near(t_active, t_inactive));
+                    }
+                }
+            }
+        }
+
+        if (failures) {
         fprintf(stderr, "native_anim_test: %d failed\n", failures);
         return 1;
     }

@@ -308,7 +308,7 @@ int Control_Apply(char *text)
 static int handle(char *text)
 {
     /* Forward "anim ..." commands to the native animation transport. */
-    if (strncmp(text, "anim ", 5) == 0) {
+    if (strncmp(text, "anim", 4) == 0 && (text[4] == ' ' || text[4] == '\t')) {
         char reply_buf[256];
         int rc = NativeAnim_Command(text, reply_buf, sizeof(reply_buf));
         if (rc == 0) {

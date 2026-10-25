@@ -1,5 +1,6 @@
 /* The native model's animation without OpenGL (native_anim.h). */
 #include "pc/render/native_anim.h"
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -490,24 +491,27 @@ static const char *skip_ws(const char *s)
     return s;
 }
 
+static int is_ws(char c) { return c == ' ' || c == '\t'; }
+
 /* Parse "anim ..." command. */
 int NativeAnim_Command(const char *line, char *reply, size_t n)
 {
     line = skip_ws(line);
-    if (strncmp(line, "anim ", 5) != 0) {
+    if (strncmp(line, "anim", 4) != 0 || (!is_ws(line[4]) && line[4] != '\0')) {
         snprintf(reply, n, "err not an anim command");
         return -1;
     }
-    line = skip_ws(line + 5);
+    line = skip_ws(line + 4);
 
-    if (strncmp(line, "clip", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+    if (strncmp(line, "clip", 4) == 0 && (is_ws(line[4]) || line[4] == '\0')) {
         line = skip_ws(line + 4);
         if (*line == '\0') {
             snprintf(reply, n, "err clip needs a name");
             return -1;
         }
         NativeAnim_TransportSetActive(1);
-        if (strcmp(line, "auto") == 0) {
+        /* "auto" (with optional trailing whitespace) means automatic clip selection. */
+        if (strncmp(line, "auto", 4) == 0 && (line[4] == '\0' || is_ws(line[4]))) {
             NativeAnim_TransportSetForcedClip(NULL);
         } else {
             NativeAnim_TransportSetForcedClip(line);
@@ -530,7 +534,7 @@ int NativeAnim_Command(const char *line, char *reply, size_t n)
         return 0;
     }
 
-    if (strncmp(line, "speed", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+    if (strncmp(line, "speed", 5) == 0 && (is_ws(line[5]) || line[5] == '\0')) {
         line = skip_ws(line + 5);
         if (*line == '\0') {
             snprintf(reply, n, "err speed needs a number");
@@ -538,7 +542,8 @@ int NativeAnim_Command(const char *line, char *reply, size_t n)
         }
         char *end;
         float v = strtof(line, &end);
-        if (end == line) {
+        const char *rest = skip_ws(end);
+        if (end == line || *rest != '\0' || !isfinite(v)) {
             snprintf(reply, n, "err speed needs a number");
             return -1;
         }
@@ -548,7 +553,7 @@ int NativeAnim_Command(const char *line, char *reply, size_t n)
         return 0;
     }
 
-    if (strncmp(line, "phase", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+    if (strncmp(line, "phase", 5) == 0 && (is_ws(line[5]) || line[5] == '\0')) {
         line = skip_ws(line + 5);
         if (*line == '\0') {
             snprintf(reply, n, "err phase needs a number");
@@ -556,7 +561,8 @@ int NativeAnim_Command(const char *line, char *reply, size_t n)
         }
         char *end;
         float v = strtof(line, &end);
-        if (end == line) {
+        const char *rest = skip_ws(end);
+        if (end == line || *rest != '\0' || !isfinite(v)) {
             snprintf(reply, n, "err phase needs a number");
             return -1;
         }
@@ -569,15 +575,16 @@ int NativeAnim_Command(const char *line, char *reply, size_t n)
         return 0;
     }
 
-    if (strncmp(line, "frame", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+    if (strncmp(line, "frame", 5) == 0 && (is_ws(line[5]) || line[5] == '\0')) {
         line = skip_ws(line + 5);
         if (*line == '\0') {
             snprintf(reply, n, "err frame needs an integer");
             return -1;
         }
         char *end;
-        long v = strtol(line, &end, 10);
-        if (end == line) {
+        long long v = strtoll(line, &end, 10);
+        const char *rest = skip_ws(end);
+        if (end == line || *rest != '\0' || v < INT_MIN || v > INT_MAX) {
             snprintf(reply, n, "err frame needs an integer");
             return -1;
         }
