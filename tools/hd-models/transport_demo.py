@@ -19,6 +19,7 @@ from pathlib import Path
 
 PHASES = (0.0, 0.25, 0.5, 0.75, 1.0)
 REPO = Path(__file__).resolve().parents[2]
+GAME_ENV = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1", "MEMORIES_NO_AUDIO": "1"}   # no window, no sound
 
 
 def phase_grid(text):
@@ -102,11 +103,14 @@ def selftest():
 def load_client():
     sys.path.insert(0, str(REPO / "tools/pc"))
     import yfm_control  # noqa: E402
+    sys.path.insert(0, str(REPO / "tools/hd-models"))
+    global rigkit
+    import rigkit  # noqa: E402
     return yfm_control
 
 
 def game_settings(args):
-    return {"mod.studio-preview": 1, "mod.dragon-test": 0, "mod.native-test": 0, "mod.angel-test": 0,
+    return {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 2, "mod.studio-preview": 1, "mod.dragon-test": 0, "mod.native-test": 0, "mod.angel-test": 0,
             "mod.camera-pin": 1, "internal_scale": args.scale}
 
 
@@ -114,13 +118,13 @@ def make_attack_state(yc, args, state):
     """One duel up to the attack commit, saved in `state` (as field_attack.py does)."""
     hand = [58, args.card, args.card, 332, 683]
     with yc.Game(executable=args.exe, out=args.out / "make", settings=game_settings(args),
-                 env={"MEMORIES_FPS": "-1"}, headless=False) as game:
+                 env=GAME_ENV, headless=False) as game:
         game.goto("duel", opponent=1, deck=",".join(str(card) for card in hand))
         game.duel_ready(before_deal=lambda g: g.arrange_deck(0, hand))
-        game.play_card(0, face_up=False)          # the filler the game asks for every turn
+        rigkit.play_at(game, 0, 4, face_up=True)  # the filler the game asks for every turn
         game.end_turn()
         game.wait_turn(("hand",))
-        game.play_card(1, face_up=True)           # the dragon
+        rigkit.play_at(game, 0, 1, face_up=True)  # the dragon
         field = game.field()
         columns = [column for column, card in enumerate(field[2]) if card]
         if not columns:
@@ -133,7 +137,7 @@ def make_attack_state(yc, args, state):
 
 def open_state(yc, args):
     return yc.Game(executable=args.exe, out=args.out / "run", settings=game_settings(args),
-                   env={"MEMORIES_FPS": "-1"}, headless=False)
+                   env=GAME_ENV, headless=False)
 
 
 def phase_of(game):

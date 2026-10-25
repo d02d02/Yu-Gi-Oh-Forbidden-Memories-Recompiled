@@ -201,7 +201,7 @@ class StudioTab(Tab):
             ttk.Label(self.form, text=str(path), style="Note.TLabel", wraplength=px(self.right, 520),
                       justify="left").pack(anchor="w")
             ttk.Button(self.form, text="Open folder", command=lambda: self.open_folder(path)).pack(anchor="w", pady=(4, 8))
-        ttk.Label(self.form, text="Optional: a report of what is authentic and what is a stand-in.",
+        ttk.Label(self.form, text="Optional: save a text summary of this model's checks (report.md) to keep or share.",
                   wraplength=px(self.right, 520), justify="left").pack(anchor="w")
         ttk.Button(self.form, text="Save report", command=self.export_report).pack(anchor="w", pady=(4, 2))
         if getattr(self, "report_path", None):
