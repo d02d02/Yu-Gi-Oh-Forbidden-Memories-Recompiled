@@ -438,6 +438,12 @@ class StudioTab(Tab):
         except Exception as error:      # a note in the window, never a crash
             messagebox.showerror("Studio", f"Could not read {Path(path).name}: {error}")
             return
+        problems = self.session.check_library(path)
+        if problems:
+            shown = "\n".join(f"- {f['message']}" for f in problems[:8]) + ("\n..." if len(problems) > 8 else "")
+            message = f"This file's skeleton differs from the model's ({len(problems)}):\n{shown}\n\nUse its clips anyway?"
+            if not messagebox.askyesno("Studio", message):
+                return
         self._choose_clip(names, act, lambda n: self.session.use_library(path, act, n))
 
     def use_stand_in(self, act):

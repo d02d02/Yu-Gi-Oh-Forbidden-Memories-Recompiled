@@ -18,6 +18,7 @@ from . import look
 from . import package
 from . import placement
 from . import report
+from . import provide
 from . import resolutions
 from . import resolve_actions
 from . import runs
@@ -437,6 +438,10 @@ class Session:
         """The clip names of this glb, or of a library glb (a path)."""
         model = audit.load_model(str(library)) if library else self._model
         return [an.get("name", "") for an in model.doc.get("animations", []) if an.get("name")]
+
+    def check_library(self, library):
+        """Findings of a library glb against this model's skeleton (bone names and rest pose); [] when they match."""
+        return provide.check_provided(self.glb, library)
 
     def use_clip(self, act, clip):
         return resolve_actions.use_clip(self.studio, act, clip)
