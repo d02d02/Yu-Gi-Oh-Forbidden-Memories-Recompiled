@@ -13,6 +13,7 @@ The agent never decides alone that an item is done: the check command does.
 import os
 import re
 import subprocess
+os.environ.pop("PWD", None)  # Windows-form PWD breaks MSYS bash toolchain lookup in check commands
 import sys
 
 it, rc = sys.argv[1], sys.argv[2]
