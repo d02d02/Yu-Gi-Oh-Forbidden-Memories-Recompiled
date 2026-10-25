@@ -5,7 +5,7 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 ## Engine / control channel (`yfm_control`)
 | id | Need | Used by | Today |
 |---|---|---|---|
-| E1 | Load a package or recipe result at runtime, with replace (no restart) | all engine stages | restart needed; `MEMORIES_NATIVE_MODEL` forces one package |
+| E1 | Load a package or recipe result at runtime, with replace (no restart) | all engine stages | **partly done** (E1 reload): `native reload` re-reads all packages (registry reset, env kept), `native get` replies `entries=N bytes=M` over `yfm_control`; still no load of a new path at runtime |
 | E2 | Draw a model without a captured disc slot (synthetic injection point) | viewer without game state | none |
 | E3 | Commands: set act, set clip by name, set phase/row phase, pause, speed, scrub | S4-S8 transport, S5, S6 | **done** (E3 transport): `anim clip|pause|resume|speed|phase|frame|get` over `yfm_control`; phase/frame feed the normal `anim_frame` path, inactive = unchanged |
 | E4 | Camera presets (field, arena, side, top, free orbit) | S4, S7 | game camera; `NativeShot` is the nearest hook |
