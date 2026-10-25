@@ -2230,6 +2230,9 @@ static void create_window(const char *title)
 {
     const char *gles = getenv("MEMORIES_GLES");
     SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    /* MEMORIES_WINDOW_HIDDEN=1: the window exists (GL, window shots) but is never shown, for captures run beside other work. */
+    const char *hidden = getenv("MEMORIES_WINDOW_HIDDEN");
+    if (hidden && *hidden && strcmp(hidden, "0") != 0) flags |= SDL_WINDOW_HIDDEN;
     update_menu_scale(240 * scale + 26 * Menu_AutoScale(240 * scale));
 #ifdef __APPLE__
     /* The default macOS context is 2.1. Integer textures need 3.2 core,
