@@ -151,8 +151,8 @@ def check_stretch(points: List[List[int]], rng: tuple = (0.6, 1.8)) -> List[Dict
             worst_factor = f
             worst_seg_idx = idx
     # Check limits
-    low_hard, high_hard = 0.3, 3.0
     low_warn, high_warn = rng
+    low_hard, high_hard = min(0.3, low_warn), max(3.0, high_warn)   # a range the person widened is theirs to allow
     level = None
     if worst_factor < low_hard or worst_factor > high_hard:
         level = "fail"

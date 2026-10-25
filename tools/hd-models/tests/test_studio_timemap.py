@@ -211,5 +211,14 @@ class TestRunS6(unittest.TestCase):
         self.assertFalse(any(f["id"] == "S6.strike-vs-contact" and f["level"] == "fail" for f in result["findings"]))
 
 
+class TestWidenedRange(unittest.TestCase):
+    def test_widened_range_lifts_the_hard_limit(self):
+        pts = [[0, 0], [48, 150]]
+        self.assertEqual(timemap.check_stretch(pts)[0]["level"], "fail")
+        self.assertEqual(timemap.check_stretch(pts, (0.5, 3.5)), [])
+        self.assertEqual(timemap.check_stretch([[0, 0], [10, 25]], (0.5, 2.0))[0]["level"], "warn")
+        self.assertEqual(timemap.check_stretch([[0, 0], [10, 50]], (0.5, 3.5))[0]["level"], "fail")
+
+
 if __name__ == "__main__":
     unittest.main()
