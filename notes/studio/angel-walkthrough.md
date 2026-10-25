@@ -30,3 +30,10 @@ Model: `tmp/agent/angel/work/angel_rigged.glb` (no clips; mesh and skeleton from
 * Process: keep the harness fed with previous-plan work, do everything that does not need the user, discuss design atomically (one question at a time).
 * Visual checks done earlier: confirmed, nothing to report.
 * Reply style: military, minimal.
+
+## Progress checkpoint (2026-10-25, end of session)
+* Angel: S0-S7 pass with accepted ambers (S3 dropped material, S4 31% footprint at extent 250, S5 win/guard + bone-stretch). Recipe: cards [364], category C2, library UAL, acts idle Idle_Loop, attack Sword_Attack, hit Hit_Chest, destroyed Death01, `timing.stretch_range [0.5, 3.5]` (attack plays about 3x slow: clip 48 frames vs disc row 150).
+* User is in S8: needs a built package (S9), then Run Field attack and Arena attack, judge texture, size, attack. Result not yet reported.
+* Fixed this session: library clips field (`01e2002bb`), ack keyed by (check, value) (`c446d4ad5`), S0.cards hard gate (`e561b0eb2`), S6 reads library clip length, widened stretch range lifts hard limit (`fc9f29ef0`), corpus C1-C8 + goldens (`07c8ac38e`; the C2 builder had a parent re-index bug that made the audit loop to 15 GB).
+* Harness: nothing queued; idle until Route B or resolutions work. Lesson: a job can claim a golden match when the golden file does not exist (vacuous pass); check the file exists.
+* Next: user's S8 verdict; then Route B test (engine, mine) before the plan is called stable; then resolutions R1-R7 (`resolutions.md`). Open UI items: Browse button for path fields, bone name in stretch warning, procedural idle fallback (agreed, not built).
