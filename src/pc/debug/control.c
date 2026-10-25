@@ -16,6 +16,7 @@
 #include "pc/render/native_anim.h"
 #include "pc/render/native_registry.h"
 #include "pc/render/native_cinematic.h"
+#include "pc/render/native_model.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -353,6 +354,11 @@ static int handle(char *text)
         if (strcmp(sub, "reload") == 0) {
             NativeRegistry_Reset();
             send_line("ok native reload");
+        } else if (strcmp(sub, "show disc") == 0 || strcmp(sub, "show native") == 0) {
+            NativeModel_ShowDisc(sub[5] == 'd');
+            send_line(sub[5] == 'd' ? "ok native show=disc" : "ok native show=native");
+        } else if (strcmp(sub, "show") == 0) {
+            send_line(NativeModel_ShowingDisc() ? "ok native show=disc" : "ok native show=native");
         } else if (strcmp(sub, "get") == 0) {
             int count = NativeRegistry_Count();
             size_t bytes = NativeRegistry_Bytes();

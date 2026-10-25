@@ -32,6 +32,19 @@ def game(*replies):
     return g
 
 
+class NativeShowTest(unittest.TestCase):
+    def test_disc_native_and_get(self):
+        g = game("ok native show=disc", "ok native show=native", "ok native show=native")
+        self.assertEqual(g.native_show("disc"), "disc")
+        self.assertEqual(g.native_show("native"), "native")
+        self.assertEqual(g.native_show(), "native")
+        self.assertEqual(g.connection.sent, ["native show disc\n", "native show native\n", "native show\n"])
+
+    def test_bad_value(self):
+        with self.assertRaises(ValueError):
+            game().native_show("both")
+
+
 class CamTransportTest(unittest.TestCase):
     def test_preset(self):
         g = game("ok cam preset front")

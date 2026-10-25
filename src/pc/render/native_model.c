@@ -113,9 +113,22 @@ void NativeModel_BeginSlot(int model, int slot)
     NativeModel_Suppress = NativeModel_GlReady && SoftGpu_Scale() > 1;
 }
 
+static int show_disc; /* Studio compare (E8): 1 = the disc's own model is drawn instead of the native one */
+
+void NativeModel_ShowDisc(int on)
+{
+    show_disc = on ? 1 : 0;
+}
+
+int NativeModel_ShowingDisc(void)
+{
+    return show_disc;
+}
+
 int NativeModel_WillDraw(int model, int card)
 {
     if (!loaded) load();
+    if (show_disc) return 0;
     return model >= 0 && NativeModel_GlReady && SoftGpu_Scale() > 1 && NativeRegistry_Find(model, card) >= 0;
 }
 

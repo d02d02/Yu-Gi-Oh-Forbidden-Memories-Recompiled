@@ -580,6 +580,13 @@ class Game:
             name = "auto"
         return self._anim_value(self.command(f"anim clip {name}"))
 
+    def native_show(self, which: str | None = None) -> str:
+        """Studio compare (E8): "disc" draws the disc's own monster, "native" the model again; no argument reads it back."""
+        if which not in (None, "disc", "native"):
+            raise ValueError("native_show: disc, native or nothing")
+        reply = self.command("native show" if which is None else f"native show {which}")
+        return reply.rsplit("=", 1)[-1]
+
     def anim_pause(self) -> None:
         """Pause the animation (freeze current frame)."""
         self.command("anim pause")

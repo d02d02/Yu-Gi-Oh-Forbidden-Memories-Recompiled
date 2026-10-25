@@ -9,10 +9,10 @@ Deduplicated from `studio-view.md` (S4-S6 so far). Baseline today: `../native-mo
 | E2 | Draw a model without a captured disc slot (synthetic injection point) | viewer without game state | none |
 | E3 | Commands: set act, set clip by name, set phase/row phase, pause, speed, scrub | S4-S8 transport, S5, S6 | **done** (E3 transport): `anim clip|pause|resume|speed|phase|frame|get` over `yfm_control`; phase/frame feed the normal `anim_frame` path, inactive = unchanged |
 | E4 | Camera presets (field, arena, side, top, free orbit) | S4, S7 | **done**: `cam preset front|side|top|three-quarter|close`, `cam set yaw pitch dist height`, `cam off`, `cam get` |
-| E5 | Line/wire drawing in the 3D pass: bones, footprint grid, ghost outline, markers, bbox | S2, S4, S6 | none; overlay API draws text and rectangles only |
-| E6 | Read back data: bounding boxes, lowest point, joint positions per frame | S4 checks, S6 | none |
+| E5 | Line/wire drawing in the 3D pass: bones, footprint grid, ghost outline, markers, bbox | S2, S4, S6 | **done** (not pixel-tested: `shot`/`hash` read VRAM, the GL pass is only in the window): `ov bbox\|grid\|bones on\|off`, `ov off`, `ov get`; lines go through the model\'s own skinning program, drawn over the model |
+| E6 | Read back data: bounding boxes, lowest point, joint positions per frame | S4 checks, S6 | **partly done**: `ov bounds` (bind-pose box and lowest point of the last drawn model); joint positions per frame stay on the Python side (clipdata) |
 | E7 | Frame capture of the GL pass to the editor (window shot or stream) | all | **phase 1 done**: `studio/stream.py` `FrameStream` polls `shot`+`hash`, yields changed frames at a capped rate; measured rate from `stream_demo.py --selftest` only, real rate to be measured by the user (phase 2 = C command if too slow); `MEMORIES_WINDOW_SHOT` glReadPixels, windowed only |
-| E8 | Disc-model compare: play the disc's BLS same act beside the native one | S6, S7 | none |
+| E8 | Disc-model compare: play the disc's BLS same act beside the native one | S6, S7 | **done as A/B toggle** (window only): `native show disc\|native` draws the disc monster or the model in the same frame; no side-by-side |
 | E9 | Time map consumed by the render-side sampler (data, not logic; D2/D3 hold) | S6 | **done** (E9): `timemaps` in model.json -> `NativeAnim_TimeMapClip` in `NativeAnim_Choose`; recipe `acts.<act>.timemap` -> package via `recipe.py` |
 
 ## Converter / Python

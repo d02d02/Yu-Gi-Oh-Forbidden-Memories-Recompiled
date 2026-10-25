@@ -208,6 +208,9 @@ const NativeMesh *NativeModel_MeshById(int id);
 /* 1 when a slot drawing `model` for `card` (0: unknown) now is drawn by the native pass (a model for it, the pass
  * ready, a picture of 2x or more). */
 int NativeModel_WillDraw(int model, int card);
+/* Studio compare (control command "native show disc|native"): while on, WillDraw says no, so the disc's own monster is drawn. */
+void NativeModel_ShowDisc(int on);
+int NativeModel_ShowingDisc(void);
 /* The arena camera's eye-to-look-at factor for a frame whose battle slots draw model0 and model1 (-1: none): 1 (the
  * game's camera) unless one of them is drawn natively. */
 float NativeModel_ArenaCameraFactor(int model0, int model1, float dx, float dy, float dz);

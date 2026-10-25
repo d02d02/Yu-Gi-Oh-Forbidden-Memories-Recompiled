@@ -577,6 +577,16 @@ class StudioTab(Tab):
             except Exception as e:      # an engine without the cam command: say so, keep the window
                 label.configure(text=f"camera: {e}")
         preset.bind("<<ComboboxSelected>>", camera)
+        disc = tk.BooleanVar(value=False)
+
+        def compare():
+            """A/B: the disc's own monster in place of the model, same frame, to judge size, place and timing."""
+            try:
+                game.native_show("disc" if disc.get() else "native")
+                game.step(1)
+            except Exception as e:
+                label.configure(text=f"compare: {e}")
+        ttk.Checkbutton(view, text="show disc model", variable=disc, command=compare).pack(side="left", padx=8)
         for name in ("bbox", "grid", "bones"):
             on = tk.BooleanVar(value=False)
 
