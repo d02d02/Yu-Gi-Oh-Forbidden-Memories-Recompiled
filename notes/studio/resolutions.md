@@ -60,3 +60,6 @@ Gaps against the rule:
 * Determinism (byte-identical twice) shown on dragon only.
 * S8 Run on the angel not yet done.
 * Open design items: loop closing, root-motion removal as a converter edit, library retarget with rest-pose correction.
+
+## Gate (2026-10-25)
+Route B (studio linked to the running game) is tested before the previous plan is called stable; R1-R7 start after that.
