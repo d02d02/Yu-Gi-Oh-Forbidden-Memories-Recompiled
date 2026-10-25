@@ -103,7 +103,9 @@ def selftest():
 def load_client():
     sys.path.insert(0, str(REPO / "tools/pc"))
     import yfm_control  # noqa: E402
-    sys.path.insert(0, str(REPO / "tools/hd-models"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _paths import DEV
+    sys.path.insert(0, str(DEV)); sys.path.insert(0, str(DEV / "rigs"))
     global rigkit
     import rigkit  # noqa: E402
     return yfm_control
@@ -153,6 +155,11 @@ def scrub_pass(yc, args, state, phases):
     shots, result = {}, {}
     with open_state(yc, args) as game:
         game.load(state)
+        game.anim_resume()
+        for _ in range(args.max_steps):          # the attack scene draws a few frames after the commit
+            game.step(1)
+            if int(game.anim_get().get("al", 0) or 0) > 0:
+                break
         game.anim_pause()
         game.step(1)
         for phase in phases:

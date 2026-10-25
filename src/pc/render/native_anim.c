@@ -152,7 +152,9 @@ float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char 
     /* Row-driven clip: phase comes from anim_frame / (16 * anim_length).
      * Transport can override phase or frame, or pause to hold the last anim_frame. */
     if (native_anim_transport.active) {
-        if (native_anim_transport.paused) {
+        /* A scrub (frame or phase) wins over a pause: pausing then scrubbing is how a phase is looked at. */
+        if (native_anim_transport.paused && native_anim_transport.frame_override < 0 &&
+            native_anim_transport.phase_override < 0.0f) {
             /* Hold the last anim_frame. */
             phase = d->info.anim_length > 0
                 ? (float)native_anim_transport.last_anim_frame / (16.0f * (float)d->info.anim_length)
