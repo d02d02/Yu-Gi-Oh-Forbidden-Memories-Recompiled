@@ -164,13 +164,13 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
-        if stage == "S9":
-            self.add_build_button()
         if stage == "S8":
             self.add_run_list()
         self.widgets = {}
         for k in knobs.knobs(stage):
             self.add_knob(k)
+        if stage == "S9":
+            self.add_build_button()
         info = rail.footer(studio, stage)
         self.prev_button.state(["!disabled"] if info["previous"] else ["disabled"])
         if info["next"] is None:    # S9 builds from its form; a second, disabled Build package here only duplicates it
@@ -185,22 +185,41 @@ class StudioTab(Tab):
         self.saved.configure(text={"saved": "Saved", "unsaved": "Saving..."}.get(studio.save_state, studio.save_state))
 
     def add_build_button(self):
-        """S9: build the mod twice (new_native_mod.py) in a thread; the findings and pkg.path land when it ends."""
+        """S9, under the name knobs: 1 build (new_native_mod.py, twice, in a thread), 2 install the folder, 3 optional report."""
         busy = getattr(self, "building", False)
+        ttk.Separator(self.form).pack(fill="x", pady=8)
+        ttk.Label(self.form, text="1. Build the mod. It is built twice and checked; the results are listed above.",
+                  wraplength=px(self.right, 520), justify="left").pack(anchor="w")
         button = ttk.Button(self.form, text="Building..." if busy else "Build package", command=self.build_package)
-        button.pack(anchor="w", pady=2)
+        button.pack(anchor="w", pady=(4, 8))
         if busy:
             button.state(["disabled"])
-        ttk.Button(self.form, text="Export report", command=self.export_report).pack(anchor="w", pady=2)
         path = knobs.value(self.session.studio.recipe, "pkg.path")
         if path:
-            ttk.Label(self.form, text=f"Built: {path}", style="Note.TLabel").pack(anchor="w")
+            ttk.Label(self.form, text="2. Install it: copy this folder into the game's mods folder.",
+                      wraplength=px(self.right, 520), justify="left").pack(anchor="w")
+            ttk.Label(self.form, text=str(path), style="Note.TLabel", wraplength=px(self.right, 520),
+                      justify="left").pack(anchor="w")
+            ttk.Button(self.form, text="Open folder", command=lambda: self.open_folder(path)).pack(anchor="w", pady=(4, 8))
+        ttk.Label(self.form, text="Optional: a report of what is authentic and what is a stand-in.",
+                  wraplength=px(self.right, 520), justify="left").pack(anchor="w")
+        ttk.Button(self.form, text="Save report", command=self.export_report).pack(anchor="w", pady=(4, 2))
+        if getattr(self, "report_path", None):
+            ttk.Label(self.form, text=f"Saved: {self.report_path}", style="Note.TLabel",
+                      wraplength=px(self.right, 520), justify="left").pack(anchor="w")
+
+    def open_folder(self, path):
+        try:
+            os.startfile(str(path))
+        except (AttributeError, OSError) as error:
+            messagebox.showinfo("Studio", f"Could not open the folder ({error}). It is {path}")
 
     def export_report(self):
         base = self.session.recipe_path.parent if self.session.recipe_path else self.session.glb.parent
         target = base / "report.md"
         self.session.export_report(target)
-        self.heading.configure(text=f"Report saved: {target}")
+        self.report_path = target
+        self.draw_stage()
 
     def build_package(self):
         base = self.session.recipe_path.parent if self.session.recipe_path else self.session.glb.parent
