@@ -1,0 +1,17 @@
+/src/
+/config/
+/tools/pc/
+/tools/hd-models/field_attack.py
+/tools/hd-models/library_shot.py
+/notes/studio/engine-needs.md
+/notes/adding-a-model.md
+/notes/build.md
+/CMakeLists.txt
+/Makefile
+/examples/
+/notes/modding.md
+/notes/mod-api-3.md
+/notes/more-cards.md
+/tests/pc/native_anim_test.c
+/tests/pc/native_registry_test.c
+/tools/hd-models/
