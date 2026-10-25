@@ -2389,7 +2389,9 @@ static void native_overlay_group(GLuint *vbo, GLuint *tex, const uint8_t colour[
     gl_VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(6 * sizeof(float)));
     gl_VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(8 * sizeof(float)));
     gl_VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(12 * sizeof(float)));
+    glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_LINES, 0, count);
+    glEnable(GL_DEPTH_TEST);
 }
 
 static void native_overlay_vertex(float *out, const float p[3], float joint)

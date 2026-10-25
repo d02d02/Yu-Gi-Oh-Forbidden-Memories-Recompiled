@@ -561,7 +561,39 @@ class StudioTab(Tab):
         ttk.Button(buttons, text="Save a shot", command=lambda: label.configure(
             text=f"saved {t.shot(out / 'scrub' / ('phase-%.2f.png' % value.get()))}")).pack(side="left", padx=4)
 
+        game = box["game"]
+        view = ttk.Frame(win)
+        view.pack(fill="x", padx=8, pady=4)
+        ttk.Label(view, text="Camera").pack(side="left")
+        preset = ttk.Combobox(view, state="readonly", width=14, values=("game", "front", "side", "top", "three-quarter", "close"))
+        preset.set("game")
+        preset.pack(side="left", padx=4)
+
+        def camera(_=None):
+            """Presets are sent to the running game; 'game' gives the camera back to the game and the package shots."""
+            try:
+                game.cam_off() if preset.get() == "game" else game.cam_preset(preset.get())
+                t.game.step(1)
+            except Exception as e:      # an engine without the cam command: say so, keep the window
+                label.configure(text=f"camera: {e}")
+        preset.bind("<<ComboboxSelected>>", camera)
+        for name in ("bbox", "grid", "bones"):
+            on = tk.BooleanVar(value=False)
+
+            def toggle(n=name, v=on):
+                try:
+                    getattr(game, "ov_" + n)(v.get())
+                    game.step(1)
+                except Exception as e:
+                    label.configure(text=f"overlay {n}: {e}")
+            ttk.Checkbutton(view, text=name, variable=on, command=toggle).pack(side="left", padx=4)
+
         def close():
+            try:
+                game.ov_off()
+                game.cam_off()
+            except Exception as e:
+                log.error("scrub reset", e)
             try:
                 box["game"].__exit__(None, None, None)
             except Exception as e:

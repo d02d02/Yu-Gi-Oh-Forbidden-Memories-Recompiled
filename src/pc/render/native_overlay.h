@@ -16,6 +16,9 @@ void NativeOverlay_BoxLines(const float min[3], const float max[3], float out[12
 /* Grid lines on lowest Y plane: returns number of lines written, up to cap */
 int NativeOverlay_GridLines(const float min[3], const float max[3], int cells, float out[][2][3], int cap);
 
+/* "ov bounds": the last drawn model's bounds (ok ov min=.. max=.. lowest=..) or err ov: nothing drawn; also reached by NativeOverlay_Command */
+int NativeOverlay_GetBounds(char *reply, size_t n);
+
 /* Record last drawn bounds */
 void NativeOverlay_Record(const float min[3], const float max[3]);
 

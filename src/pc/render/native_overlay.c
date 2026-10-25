@@ -19,6 +19,8 @@ static const char *skip_ws(const char *s) {
 }
 static int is_ws(char c) { return c == ' ' || c == '\t'; }
 
+int NativeOverlay_GetBounds(char *reply, size_t n);
+
 int NativeOverlay_Command(const char *line, char *reply, size_t n) {
     line = skip_ws(line);
     if (strncmp(line, "ov", 2) != 0 || (!is_ws(line[2]) && line[2] != '\0')) {
@@ -55,6 +57,7 @@ int NativeOverlay_Command(const char *line, char *reply, size_t n) {
         snprintf(reply, n, "ok ov off");
         return 0;
     }
+    if (strcmp(line, "bounds") == 0) return NativeOverlay_GetBounds(reply, n);
     if (strcmp(line, "get") == 0) {
         snprintf(reply, n, "ok ov bbox=%d grid=%d bones=%d", flag_bbox, flag_grid, flag_bones);
         return 0;
