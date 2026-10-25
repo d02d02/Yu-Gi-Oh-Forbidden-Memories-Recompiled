@@ -9,6 +9,7 @@ streams for 3 s into tmp/pc/stream/ as numbered PNGs and prints the stats."""
 import argparse
 import struct
 import sys
+import threading
 import time
 import zlib
 from pathlib import Path
@@ -86,14 +87,13 @@ def real():
     out.mkdir(parents=True, exist_ok=True)
     with yc.Game(executable=EXE, out=out / "run", settings={"internal_scale": 1},
                  env={"MEMORIES_FPS": "-1"}, headless=False) as game:
+        time.sleep(20)      # the game is still loading the disc right after the channel opens
         fs = FrameStream(game, fps=10.0, out_dir=out / "work")
-        start = time.monotonic()
+        threading.Timer(6.0, fs.close).start()      # a static screen yields no frames, so the stop cannot wait for one
         saved = 0
         for frame in fs.frames():
             (out / f"f{frame.seq:04d}.png").write_bytes(frame.png_bytes)
             saved += 1
-            if time.monotonic() - start >= 3.0:
-                break
         fs.close()
         print("saved", saved, "png to", out)
         show_stats(fs.stats())

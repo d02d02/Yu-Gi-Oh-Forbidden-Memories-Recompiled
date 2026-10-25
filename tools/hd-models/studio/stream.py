@@ -86,7 +86,7 @@ class FrameStream:
                     self._frames += 1
                     yield frame
                     seq += 1
-                except ControlError as exc:
+                except (ControlError, OSError) as exc:      # a dropped connection ends the stream, with the reason kept
                     self.error = exc
                     return
         finally:
