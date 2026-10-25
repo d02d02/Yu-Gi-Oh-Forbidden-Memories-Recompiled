@@ -53,3 +53,9 @@ Model: `tmp/agent/angel/work/angel_rigged.glb` (no clips; mesh and skeleton from
 * Validated 2026-10-25: library turntable (multiple rotated views) OK. Game window no longer flashes: `MEMORIES_WINDOW_HIDDEN=1` (sdl.c, opt-in) set by library_shot.py. Original model on first frame = hypothesis: first frame after a state load is the saved original picture, native model draws from the next frame (unverified).
 * Validated 2026-10-25: all Run buttons (S8) look right; capture windows hidden and silent (library_shot, field_attack, attack_*). User now at S9.
 * Route B transport 2026-10-25: native_anim.c scrub now wins over pause; transport_demo starts from a real attack (rigkit, 3d-monsters), steps until the model draws, hides/mutes the window. Scrub `at` tracks the asked phase. The scrub/free hash never matches by design (scene camera is the game's, only the clip phase moves): treat "scrub-at == asked phase" as the pass. S9 page reordered (name, build, install folder, report).
+
+## Checkpoint 2026-10-25 (end)
+* Validated by user: library turntable, all S8 Run buttons (hidden, silent capture), S9 layout. Done: S9 page order and plain text.
+* Route B transport: passes on `at` tracking (scrub wins over pause). Hash equality is not a criterion.
+* Harness: job r1 (resolutions.py, clone ~/work/r1, branch ralph/r1) RUNNING at save time; job r3 (procedural idle, ~/work/r3) created, NOT started (start after r1; quota thin). Specs in tmp/specs/r1, tmp/specs/r3. Land with job-land.sh after reading the diff.
+* Queue after R1: R6 (report stand-ins), R5 (provide.file validator), R7 (corpus missing cases), R2 (design call first), R4 mine (Tk buttons).
