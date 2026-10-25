@@ -15,7 +15,7 @@ ap.add_argument("--exe", default=str(EXE))
 a = ap.parse_args()
 out = Path(a.frames).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 0, "mod.2d-monsters": 0, "mod.camera-pin": 1, "internal_scale": a.scale}
-env = {"MEMORIES_FPS": "-1"}
+env = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1"}
 if a.native: env.update(MEMORIES_NATIVE_MODEL=str(Path(a.native).resolve()), MEMORIES_NATIVE_MODEL_ID="363")
 with yc.Game(executable=a.exe, out=out / "measure", settings=settings, env=env, headless=False) as g:
     g.load(a.state); g.step(a.k1); f1 = g.info()["frame"]; g.step(a.k2 - a.k1); f2 = g.info()["frame"]
