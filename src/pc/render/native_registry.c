@@ -435,6 +435,57 @@ static void package_shots(Entry *e, const JsonValue *shots)
     }
 }
 
+/* "timemaps": [{"act": "attack", "points": [[0, 0], [20, 10], [60, 40]]}]: [clip frame, row frame] pairs, both rising, at most
+ * NATIVE_MAX_TIMEMAP_POINTS of them, one map per act. A map that cannot be read is noted and left out. */
+static void package_timemaps(Entry *e, const JsonValue *maps)
+{
+    static const char *const acts[NATIVE_ACT_COUNT] = {"idle", "enter", "attack", "hit", "destroyed", "win", "guard"};
+    const JsonValue *item;
+    int index = 0;
+    if (!maps) return;
+    if (Json_TypeOf(maps) != JSON_ARRAY) {
+        note(e, "\"timemaps\" is a list: [{\"act\": \"attack\", \"points\": [[0, 0], [60, 40]]}]");
+        return;
+    }
+    for (item = Json_At(maps, 0); item; item = Json_Next(item), index++) {
+        NativeTimeMap map;
+        const JsonValue *act = Json_Member(item, "act"), *points = Json_Member(item, "points"), *pair;
+        const char *name = Json_TypeOf(act) == JSON_STRING ? Json_String(act, "") : "";
+        int a, ok = 1, k;
+        if (e->mesh.timemap_count >= NATIVE_MAX_TIMEMAPS) {
+            note(e, "timemaps: at most %d maps", NATIVE_MAX_TIMEMAPS);
+            break;
+        }
+        for (a = 0; a < NATIVE_ACT_COUNT && strcmp(name, acts[a]); a++) {
+        }
+        if (Json_TypeOf(item) != JSON_OBJECT || a >= NATIVE_ACT_COUNT || !points || Json_TypeOf(points) != JSON_ARRAY) {
+            note(e, "timemaps[%d]: an object with an \"act\" (idle, enter, attack, hit, destroyed, win, guard) and a list of \"points\"", index);
+            continue;
+        }
+        memset(&map, 0, sizeof(map));
+        map.act = (uint8_t)a;
+        for (pair = Json_At(points, 0), k = 0; pair && ok; pair = Json_Next(pair), k++) {
+            const JsonValue *clip = Json_At(pair, 0), *row = Json_At(pair, 1);
+            if (k >= NATIVE_MAX_TIMEMAP_POINTS || Json_TypeOf(pair) != JSON_ARRAY || !clip || !row) {
+                ok = 0;
+                break;
+            }
+            map.points[k][0] = (float)Json_Number(clip, 0);
+            map.points[k][1] = (float)Json_Number(row, 0);
+            if (k > 0 && (map.points[k][0] <= map.points[k - 1][0] || map.points[k][1] <= map.points[k - 1][1])) ok = 0;
+        }
+        map.count = (uint8_t)k;
+        for (a = 0; a < e->mesh.timemap_count; a++) {
+            if (e->mesh.timemaps[a].act == map.act) ok = 0;
+        }
+        if (!ok || k < 2) {
+            note(e, "timemaps[%d]: 2 to %d [clip, row] points, both rising, one map per act", index, NATIVE_MAX_TIMEMAP_POINTS);
+            continue;
+        }
+        e->mesh.timemaps[e->mesh.timemap_count++] = map;
+    }
+}
+
 static void package_strike(Entry *e, const JsonValue *strike)
 {
     const JsonValue *frames = Json_Member(strike, "attack"), *value;
@@ -520,7 +571,7 @@ static void forget(Entry *e)
     e->bytes = 0;
 }
 
-static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "offset", "shots", "look",
+static const char *const package_keys[] = {"format", "name", "model", "textures", "clips", "strike", "scale", "offset", "shots", "timemaps", "look",
                                            "author", "license", "source", "converter"};
 
 static int load(Entry *e)
@@ -594,6 +645,7 @@ static int load(Entry *e)
         package_strike(e, Json_Member(root, "strike"));
         package_offset(e, Json_Member(root, "offset"));
         package_shots(e, Json_Member(root, "shots"));
+        package_timemaps(e, Json_Member(root, "timemaps"));
         if (scale) {
             long percent = Json_TypeOf(scale) == JSON_NUMBER ? Json_Number(scale, -1) : -1;
             if (percent < 10 || percent > 1000) note(e, "\"scale\" is a percentage, 10 to 1000");

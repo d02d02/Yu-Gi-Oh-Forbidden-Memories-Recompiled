@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 import native_spec as spec  # noqa: E402
+from studio import timemap  # noqa: E402
 
 
 SCHEMA = 1
@@ -570,6 +571,25 @@ def model_json_members(recipe) -> dict:
     shots = recipe.get("shots")
     if isinstance(shots, list) and shots:
         result["shots"] = shots
+
+    # timemaps: list of {"act", "points"} from acts with a timemap
+    acts_section = recipe.get("acts")
+    if isinstance(acts_section, dict):
+        timemap_list = []
+        for act_name in spec.ACTS:
+            act = acts_section.get(act_name)
+            if isinstance(act, dict):
+                points = act.get("timemap")
+                if points is not None:
+                    if not isinstance(points, list):
+                        raise ValueError(f"timemap for act {act_name} must be a list")
+                    # validate monotonic
+                    findings = timemap.check_monotonic(points)
+                    if findings:
+                        raise ValueError(f"timemap for act {act_name} is not monotonic")
+                    timemap_list.append({"act": act_name, "points": points})
+        if timemap_list:
+            result["timemaps"] = timemap_list
 
     # author, license: from meta
     meta = recipe.get("meta")

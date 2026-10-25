@@ -33,6 +33,9 @@ const NativeClip *NativeAnim_ActClip(const NativeMesh *mesh, NativeAct act);
  * known (else Black Luster Soldier's measured warp for its row 3). `forced`: a clip name played on a free clock whatever
  * the game does (MEMORIES_NATIVE_CLIP), or NULL / "". */
 float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char *forced, const NativeClip **clip_out);
+
+/* Map row_frame to clip_frame via points (clip, row) pairs. Returns clip time (float) */
+float NativeAnim_TimeMapClip(const float (*points)[2], int count, float row_frame);
 /* The rows (4 x NATIVE_SKIN_ROWS x 4 floats) for draw `d` at time `t` of `clip`. */
 void NativeAnim_Rows(const NativeDraw *d, const NativeMesh *mesh, const NativeClip *clip, float t, const NativeAnimFrame *frame,
                      float *rows);

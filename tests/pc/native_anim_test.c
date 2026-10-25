@@ -600,7 +600,22 @@ int main(void)
             }
         }
 
-        /* Numbers: non-finite and trailing garbage are rejected; in-range values clamp. */
+        /* TimeMapClip unit tests: */
+        {
+            const float points1[][2] = {{0.0f,0.0f},{10.0f,20.0f},{30.0f,40.0f}};
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 0.0f) == 0.0f);
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 10.0f) == 5.0f);
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 20.0f) == 10.0f);
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 30.0f) == 20.0f);
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 40.0f) == 30.0f);
+            CHECK(NativeAnim_TimeMapClip(points1, 3, 50.0f) == 30.0f);
+            const float points2[][2] = {{0.0f,0.0f},{10.0f,10.0f}}; /* linear default */
+            CHECK(NativeAnim_TimeMapClip(points2, 2, 5.0f) == 5.0f);
+            /* Midpoint of two-segment map */
+            const float points3[][2] = {{0.0f,0.0f},{10.0f,10.0f},{30.0f,20.0f}};
+            CHECK(NativeAnim_TimeMapClip(points3, 3, 15.0f) == 20.0f);
+        }
+
         NativeAnim_TransportInit();
         CHECK(NativeAnim_Command("anim speed 2.5", reply, sizeof(reply)) == 0);
         CHECK(NativeAnim_Command("anim speed nan", reply, sizeof(reply)) == -1);

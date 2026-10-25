@@ -108,6 +108,15 @@ typedef struct NativeShot {
     int16_t from, to, yaw, pitch, distance, height, ease;
 } NativeShot;
 
+/* A time map (Studio S6): points of {clip frame, row frame}, both rising; while `act` plays, the clip's frame is the piecewise
+ * linear map of the disc row's frame (NativeAnim_TimeMapClip), in place of the automatic strike/BLS warps. */
+#define NATIVE_MAX_TIMEMAPS 8
+#define NATIVE_MAX_TIMEMAP_POINTS 16
+typedef struct NativeTimeMap {
+    uint8_t act, count;
+    float points[NATIVE_MAX_TIMEMAP_POINTS][2];
+} NativeTimeMap;
+
 /* HDM4: a clip = local translation + rotation (disc space) of every bone, baked at `fps`. */
 #define NATIVE_MAX_CLIPS 16
 #define NATIVE_MAX_BONES 128
@@ -161,6 +170,8 @@ typedef struct NativeMesh {
     float ground;                       /* the soles' height in the model's space (y down: its largest y), for `scale` */
     NativeShot shots[NATIVE_MAX_SHOTS]; /* from the package ("shots") */
     uint8_t shot_count;
+    NativeTimeMap timemaps[NATIVE_MAX_TIMEMAPS]; /* from the package ("timemaps"): row frame -> clip frame, per act */
+    uint8_t timemap_count;
     float offset[3];                    /* moved this far in the model's own space (x right, y down, z forward), before `scale` */
     NativeTune tune;
 } NativeMesh;

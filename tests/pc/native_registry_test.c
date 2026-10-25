@@ -246,7 +246,7 @@ int main(int argc, char **argv)
     write_text("a/pkg/model.json",
                "{\"format\": 1, \"model\": \"m.hdm\", \"textures\": {\"base\": \"base.png\", \"normal\": \"n.png\"},"
                " \"clips\": {\"attack\": \"Swing\", \"idle\": \"Idle\", \"dance\": \"Idle\", \"hit\": \"Nope\"},"
-               " \"strike\": {\"attack\": [3, 7]}, \"scale\": 150, \"offset\": [10, 0, -5], \"shots\": [{\"act\": \"attack\", \"from\": 5, \"to\": 60, \"yaw\": 40, \"distance\": 80, \"ease\": 8}, {\"act\": \"dance\", \"from\": 0, \"to\": 1}, {\"act\": \"hit\", \"other\": true, \"from\": 0, \"to\": 20, \"yaw\": 999}], \"look\": {\"ambient\": 40}, \"author\": \"t\", \"extra\": 1}");
+               " \"strike\": {\"attack\": [3, 7]}, \"scale\": 150, \"offset\": [10, 0, -5], \"shots\": [{\"act\": \"attack\", \"from\": 5, \"to\": 60, \"yaw\": 40, \"distance\": 80, \"ease\": 8}, {\"act\": \"dance\", \"from\": 0, \"to\": 1}, {\"act\": \"hit\", \"other\": true, \"from\": 0, \"to\": 20, \"yaw\": 999}], \"timemaps\": [{\"act\": \"attack\", \"points\": [[0, 0], [10, 20], [30, 40]]}, {\"act\": \"hit\", \"points\": [[0, 0], [5, 0]]}], \"look\": {\"ambient\": 40}, \"author\": \"t\", \"extra\": 1}");
     write_text("a/pkg/big.json", "{\"model\": \"m.hdm\", \"textures\": {\"base\": \"big.png\"}}");
     write_text("a/pkg/strike.json", "{\"model\": \"m.hdm\", \"clips\": {\"attack\": \"Idle\"}, \"strike\": {\"attack\": [1, 5]}}");
     write_text("a/bad/model.json", "{\"format\": 2, \"model\": \"m.hdm\"}");
@@ -293,10 +293,13 @@ int main(int argc, char **argv)
         CHECK(near(mesh->scale, 1.5f) && near(mesh->tune.ambient, 0.4f) && near(mesh->tune.light_gain, 1.0f));
         CHECK(mesh->shot_count == 1 && mesh->shots[0].act == NATIVE_ACT_ATTACK && mesh->shots[0].yaw == 40 &&
               mesh->shots[0].distance == 80 && mesh->shots[0].ease == 8 && !mesh->shots[0].other);
+        CHECK(mesh->timemap_count == 1 && mesh->timemaps[0].act == NATIVE_ACT_ATTACK && mesh->timemaps[0].count == 3 &&
+              mesh->timemaps[0].points[1][0] == 10.0f && mesh->timemaps[0].points[1][1] == 20.0f);
         CHECK(near(mesh->offset[0], 10.0f) && near(mesh->offset[1], 0.0f) && near(mesh->offset[2], -5.0f));
     }
     CHECK(noted("clips: \"dance\" is not an act") && noted("clips.hit: the model has no clip \"Nope\""));
     CHECK(noted("shots[1]: \"act\" is one of") && noted("shots[2]: 0 <= from"));
+    CHECK(noted("timemaps[1]: 2 to"));
     CHECK(noted("model.json: \"extra\" is not read") && !noted("\"author\" is not read"));
     CHECK(NativeRegistry_Find(0, 1) == id); /* read once */
     CHECK(NativeRegistry_Find(0, 0) == id); /* the card unknown: disc model 0 is card 1's */

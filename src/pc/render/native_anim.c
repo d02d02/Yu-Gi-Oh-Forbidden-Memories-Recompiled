@@ -105,6 +105,20 @@ static float strike_warp(const NativeMesh *mesh, const NativeClip *c, float fram
     return (strike + (last - strike) * (frame - (float)contact) / (float)(length - contact)) / c->fps;
 }
 
+/* Map row_frame to a clip frame through points of {clip, row}: clamped to the first and last point, linear between. */
+float NativeAnim_TimeMapClip(const float (*points)[2], int count, float row_frame)
+{
+    int i;
+    if (count <= 0) return 0.0f;
+    if (row_frame <= points[0][1]) return points[0][0];
+    if (row_frame >= points[count - 1][1]) return points[count - 1][0];
+    for (i = 0; i < count - 1; i++) {
+        if (row_frame <= points[i + 1][1])
+            return points[i][0] + (row_frame - points[i][1]) * (points[i + 1][0] - points[i][0]) / (points[i + 1][1] - points[i][1]);
+    }
+    return points[count - 1][0];
+}
+
 /* Which clip and where in it: the director. MEMORIES_NATIVE_CLIP=<name> plays that clip on a free-running clock (the game is
  * ignored); otherwise the disc row decides (idle/enter/attack/hit/destroyed/win) and the clip runs over the row's own length.
  * The attack is row field_DFE + 3 (info.attack_row): 3, or 4 when the card fights with its second guardian star.
@@ -191,6 +205,14 @@ float NativeAnim_Choose(const NativeDraw *d, const NativeMesh *mesh, const char 
                           ? native_anim_transport.last_anim_frame
                           : d->info.anim_frame;
 
+    {   /* An authored time map (Studio S6) decides the act's clip frame from the row's frame, in place of the warps below. */
+        NativeAct act = NativeAnim_Act(row, d->info.attack_row);
+        int m;
+        for (m = 0; m < mesh->timemap_count; m++) {
+            if (mesh->timemaps[m].act == (uint8_t)act)
+                return NativeAnim_TimeMapClip(mesh->timemaps[m].points, mesh->timemaps[m].count, (float)anim_frame_16 / 16.0f) / c->fps;
+        }
+    }
     if (NativeAnim_Act(row, d->info.attack_row) == NATIVE_ACT_ATTACK) {
         t = strike_warp(mesh, c, (float)anim_frame_16 / 16.0f, d->info.contact_frame, d->info.anim_length);
         if (t >= 0.0f) return t;
