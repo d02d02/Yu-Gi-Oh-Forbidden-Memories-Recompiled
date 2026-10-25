@@ -55,6 +55,28 @@ class TestRunMarks(unittest.TestCase):
             s.add_run_mark("field", "problem")
 
 
+
+class TestRunMarksRoundTrip(unittest.TestCase):
+    def test_marks_survive_save_and_reopen_and_go_stale_on_new_source(self):
+        import tempfile
+        from studio import runs
+        with tempfile.TemporaryDirectory() as d:
+            glb, rec = Path(d) / "m.glb", Path(d) / "m.recipe.json"
+            glb.write_bytes(b"not a glb, one")   # open() tolerates an unreadable model (S0.load finding)
+            s = session.Session.open(glb, rec)
+            s.add_run_mark("library", "seen", now=5.0)
+            s.add_run_mark("field", "problem", "clipping", now=6.0)
+            self.assertTrue(s.studio.save(rec))
+            t = session.Session.open(glb, rec)
+            self.assertEqual([m["row"] for m in t.studio.recipe["runs"]], ["library", "field"])
+            table = runs.run_s8(t.studio.recipe, t._sha256, True)["status"]
+            self.assertEqual((table["library"], table["field"]), ("seen", "problem"))
+            glb.write_bytes(b"not a glb, two")   # new source: marks no longer apply
+            u = session.Session.open(glb, rec)
+            table = runs.run_s8(u.studio.recipe, u._sha256, True)["status"]
+            self.assertEqual((table["library"], table["field"]), ("not run", "not run"))
+
+
 class TestS5(unittest.TestCase):
     def test_no_model_is_a_finding(self):
         self.assertEqual(ids(make({}).run_stage("S5")), ["S5.model"])
