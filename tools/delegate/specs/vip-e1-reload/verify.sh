@@ -9,7 +9,7 @@ link_tools() {
 }
 do_c() {
   link_tools
-  LM=$(ls -d "$PWD"/tmp/pc/tools/llvm-mingw/*/bin); export PATH="$LM:$PATH"
+  LM=$(ls -d "$(cygpath -u "$PWD")"/tmp/pc/tools/llvm-mingw/*/bin); export PATH="$LM:$PATH"
   D="$MAIN/tmp/pc/win32-deps"; mkdir -p tmp/pc/e1r-ctest
   i686-w64-mingw32-clang -std=gnu17 -Wall -Wextra -Werror -Isrc -Itests/pc -I"$D/include" tests/pc/native_registry_test.c \
     src/pc/render/native_registry.c src/pc/render/native_format.c src/pc/render/native_anim.c src/pc/render/native_cinematic.c \
