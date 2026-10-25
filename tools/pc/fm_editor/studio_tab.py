@@ -16,9 +16,9 @@ from .widgets import pick_card, px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
-    from studio import build, checkrows, knobs, log, preview, rail, runs, session as session_module
+    from studio import build, checkrows, knobs, log, preview, rail, runs, transport, session as session_module
 except ImportError:      # the tools are not next to the editor (a frozen build): the tab says so
-    build = checkrows = knobs = log = preview = rail = runs = session_module = None
+    build = checkrows = knobs = log = preview = rail = runs = transport = session_module = None
 
 TICK_MS = 300
 CHIP_COLOUR = {"fail": "#b00020", "warn": "#9a6700", "acked": "#555555", "info": "#555555", "pass": "#1a7f37"}
@@ -164,7 +164,7 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
-            if row["id"] in ("S1.skin", "S2.skin"):
+            if row["id"] in ("S1.skin", "S2.skin", "S2.map"):
                 ttk.Button(line, text="Open a rigged glb...", command=self.open_glb).pack(side="right")
             if row["id"] == "S5.missing-act":
                 act = row["value"] or "idle"
@@ -267,16 +267,25 @@ class StudioTab(Tab):
                 run.state(["disabled"])
             for text, result in (("Looks right", "seen"), ("Report a problem", "problem")):
                 ttk.Button(line, text=text, command=lambda r=row, res=result: self.mark_row(r, res)).pack(side="left", padx=2)
+        scrub = ttk.Button(self.form, text="Scrub the attack live...", command=self.scrub_live)
+        scrub.pack(anchor="w", pady=4)
+        if not (cards and disc):
+            scrub.state(["disabled"])
         why = ("No card is set in the recipe (S0.cards); Run needs one." if not cards else
                "Library turntable only; set MEMORIES_DISC for field and arena." if not disc else "")
         if why:
             ttk.Label(self.form, text=why, style="Note.TLabel").pack(anchor="w")
         log.event("S8", "run list", why or "all rows ready")
 
-    def run_scene(self, row, scene):
+    def scrub_live(self):
+        """Route B: build and install the preview, then hold one live game paused on the attack and scrub it with a slider."""
+        self.run_scene({"id": "scrub", "label": "Live scrub"}, None, live=True)
+
+    def run_scene(self, row, scene, live=False):
         """Build the preview package if it is missing or out of date (in a thread), then install it and start the scene."""
         if getattr(self, "preparing", False):
             return
+        self.live = live
         session, rec = self.session, self.session.studio.recipe
         base = session.recipe_path.parent if session.recipe_path else session.glb.parent
         out = base / "runs" / row["id"].replace(":", "-")
@@ -321,6 +330,7 @@ class StudioTab(Tab):
         """Main thread, after the preview build: install it and launch."""
         row, scene, out, card = self.prepare_job
         result = self.prepared
+        live = getattr(self, "live", False)
         if not result["ok"]:
             tail = (result["text"].strip().splitlines() or ["no output"])[-1]
             log.error(f"run {row['id']}", RuntimeError(f"preview build failed: {tail}"))
@@ -328,6 +338,8 @@ class StudioTab(Tab):
             return
         try:
             preview.install(result["dir"], preview.game_mods())
+            if live:
+                return self.open_scrub(out, card)
             self.job = preview.start(scene, out, card)
             self.job_info = (row, out)
             log.event("run", row["id"], f"started card={card}")
@@ -493,3 +505,67 @@ class StudioTab(Tab):
                     self.refresh()
         finally:
             self.after(TICK_MS, self.tick)
+
+    def open_scrub(self, out, card):
+        """Make the attack state and open the game in a thread; the slider window appears when the transport is paused."""
+        self.heading.configure(text="Starting the live game (hidden): the scrub window opens when the attack is paused. Shots are saved from the slider.")
+        self.scrub_box = {"t": None, "error": None, "game": None}
+        box = self.scrub_box
+
+        def work():
+            try:
+                import argparse
+                sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
+                import transport_demo as td
+                yc = td.load_client()
+                args = argparse.Namespace(exe=td.default_exe(), out=Path(out), card=card, scale=1, max_steps=600)
+                state = Path(out) / "attack.state"
+                Path(out).mkdir(parents=True, exist_ok=True)
+                if not state.is_file():
+                    td.make_attack_state(yc, args, state)
+                game = td.open_state(yc, args).__enter__()
+                box["game"] = game
+                t = transport.Transport(game, state)
+                if not t.start():
+                    raise RuntimeError("the attack scene never drew")
+                box["t"] = t
+            except Exception as e:      # any failure is shown in the heading, not a traceback
+                log.error("scrub", e)
+                box["error"] = str(e)
+        threading.Thread(target=work, daemon=True).start()
+        self.after(TICK_MS, lambda: self.scrub_wait(Path(out)))
+
+    def scrub_wait(self, out):
+        box = self.scrub_box
+        if box["error"]:
+            self.heading.configure(text=f"Live scrub failed: {box['error']}")
+            return
+        if box["t"] is None:
+            self.after(TICK_MS, lambda: self.scrub_wait(out))
+            return
+        t = box["t"]
+        win = tk.Toplevel(self)
+        win.title("Live scrub")
+        value = tk.DoubleVar(value=0.0)
+        label = ttk.Label(win, text="phase 0.00")
+        label.pack(padx=8, pady=4)
+
+        def moved(_=None):
+            at = t.scrub(value.get())
+            label.configure(text=f"phase {value.get():.2f} (engine {at if at is None else round(at, 2)})")
+        ttk.Scale(win, from_=0.0, to=1.0, variable=value, length=420, command=moved).pack(padx=8)
+        buttons = ttk.Frame(win)
+        buttons.pack(pady=6)
+        ttk.Button(buttons, text="Play", command=t.play).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Pause", command=t.pause).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Save a shot", command=lambda: label.configure(
+            text=f"saved {t.shot(out / 'scrub' / ('phase-%.2f.png' % value.get()))}")).pack(side="left", padx=4)
+
+        def close():
+            try:
+                box["game"].__exit__(None, None, None)
+            except Exception as e:
+                log.error("scrub close", e)
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
+        self.heading.configure(text="Live scrub is open.")
