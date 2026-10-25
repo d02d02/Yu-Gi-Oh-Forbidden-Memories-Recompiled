@@ -10,7 +10,7 @@ import math
 
 IDENTITY = (0.0, 0.0, 0.0, 1.0)
 
-KINDS = ("recoil", "collapse", "brace", "lunge", "rise")
+KINDS = ("recoil", "collapse", "brace", "lunge", "rise", "idle")
 
 
 def ease(t, kind):
@@ -217,6 +217,25 @@ def rise(frames, height, bob=0.05):
         track.append(_frame(pos, rot, scale))
     return track
 
+
+def idle(frames, height, forward=(0.0, 1.0), bob=0.01, sway=0.02, cycles=1):
+    """Idle bob and sway loop.
+    Raises ValueError when frames < 2 or cycles < 1.
+    """
+    if frames < 2:
+        raise ValueError("frames must be >= 2")
+    if cycles < 1:
+        raise ValueError("cycles must be >= 1")
+    fx, fz = forward
+    track = []
+    for i in range(frames - 1):
+        t = i / (frames - 1)
+        y = bob * height * math.sin(2 * math.pi * cycles * t)
+        angle = sway * math.sin(2 * math.pi * cycles * t + math.pi / 2)
+        rot = quat_axis_angle((0.0, 1.0, 0.0), angle)
+        track.append(_frame((0.0, y, 0.0), rot, 1.0))
+    track.append(dict(track[0]))   # the last frame is the first: a seamless loop
+    return track
 
 def sample(kind, frames, height, **kw):
     """Dispatch to one of the track generators named in KINDS."""
