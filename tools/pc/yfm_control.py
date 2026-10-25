@@ -615,6 +615,53 @@ class Game:
                     state[key] = value
         return state
 
+    # Overlay control methods
+    def ov_bbox(self, on: bool) -> None:
+        """Enable or disable bbox overlay."""
+        self.command(f"ov bbox {'on' if on else 'off'}")
+
+    def ov_grid(self, on: bool) -> None:
+        """Enable or disable grid overlay."""
+        self.command(f"ov grid {'on' if on else 'off'}")
+
+    def ov_bones(self, on: bool) -> None:
+        """Enable or disable bones overlay."""
+        self.command(f"ov bones {'on' if on else 'off'}")
+
+    def ov_off(self) -> None:
+        """Turn all overlays off."""
+        self.command("ov off")
+
+    def ov_get(self) -> dict:
+        """Get overlay flags as dict."""
+        reply = self.command("ov get")
+        parts = reply.split()
+        state = {}
+        for part in parts:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                try:
+                    state[k] = int(v)
+                except ValueError:
+                    state[k] = v
+        return state
+
+    def ov_bounds(self) -> dict | None:
+        """Get last drawn bounds; None if error."""
+        reply = self.command("ov bounds")
+        if reply.startswith("err"):
+            raise ControlError(reply)
+        parts = reply.split()
+        result = {}
+        for part in parts:
+            if part.startswith("min="):
+                result["min"] = [float(x) for x in part[4:].split(",")]
+            elif part.startswith("max="):
+                result["max"] = [float(x) for x in part[4:].split(",")]
+            elif part.startswith("lowest="):
+                result["lowest"] = float(part[7:])
+        return result
+
     def locate(self, where: int | str) -> int | str:
         """What peek and poke send for `where`: a guest address as it is, and
         a name as "@name" when the game keeps the variable itself (what the
