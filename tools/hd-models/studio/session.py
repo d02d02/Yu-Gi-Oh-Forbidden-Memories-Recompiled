@@ -19,6 +19,7 @@ from . import package
 from . import placement
 from . import report
 from . import resolutions
+from . import resolve_actions
 from . import runs
 from . import timemap
 from . import state
@@ -431,6 +432,17 @@ class Session:
         updated = resolutions.choose(self.studio.recipe, finding, "fallback", source={"procedural": kind}, act=act)
         self.studio.edit(f"acts.{act}.source", {"procedural": kind})
         self.studio.edit("resolutions", updated["resolutions"])
+
+    def clip_names(self, library=None):
+        """The clip names of this glb, or of a library glb (a path)."""
+        model = audit.load_model(str(library)) if library else self._model
+        return [an.get("name", "") for an in model.doc.get("animations", []) if an.get("name")]
+
+    def use_clip(self, act, clip):
+        return resolve_actions.use_clip(self.studio, act, clip)
+
+    def use_library(self, library, act, clip):
+        return resolve_actions.use_library(self.studio, library, act, clip)
 
     def acknowledge(self, check_id, value):
         self.studio.acknowledge(check_id, value)

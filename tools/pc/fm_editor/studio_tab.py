@@ -167,6 +167,8 @@ class StudioTab(Tab):
             if row["id"] == "S5.missing-act":
                 act = row["value"] or "idle"
                 ttk.Button(line, text=f"Make a {act} clip", command=lambda a=act: self.use_stand_in(a)).pack(side="right", padx=4)
+                ttk.Button(line, text="Library clip...", command=lambda a=act: self.pick_library_clip(a)).pack(side="right")
+                ttk.Button(line, text="Use a clip", command=lambda a=act: self.pick_clip(a)).pack(side="right", padx=4)
         if stage == "S8":
             self.add_run_list()
         self.widgets = {}
@@ -413,6 +415,30 @@ class StudioTab(Tab):
     def auto(self, k):
         knobs.back_to_auto(self.session.studio, k["path"])
         self.draw_stage()
+
+    def _choose_clip(self, names, act, apply):
+        """A small menu of clip names under the pointer; `apply(name)` runs for the pick."""
+        if not names:
+            messagebox.showinfo("Studio", "No clips to choose from.")
+            return
+        menu = tk.Menu(self, tearoff=False)
+        for name in names:
+            menu.add_command(label=name, command=lambda n=name: (apply(n), self.draw_stage()))
+        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    def pick_clip(self, act):
+        self._choose_clip(self.session.clip_names(), act, lambda n: self.session.use_clip(act, n))
+
+    def pick_library_clip(self, act):
+        path = file_dialogs.askopenfilename(title="Library glb with clips", filetypes=[("glTF binary", "*.glb"), ("glTF", "*.gltf")])
+        if not path:
+            return
+        try:
+            names = self.session.clip_names(path)
+        except Exception as error:      # a note in the window, never a crash
+            messagebox.showerror("Studio", f"Could not read {Path(path).name}: {error}")
+            return
+        self._choose_clip(names, act, lambda n: self.session.use_library(path, act, n))
 
     def use_stand_in(self, act):
         self.session.use_stand_in(act)
