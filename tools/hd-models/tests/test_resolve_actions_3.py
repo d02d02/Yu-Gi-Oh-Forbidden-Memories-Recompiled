@@ -19,7 +19,7 @@ class TestUseLibrary(unittest.TestCase):
 
     def test_successful_use_library(self):
         act = "enter"
-        lib_path = "lib.glb"
+        lib_path = __file__   # any file that exists
         clip = "myClip.glb"
         edits = ra.use_library(self.studio, lib_path, act, clip)
         self.assertEqual(edits, 3)
@@ -54,13 +54,11 @@ class TestUseLibrary(unittest.TestCase):
 
     def test_undo_restores(self):
         act = "attack"
-        lib_path = "lib.glb"
+        lib_path = __file__   # any file that exists
         clip = "attackClip"
         ra.use_library(self.studio, lib_path, act, clip)
         # Undo the three edits
-        self.studio.undo()
-        self.studio.undo()
-        self.studio.undo()
+        self.studio.undo()   # one action, one undo
         self.assertNotIn(act, self.studio.recipe.get("acts", {}))
         self.assertNotIn("library", self.studio.recipe)
         self.assertNotIn("resolutions", self.studio.recipe)

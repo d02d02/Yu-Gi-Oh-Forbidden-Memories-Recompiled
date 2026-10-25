@@ -4,6 +4,8 @@
 Provides helper functions used by the UI‑free module to resolve missing act findings.
 """
 
+from pathlib import Path
+
 import native_convert
 from . import resolutions
 
@@ -40,8 +42,7 @@ def use_clip(studio, act, clip_name):
         raise ValueError("clip_name must be non‑empty")
     finding = missing_act_finding(act)
     updated = resolutions.choose(studio.recipe, finding, "provide.glb", act=act, clip=clip_name)
-    studio.edit(f"acts.{act}.source", clip_name)
-    studio.edit("resolutions", updated["resolutions"])
+    studio.edit_many([(f"acts.{act}.source", clip_name), ("resolutions", updated["resolutions"])])
     return 2
 
 
@@ -62,11 +63,12 @@ def use_library(studio, library_path, act, clip_name):
         raise ValueError(f"act {act!r} not valid")
     if not library_path:
         raise ValueError("library_path must be non‑empty")
+    if not Path(library_path).is_file():
+        raise ValueError(f"library file not found: {library_path}")
     if not clip_name:
         raise ValueError("clip_name must be non‑empty")
     finding = missing_act_finding(act)
     updated = resolutions.choose(studio.recipe, finding, "provide.library", act=act, clip=clip_name, path=str(library_path))
-    studio.edit("library.path", str(library_path))
-    studio.edit(f"acts.{act}.source", clip_name)
-    studio.edit("resolutions", updated["resolutions"])
+    studio.edit_many([("library.path", str(library_path)), (f"acts.{act}.source", clip_name),
+                      ("resolutions", updated["resolutions"])])
     return 3

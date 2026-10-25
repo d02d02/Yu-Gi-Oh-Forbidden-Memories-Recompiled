@@ -185,6 +185,10 @@ class Studio:
         """Set a knob (value None removes it). Returns the stages marked stale. One undo entry."""
         return self._apply([(path, get_path(self.recipe, path), value)], record=True)
 
+    def edit_many(self, edits):
+        """Several knobs as ONE undo entry: `edits` is a list of (path, value). Returns the stages marked stale."""
+        return self._apply([(path, get_path(self.recipe, path), value) for path, value in edits], record=True)
+
     def reset_stage(self, stage):
         """Reset to auto: remove every key the stage owns. One undo entry. Returns the stages marked stale."""
         owned = [p for p in self._leaf_paths(self.recipe) if stage_of_path(p) == stage]

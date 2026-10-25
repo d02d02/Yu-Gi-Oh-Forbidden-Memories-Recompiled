@@ -427,12 +427,11 @@ class Session:
 
     def use_stand_in(self, act):
         """Resolve S5.missing-act for `act` with a tool-made procedural clip: the source goes in the recipe (the converter's
-        --procedural) and the choice in recipe["resolutions"] (the report lists it as a stand-in). Two undo entries."""
+        --procedural) and the choice in recipe["resolutions"] (the report lists it as a stand-in). One undo entry."""
         kind = self.STAND_IN_KIND[act]
         finding = {"id": "S5.missing-act", "level": "fail" if act == "idle" else "warn", "value": None if act == "idle" else act}
         updated = resolutions.choose(self.studio.recipe, finding, "fallback", source={"procedural": kind}, act=act)
-        self.studio.edit(f"acts.{act}.source", {"procedural": kind})
-        self.studio.edit("resolutions", updated["resolutions"])
+        self.studio.edit_many([(f"acts.{act}.source", {"procedural": kind}), ("resolutions", updated["resolutions"])])
 
     def clip_names(self, library=None):
         """The clip names of this glb, or of a library glb (a path)."""

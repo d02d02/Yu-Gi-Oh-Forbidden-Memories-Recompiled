@@ -52,8 +52,7 @@ class TestUseClip(unittest.TestCase):
         clip = "attackClip"
         ra.use_clip(self.studio, act, clip)
         # Undo the two edits
-        self.studio.undo()
-        self.studio.undo()
+        self.studio.undo()   # one action, one undo
         # After undoing both edits, acts source should be removed and resolutions entry cleared
         self.assertNotIn(act, self.studio.recipe.get("acts", {}))
         self.assertNotIn("resolutions", self.studio.recipe)
