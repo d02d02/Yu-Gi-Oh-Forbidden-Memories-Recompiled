@@ -17,12 +17,15 @@ _CATALOGUE = {
     ],
     "S5.model": ["provide.glb", "provide.library", "provide.file", "fallback"],
     "S0.category": ["pick"],
+    "S0.category-confidence": ["pick"],
+    "S0.cards": ["pick"],
     "S0.attribution": ["text"],
     "S9.provenance": ["text"],
     "S3.dropped": ["provide.file", "fallback", "accept"],
     "S3.atlas": ["provide.file", "fallback", "accept"],
     "S1.skin": ["provide.file"],
     "S2.map": ["provide.file"],
+    "S2.skin": ["provide.file"],
 }
 
 
