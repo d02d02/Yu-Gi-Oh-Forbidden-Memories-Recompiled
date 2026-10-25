@@ -313,6 +313,13 @@ int NativeModel_ArenaShot(int model0, int model1, const float look[3], float eye
             chosen = camera;
         }
     }
+    {
+        NativeCamera over;
+        if (NativeCinematic_Override(&over)) {
+            NativeCinematic_Orbit(look, eye, &over, eye);
+            return 1;
+        }
+    }
     if (best <= 0.0f) return 0;
     NativeCinematic_Orbit(look, eye, &chosen, eye);
     return 1;
@@ -341,6 +348,16 @@ int NativeModel_FieldShot(NativeFieldShot *shot)
         if (w > best) {
             best = w;
             chosen = camera;
+        }
+    }
+    {
+        NativeCamera over;
+        if (NativeCinematic_Override(&over)) {
+            shot->yaw = over.yaw;
+            shot->pitch = over.pitch;
+            shot->distance = over.distance;
+            shot->height = over.height;
+            return 1;
         }
     }
     shot->yaw = chosen.yaw;

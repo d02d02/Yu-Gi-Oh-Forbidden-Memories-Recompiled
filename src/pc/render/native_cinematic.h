@@ -25,4 +25,6 @@ float NativeCinematic_Pick(const NativeShot *shots, unsigned count, int self_act
 /* `eye` moved by the camera about `look`. */
 void NativeCinematic_Orbit(const float look[3], const float eye[3], const NativeCamera *camera, float out[3]);
 
+int NativeCinematic_Override(NativeCamera *out);
+int NativeCinematic_Command(const char *line, char *reply, size_t n);
 #endif

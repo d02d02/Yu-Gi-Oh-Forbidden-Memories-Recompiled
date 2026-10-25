@@ -662,6 +662,31 @@ class Game:
                 result["lowest"] = float(part[7:])
         return result
 
+    def cam_preset(self, name: str) -> str:
+        """Set a preset camera configuration. Returns the preset name."""
+        return self.command(f"cam preset {name}")
+
+    def cam_set(self, yaw: float, pitch: float, dist: float, height: float) -> None:
+        """Set the camera override values. Raises ControlError on range error."""
+        self.command(f"cam set {yaw} {pitch} {dist} {height}")
+
+    def cam_off(self) -> None:
+        """Deactivate the camera override."""
+        self.command("cam off")
+
+    def cam_get(self) -> dict | None:
+        """Get current camera override. Returns dict with yaw, pitch, dist, height or None if off."""
+        reply = self.command("cam get")
+        if reply == "cam off":
+            return None
+        # reply like "cam yaw=... pitch=... dist=... height=..."
+        parts = reply.split()
+        data = {}
+        for p in parts[1:]:
+            key, value = p.split('=')
+            data[key] = float(value)
+        return data
+
     def locate(self, where: int | str) -> int | str:
         """What peek and poke send for `where`: a guest address as it is, and
         a name as "@name" when the game keeps the variable itself (what the

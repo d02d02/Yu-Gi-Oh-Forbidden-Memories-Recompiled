@@ -14,6 +14,7 @@
 #include "pc/sdk/display.h"
 #include "pc/render/native_anim.h"
 #include "pc/render/native_registry.h"
+#include "pc/render/native_cinematic.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -315,6 +316,18 @@ static int handle(char *text)
             send_line(reply_buf);
         } else {
             send_error(reply_buf + 4); /* skip "err " */
+        }
+        return 0;
+    }
+
+    /* Forward "cam ..." commands to the native cinematic command. */
+    if (strncmp(text, "cam", 3) == 0 && (text[3] == ' ' || text[3] == '\t')) {
+        char reply_buf[256];
+        int rc = NativeCinematic_Command(text, reply_buf, sizeof(reply_buf));
+        if (rc == 0) {
+            send_line(reply_buf);
+        } else {
+            send_error(reply_buf + 4);
         }
         return 0;
     }

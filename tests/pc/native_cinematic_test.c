@@ -4,6 +4,9 @@
 #include <math.h>
 #include <stdio.h>
 
+
+
+
 static int failures;
 #define CHECK(condition)                                                                                  \
     do {                                                                                                  \
@@ -74,6 +77,25 @@ int main(void)
         fprintf(stderr, "native_cinematic_test: %d failed\n", failures);
         return 1;
     }
+    /* New tests for command and override */
+    {
+        char reply[256];
+        NativeCamera cam;
+        int r;
+        r = NativeCinematic_Command("cam preset front", reply, sizeof(reply));
+        CHECK(r == 0);
+
+        CHECK(NativeCinematic_Override(&cam) == 1 && near(cam.yaw, 0.0f) && near(cam.pitch, 0.0f) && near(cam.distance, 1.0f));
+        r = NativeCinematic_Command("cam off", reply, sizeof(reply));
+        CHECK(r == 0);
+        CHECK(NativeCinematic_Override(&cam) == 0);
+        r = NativeCinematic_Command("cam set 200 0 1 0", reply, sizeof(reply));
+        CHECK(r != 0);
+        r = NativeCinematic_Command("cam get", reply, sizeof(reply));
+        CHECK(r == 0);
+
+    }
     printf("native_cinematic_test: ok\n");
     return 0;
 }
+
