@@ -104,6 +104,16 @@ class TestAcknowledgements(unittest.TestCase):
         self.assertEqual(s.state("S1"), "pass")
         self.assertEqual(s.recipe["acks"], [{"check": "S1.bind-vs-rest", "value": 5.0}])
 
+    def test_several_warnings_share_one_check_id(self):
+        s = Studio()
+        s.set_findings("S5", [warn("S5.missing-act", "win"), warn("S5.missing-act", "guard")])
+        s.acknowledge("S5.missing-act", "win")
+        s.acknowledge("S5.missing-act", "guard")
+        self.assertEqual(s.state("S5"), "pass")
+        self.assertEqual(len(s.recipe["acks"]), 2)
+        s.set_findings("S5", [warn("S5.missing-act", "win"), warn("S5.missing-act", "hit")])
+        self.assertEqual(s.recipe["acks"], [{"check": "S5.missing-act", "value": "win"}])
+
     def test_ack_needs_a_matching_warning(self):
         s = Studio()
         s.set_findings("S1", [warn("S1.bind-vs-rest", 5.0)])

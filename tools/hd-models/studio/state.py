@@ -140,11 +140,11 @@ class Studio:
         self.findings[stage] = copy.deepcopy(findings)
         self.inputs[stage] = copy.deepcopy(inputs)
         self.stale.discard(stage)
-        current = {f["id"]: f.get("value") for f in findings if f["level"] == "warn"}
+        current = {(f["id"], f.get("value")) for f in findings if f["level"] == "warn"}   # several warnings may share an id
         dropped = []
         kept = []
         for a in self.recipe.get("acks", []):
-            if a.get("check", "").startswith(stage + ".") and current.get(a["check"], object()) != a.get("value"):
+            if a.get("check", "").startswith(stage + ".") and (a["check"], a.get("value")) not in current:
                 dropped.append(a)
             else:
                 kept.append(a)
@@ -169,7 +169,7 @@ class Studio:
         stage = check_id.split(".")[0]
         if not any(f["id"] == check_id and f["level"] == "warn" and f.get("value") == value for f in self.findings.get(stage, [])):
             raise ValueError(f"{check_id} has no warning with value {value!r} to acknowledge")
-        acks = [a for a in self.recipe.get("acks", []) if a.get("check") != check_id]
+        acks = [a for a in self.recipe.get("acks", []) if (a.get("check"), a.get("value")) != (check_id, value)]
         acks.append({"check": check_id, "value": value})
         self._write_acks(acks)
 
