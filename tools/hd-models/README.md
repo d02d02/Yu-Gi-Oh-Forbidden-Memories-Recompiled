@@ -19,6 +19,8 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `studio/build.py` | S9 build step: recipe to new_native_mod command, build twice with an injectable runner, tree hashes, run_build_s9 |
 | `studio/clips.py` | S5 clip statistics and checks: loop gap, root drift, speed peak, bone stretch, bbox, run_s5 (data from clipdata.py) |
 | `studio/preview.py` | Route A live preview: field_attack.py command for a package and scene, disc check, frame listing (no game change) |
+| `studio/stream.py` | Route B frame stream over `yfm_control` (E7 phase 1): polls `shot`+`hash`, yields changed frames at a capped rate |
+| `studio/clipdata.py` | samples a glb's clips into plain `P[frame][joint]` positions for `clips.py` |
 | `studio/placement.py` | S4 (size and placement) maths: `fit`, `footprint_ratio`, `check_footprint`, `check_ground`, `check_uniform_scale`, `run_s4` over a glb, headless |
 | `studio/rail.py`, `knobs.py`, `checkrows.py`, `studio/session.py`, `run_audit.py` | the Model Studio's UI-free view layer for S0-S3: rail rows, knob tables, check rows, editing/undo/debounce session and the `run_audit.py` CLI |
 | `new_native_mod.py MODEL.glb --card 364 --out mods/my-mod [-- converter options]` | the whole mod: converts into `models/<model>/` and writes or updates `mod.json`'s `native_models`, then checks it |
