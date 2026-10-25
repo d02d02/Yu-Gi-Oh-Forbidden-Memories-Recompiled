@@ -622,8 +622,9 @@ def convert(a):
                      f"{recenter[0] * s:+.1f}, {recenter[2] * s:+.1f} game units from the root (--no-center keeps the root)")
 
     clip_blobs, strikes = [], []
-    for cname in want:
-        chans, dur = clip_channels(cname)
+    bind_clip = None   # a model without clips: its bind pose (a clip with no channels), the base of a procedural act
+    for cname in want or ([None] if a.procedural else []):
+        chans, dur = ({}, 0.0) if cname is None else clip_channels(cname)
         t0 = 0.0
         if a.attack_range and cname == acts.get("attack"):
             t0, dur = (min(max(float(v), 0.0), dur) for v in a.attack_range.split(":"))
@@ -685,6 +686,9 @@ def convert(a):
                 data[f, k, 3:] = q
             for h, k in enumerate(hand_names):  # the joint itself, in the game's space
                 hands[f, h] = A @ Wn[joints[k]][:3, 3] + b
+        if cname is None:
+            bind_clip = ("bind", frames, data)
+            continue
         clip_blobs.append((cname, frames, data))
         if cname == acts.get("attack") and frames > 2:
             speed = np.zeros((frames, len(hand_names)))
@@ -695,7 +699,7 @@ def convert(a):
     for rule in a.procedural or []:
         from studio import procedural   # noqa: E402  (only a procedural act needs it)
         act, _, kind = rule.partition("=")
-        base_clip = next((b for b in clip_blobs if b[0] == acts.get("idle")), clip_blobs[0] if clip_blobs else None)
+        base_clip = next((b for b in clip_blobs if b[0] == acts.get("idle")), clip_blobs[0] if clip_blobs else bind_clip)
         if act not in spec.ACTS or base_clip is None or parents[root] >= 0:
             raise Problem(f"--procedural {rule}: ACT=KIND needs an act of {', '.join(spec.ACTS)}, an idle (or any) clip and a root joint without a parent")
         if len(clip_blobs) >= spec.MAX_CLIPS:
