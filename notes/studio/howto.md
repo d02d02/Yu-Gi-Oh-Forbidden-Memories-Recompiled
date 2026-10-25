@@ -15,4 +15,4 @@ Needs: a rigged glb (skeleton plus clips), the disc image for the field and aren
 10. The preview mod is installed as `game32/mods/studio-preview`. The folder S9 builds is the one to ship.
 
 Logs: `studio.log` (size-capped) and `run.log` per run, in the Studio's work folder.
-Known limits: scrub and pause work only in the Route B demo (`tools/hd-models/transport_demo.py`), not yet in the Studio tab; one scene per launch; see `engine-needs.md`.
+Missing pieces: a check row that needs a file offers **Open a rigged glb...** (S1/S2 skin and bone map), **Use a clip** or **Library clip...** (S5), and **Choose card...** sets S0 cards. S8 **Scrub the attack live...** holds one running game paused on the attack: drag the slider to a phase, Play/Pause, **Save a shot** (needs a card and the disc). Known limits: one scene per Run launch; see `engine-needs.md`.
