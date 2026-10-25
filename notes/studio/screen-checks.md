@@ -15,3 +15,14 @@ After 5 and 6 I record your result in the S8 marks.
 
 | 8 | Studio tab, dragon, S9 | "Build package" and "Export report" buttons | Build runs ~1 min with the button greyed, then "Built: <path>" appears and S8 Run buttons enable. Export report writes `report.md` next to the glb (heading shows the path). |
 | 9 | RDP: play the built dragon mod in the real game window (View > Internal 2x) | Field and arena attack | Same as rows 5-6, judged by the user's eyes: size, grey texture, wing clipping, facing. I only read capture frames; they looked right. |
+
+New 2026-10-25 (one at a time, reply "checked" or what is wrong):
+
+| # | Open | Look at | Expected |
+|---|---|---|---|
+| 10 | Studio, dragon or angel, S8, "Scrub the attack live..." (needs a card and the disc) | The game window and the "Live scrub" window | Package builds, game starts hidden, a Live scrub window opens; dragging the slider shows the phase and the engine phase beside it; Save a shot writes `runs/scrub/scrub/phase-N.png` |
+| 11 | Same Live scrub window | Camera dropdown (front, side, top, three-quarter, close, game) | The camera changes in the game; "game" gives it back |
+| 12 | Same window | bbox, grid, bones checkboxes (needs the GL window visible) | Yellow box, grey grid, green bone lines over the model; unchecking removes them |
+| 13 | Same window | "show disc model" checkbox | The disc's own monster replaces the model in the same frame; unchecking brings the model back |
+| 14 | S5 with a model that lacks an act | Make a clip / Use a clip / Library clip... buttons | Each fills the row; Undo reverts one step |
+| 15 | S0 and S1/S2 | Choose card..., Open a rigged glb... (also on S2.map rows) | Card set in the recipe; glb opens and the checks re-run |
