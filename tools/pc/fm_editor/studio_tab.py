@@ -4,6 +4,7 @@ No engine viewport yet (SM4): the stages are judged from their checks."""
 from __future__ import annotations
 
 import sys
+import os
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -72,12 +73,21 @@ class StudioTab(Tab):
         self.after(TICK_MS, self.tick)
 
     # --- session -----------------------------------------------------------------------------
+    def adopt_disc(self):
+        """The editor already found the game (picker, saved path, game/ folder); the field and arena runs read it from
+        MEMORIES_DISC, so hand it down unless the person set one."""
+        source = getattr(getattr(self.app, "files", None), "source", "")
+        if source and not os.environ.get("MEMORIES_DISC") and Path(source).exists():
+            os.environ["MEMORIES_DISC"] = source
+            log.event("disc", "adopted", source)
+
     def open_glb(self):
         if session_module is None:
             return
         path = file_dialogs.askopenfilename(title="Rigged model", filetypes=[("glTF binary", "*.glb"), ("glTF", "*.gltf")])
         if not path:
             return
+        self.adopt_disc()
         try:
             self.session = session_module.Session.open(path, Path(path).with_suffix(".recipe.json"))
             self.stage = "S0"
@@ -208,6 +218,7 @@ class StudioTab(Tab):
         self.build_thread.start()
 
     def add_run_list(self):
+        self.adopt_disc()
         """S8: one row per scene or act with its status, a Run button (route A: the game is launched per run) and marks."""
         rec = self.session.studio.recipe
         cards = rec.get("model", {}).get("cards") or []
