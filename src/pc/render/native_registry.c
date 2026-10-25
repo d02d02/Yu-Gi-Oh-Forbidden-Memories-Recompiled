@@ -660,6 +660,13 @@ size_t NativeRegistry_Bytes(void)
     return used_bytes;
 }
 
+int NativeRegistry_Count(void)
+{
+    return entry_count;
+}
+
+/* Frees every model. The caller must not hold a mesh pointer: the `native reload` and `native get` commands run
+ * from control's handle() between frames, so the draw has finished with the meshes and the next Find reads afresh. */
 void NativeRegistry_Reset(void)
 {
     int i;

@@ -360,6 +360,38 @@ int main(int argc, char **argv)
     NativeRegistry_Reset();
     CHECK(NativeRegistry_Mesh(0) == NULL && NativeRegistry_Bytes() == 0);
 
+    /* Reload: `native reload` resets, then the next Find reads the manifests and the package again. A rebuilt
+     * package (`scale` changed) shows its new value, the entry count is stable, and the test switch's environment
+     * survives the Reset (Read re-creates it). */
+    set_env("MEMORIES_NATIVE_MODEL", NULL);
+    set_env("MEMORIES_NATIVE_MODEL_ID", NULL);
+    set_env("MEMORIES_NATIVE_TEXTURE_MAX", "64");
+    id = NativeRegistry_Find(0, 1);
+    CHECK(id >= 0 && NativeRegistry_Count() > 0);
+    {
+        int count = NativeRegistry_Count();
+        float before = NativeRegistry_Mesh(id) ? NativeRegistry_Mesh(id)->scale : -1.0f;
+        write_text("a/pkg/model.json", "{\"format\": 1, \"model\": \"m.hdm\", \"scale\": 200}");
+        NativeRegistry_Reset();
+        CHECK(NativeRegistry_Mesh(id) == NULL && NativeRegistry_Count() == 0 && NativeRegistry_Bytes() == 0);
+        id = NativeRegistry_Find(0, 1);
+        mesh = NativeRegistry_Mesh(id);
+        CHECK(mesh && near(mesh->scale, 2.0f) && !near(before, mesh->scale));
+        CHECK(NativeRegistry_Count() == count);
+    }
+    /* The test switch: set after the Reset, Read re-creates it from the environment. */
+    NativeRegistry_Reset();
+    {
+        char path[SCRATCH_MAX + 64];
+        path_of(path, sizeof(path), "a/pkg/model.json");
+        set_env("MEMORIES_NATIVE_MODEL", path);
+        set_env("MEMORIES_NATIVE_MODEL_ID", "363");
+    }
+    id = NativeRegistry_Find(363, 0);
+    CHECK(id >= 0 && near(tag_of(id), 2.0f));
+    set_env("MEMORIES_NATIVE_MODEL", NULL);
+    set_env("MEMORIES_NATIVE_MODEL_ID", NULL);
+
     if (failures) {
         fprintf(stderr, "native_registry_test: %d failed\nnotes:\n%s", failures, notes);
         return 1;

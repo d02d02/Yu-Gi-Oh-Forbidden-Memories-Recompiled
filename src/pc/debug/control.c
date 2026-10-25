@@ -13,6 +13,7 @@
 #include "pc/platform/settings.h"
 #include "pc/sdk/display.h"
 #include "pc/render/native_anim.h"
+#include "pc/render/native_registry.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -314,6 +315,25 @@ static int handle(char *text)
             send_line(reply_buf);
         } else {
             send_error(reply_buf + 4); /* skip "err " */
+        }
+        return 0;
+    }
+
+    /* Forward "native ..." commands to the native registry. The command
+     * runs between frames (handle is called from the control pump outside
+     * the draw), so Reset cannot race with a mesh pointer held by a draw. */
+    if (strncmp(text, "native ", 7) == 0) {
+        const char *sub = text + 7;
+        if (strcmp(sub, "reload") == 0) {
+            NativeRegistry_Reset();
+            send_line("ok native reload");
+        } else if (strcmp(sub, "get") == 0) {
+            int count = NativeRegistry_Count();
+            size_t bytes = NativeRegistry_Bytes();
+            snprintf(reply, sizeof(reply), "ok native entries=%d bytes=%zu", count, bytes);
+            send_line(reply);
+        } else {
+            send_error("native: unknown");
         }
         return 0;
     }

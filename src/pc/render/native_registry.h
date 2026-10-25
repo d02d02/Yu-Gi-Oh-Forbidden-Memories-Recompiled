@@ -52,6 +52,8 @@ const NativeMesh *NativeRegistry_Mesh(int id);
 const char *NativeRegistry_Name(int id);
 /* The bytes the models read hold. */
 size_t NativeRegistry_Bytes(void);
-/* Everything freed and forgotten; the next Read starts again (tests). */
+/* How many entries the manifests and the test switch hold (0 until Read, i.e. a Find). */
+int NativeRegistry_Count(void);
+/* Everything freed and forgotten; the next Read starts again (tests, and `native reload`). */
 void NativeRegistry_Reset(void);
 #endif
