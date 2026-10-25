@@ -173,6 +173,10 @@ class StudioTab(Tab):
             self.add_knob(k)
         info = rail.footer(studio, stage)
         self.prev_button.state(["!disabled"] if info["previous"] else ["disabled"])
+        if info["next"] is None:    # S9 builds from its form; a second, disabled Build package here only duplicates it
+            self.next_button.pack_forget()
+        elif not self.next_button.winfo_ismapped():
+            self.next_button.pack(side="right", before=self.reason)
         self.next_button.configure(text=info["next_label"])
         self.next_button.state(["!disabled"] if info["next_enabled"] else ["disabled"])
         self.reason.configure(text="" if info["next_enabled"] else info["next_reason"])
