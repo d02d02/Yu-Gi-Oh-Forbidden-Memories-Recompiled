@@ -1,0 +1,162 @@
+{
+ "C1": {
+  "category": "C1",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.merge:info",
+    "S1.ok:info"
+   ],
+   "S2": [
+    "S2.ok:info"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C2": {
+  "category": "C2",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.merge:info",
+    "S1.ok:info"
+   ],
+   "S2": [
+    "S2.ok:info"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C3": {
+  "category": "C3",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category-confidence:warn",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.skin:fail"
+   ],
+   "S2": [
+    "S2.skin:fail"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C4": {
+  "category": "C4",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.merge:info",
+    "S1.ok:info"
+   ],
+   "S2": [
+    "S2.chains:warn"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C5": {
+  "category": "C5",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.merge:info",
+    "S1.ok:info"
+   ],
+   "S2": [
+    "S2.ok:info"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C6": {
+  "category": "C6",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.merge:info",
+    "S1.ok:info"
+   ],
+   "S2": [
+    "S2.ok:info"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C7": {
+  "category": "C8",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category-confidence:warn",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.skin:fail"
+   ],
+   "S2": [
+    "S2.skin:fail"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ },
+ "C8": {
+  "category": "C8",
+  "findings": {
+   "S0": [
+    "S0.cards:fail",
+    "S0.category-confidence:warn",
+    "S0.category:fail",
+    "S0.licence:info"
+   ],
+   "S1": [
+    "S1.skin:fail"
+   ],
+   "S2": [
+    "S2.skin:fail"
+   ],
+   "S3": [
+    "S3.ok:info"
+   ]
+  }
+ }
+}

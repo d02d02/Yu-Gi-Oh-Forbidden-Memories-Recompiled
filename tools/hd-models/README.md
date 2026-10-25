@@ -19,6 +19,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `studio/build.py` | S9 build step: recipe to new_native_mod command, build twice with an injectable runner, tree hashes, run_build_s9 |
 | `studio/clips.py` | S5 clip statistics and checks: loop gap, root drift, speed peak, bone stretch, bbox, run_s5 (data from clipdata.py) |
 | `studio/preview.py` | Route A live preview: field_attack.py command for a package and scene, disc check, frame listing (no game change) |
+| `studio/corpus.py` | synthetic glb per category C1-C8, golden audit results (`studio/reference/corpus_golden.json`), `corpus.py --check` / `--update` regression run |
 | `studio/stream.py` | Route B frame stream over `yfm_control` (E7 phase 1): polls `shot`+`hash`, yields changed frames at a capped rate |
 | `studio/clipdata.py` | samples a glb's clips into plain `P[frame][joint]` positions for `clips.py` |
 | `studio/placement.py` | S4 (size and placement) maths: `fit`, `footprint_ratio`, `check_footprint`, `check_ground`, `check_uniform_scale`, `run_s4` over a glb, headless |
