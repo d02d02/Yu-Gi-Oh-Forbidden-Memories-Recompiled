@@ -210,7 +210,6 @@ class StudioTab(Tab):
     def add_run_list(self):
         """S8: one row per scene or act with its status, a Run button (route A: the game is launched per run) and marks."""
         rec = self.session.studio.recipe
-        package = knobs.value(rec, "pkg.path")
         cards = rec.get("model", {}).get("cards") or []
         disc = preview.disc_available()
         table = runs.status_table(rec.get("runs", []), self.session._sha256, disc)
@@ -220,26 +219,53 @@ class StudioTab(Tab):
             ttk.Label(line, text=row["label"], width=24).pack(side="left")
             ttk.Label(line, text=table[row["id"]], width=10).pack(side="left")
             scene = row["id"] if row["id"] in preview.SCENES else ("arena" if row["id"].startswith("act:") else None)
-            ready = scene and package and cards and (disc or not row["needs_disc"])
+            ready = scene and cards and (disc or not row["needs_disc"])
             run = ttk.Button(line, text="Run", command=lambda r=row, s=scene: self.run_scene(r, s))
             run.pack(side="left")
             if not ready:
                 run.state(["disabled"])
             for text, result in (("Looks right", "seen"), ("Report a problem", "problem")):
                 ttk.Button(line, text=text, command=lambda r=row, res=result: self.mark_row(r, res)).pack(side="left", padx=2)
-        why = ("Build the package (S9) to enable Run." if not package else
-               "No card is set in the recipe (S0.cards); Run needs one." if not cards else
+        why = ("No card is set in the recipe (S0.cards); Run needs one." if not cards else
                "Library turntable only; set MEMORIES_DISC for field and arena." if not disc else "")
         if why:
             ttk.Label(self.form, text=why, style="Note.TLabel").pack(anchor="w")
         log.event("S8", "run list", why or "all rows ready")
 
     def run_scene(self, row, scene):
-        rec = self.session.studio.recipe
-        out = Path(self.session.recipe_path.parent if self.session.recipe_path else ".") / "runs" / row["id"].replace(":", "-")
+        """Build the preview package if it is missing or out of date (in a thread), then install it and start the scene."""
+        if getattr(self, "preparing", False):
+            return
+        session, rec = self.session, self.session.studio.recipe
+        base = session.recipe_path.parent if session.recipe_path else session.glb.parent
+        out = base / "runs" / row["id"].replace(":", "-")
+        self.preparing, self.prepared = True, None
+        self.heading.configure(text="Building the package for this run..." if not session.preview_current(base / "build") else "Starting the run...")
+
+        def work():
+            try:
+                self.prepared = session.ensure_preview(base / "build")
+            except (ValueError, OSError) as e:
+                log.error(f"run {row['id']}", e)
+                self.prepared = {"ok": False, "text": str(e)}
+        self.prepare_job = (row, scene, out, rec["model"]["cards"][0])
+        self.prepare_thread = threading.Thread(target=work, daemon=True)
+        self.prepare_thread.start()
+
+    def finish_run(self):
+        """Main thread, after the preview build: install it and launch."""
+        row, scene, out, card = self.prepare_job
+        result = self.prepared
+        if not result["ok"]:
+            tail = (result["text"].strip().splitlines() or ["no output"])[-1]
+            log.error(f"run {row['id']}", RuntimeError(f"preview build failed: {tail}"))
+            self.heading.configure(text=f"The package did not build: {tail}")
+            return
         try:
-            preview.install(knobs.value(rec, "pkg.path"), preview.game_mods())   # pkg.path is the built mod folder (S9)
-            self.job = preview.start(scene, out, rec["model"]["cards"][0])
+            preview.install(result["dir"], preview.game_mods())
+            self.job = preview.start(scene, out, card)
+            log.event("run", row["id"], f"started card={card}")
+            self.heading.configure(text=f"Running {row['label']}")
         except (RuntimeError, OSError) as e:
             log.error(f"run {row['id']}", e)
             self.heading.configure(text=str(e))
@@ -344,6 +370,9 @@ class StudioTab(Tab):
                     else:
                         self.session.apply_build(result, self.build_out)
                     ran = True
+                if getattr(self, "preparing", False) and not self.prepare_thread.is_alive():
+                    self.preparing = False
+                    self.finish_run()
                 if ran:
                     self.refresh()
         finally:

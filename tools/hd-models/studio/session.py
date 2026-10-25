@@ -259,6 +259,26 @@ class Session:
         kw = {"runner": runner} if runner else {}
         return self.apply_build(build.run_build_s9(rec, self.glb, out_dir, cards, **kw), out_dir)
 
+    def preview_key(self):
+        return build.preview_key(self.studio.recipe, self._sha256)
+
+    def preview_current(self, out_dir):
+        """True when out_dir holds a preview build of the recipe as it is now."""
+        stamp = Path(out_dir) / "preview.key"
+        try:
+            return (Path(out_dir) / "preview").is_dir() and stamp.read_text(encoding="utf-8") == self.preview_key()
+        except OSError:
+            return False
+
+    def ensure_preview(self, out_dir, runner=None):
+        """Build (or reuse) the package the Run rows play; returns build.preview_build's dict. Safe off the main thread."""
+        rec = self.studio.recipe
+        cards = [int(c) for c in rec.get("model", {}).get("cards") or []]
+        kw = {"runner": runner} if runner else {}
+        result = build.preview_build(rec, self.glb, out_dir, cards, self.preview_key(), **kw)
+        log.event("run", "preview", f"ok={result['ok']} cached={result['cached']}" + ("" if result["ok"] else " " + result["text"]))
+        return result
+
     def apply_build(self, result, out_dir):
         """Store the S9 findings of a build and set pkg.path to the first build ("a"). Main thread only."""
         self.studio.set_findings("S9", result["findings"], self.stage_inputs("S9"))

@@ -3,6 +3,7 @@ twice through an injectable runner, hash the outputs and feed package.run_s9.
 Headless; no tkinter."""
 
 import hashlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -167,6 +168,30 @@ def build_twice(rec, glb, out_dir, cards, runner=real_runner):
         "build_b": hash_tree(dir_b),
         "returncode": rc_b,
     }
+
+
+def preview_key(rec, glb_sha256):
+    """What a built package depends on: the model bytes and the recipe minus what a build ignores (marks, acks, the built path)."""
+    body = {k: v for k, v in rec.items() if k not in ("runs", "acks")}
+    body["pkg"] = {k: v for k, v in rec.get("pkg", {}).items() if k != "path"}
+    text = json.dumps(body, sort_keys=True, default=str)
+    return hashlib.sha256((glb_sha256 + text).encode("utf-8")).hexdigest()
+
+
+def preview_build(rec, glb, out_dir, cards, key, runner=real_runner):
+    """One build into out_dir/"preview" for the Run rows, reused while `key` is unchanged.
+
+    Returns {"ok", "dir", "text", "cached"}; a failed build leaves no key, so the next call builds again."""
+    out_dir = Path(out_dir)
+    folder, stamp = out_dir / "preview", out_dir / "preview.key"
+    if folder.is_dir() and stamp.is_file() and stamp.read_text(encoding="utf-8") == key:
+        return {"ok": True, "dir": folder, "text": "", "cached": True}
+    stamp.unlink(missing_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    code, text = runner(command(rec, glb, folder, cards))
+    if code == 0:
+        stamp.write_text(key, encoding="utf-8")
+    return {"ok": code == 0, "dir": folder, "text": text, "cached": False}
 
 
 def run_build_s9(rec, glb, out_dir, cards, runner=real_runner):
