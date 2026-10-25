@@ -30,6 +30,7 @@
 #include "texture_pack.h"
 #include <math.h>
 #include "native_model.h"
+#include "native_overlay.h"
 #include "native_anim.h"
 #include "pc/cards/card_layout.h"
 #include "pc/text/hd_text.h"
@@ -2339,6 +2340,129 @@ static NativeGlMesh *native_gl_mesh(const NativeMesh *mesh)
     return g;
 }
 
+/* The mesh's bind-pose box in model space, found once per mesh (the overlay and `ov bounds` read it). */
+static void native_mesh_bounds(const NativeMesh *mesh, float min[3], float max[3])
+{
+    static const NativeMesh *cached;
+    static float cmin[3], cmax[3];
+    uint32_t k;
+    int a;
+    if (cached != mesh) {
+        for (a = 0; a < 3; a++) cmin[a] = cmax[a] = 0.0f;
+        for (k = 0; k < mesh->vertices; k++) {
+            for (a = 0; a < 3; a++) {
+                float v;
+                memcpy(&v, &mesh->words[(size_t)k * mesh->stride + (uint32_t)a], sizeof(v));
+                if (k == 0 || v < cmin[a]) cmin[a] = v;
+                if (k == 0 || v > cmax[a]) cmax[a] = v;
+            }
+        }
+        cached = mesh;
+    }
+    for (a = 0; a < 3; a++) {
+        min[a] = cmin[a];
+        max[a] = cmax[a];
+    }
+}
+
+/* Studio overlays (native_overlay.h): thin lines drawn with the model's own skinning program, so they go through the same
+ * projection; each end is a vertex of the bind pose tied to one bone (weight 1), so the box and grid follow the root bone and
+ * the bone lines follow the pose. Called inside the model's draw, the program and its attributes bound. A 1x1 texture gives a
+ * line its colour. */
+static void native_overlay_group(GLuint *vbo, GLuint *tex, const uint8_t colour[4], const float *lines, int count)
+{
+    if (count <= 0) return;
+    if (!*vbo) gl_GenBuffers(1, vbo);
+    if (!*tex) {
+        glGenTextures(1, tex);
+        glBindTexture(GL_TEXTURE_2D, *tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, colour);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+    glBindTexture(GL_TEXTURE_2D, *tex);
+    gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    gl_BindBuffer(GL_ARRAY_BUFFER, *vbo);
+    gl_BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)count * 16 * sizeof(float)), lines, GL_STREAM_DRAW);
+    gl_VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)0);
+    gl_VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(3 * sizeof(float)));
+    gl_VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(6 * sizeof(float)));
+    gl_VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(8 * sizeof(float)));
+    gl_VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (const void *)(12 * sizeof(float)));
+    glDrawArrays(GL_LINES, 0, count);
+}
+
+static void native_overlay_vertex(float *out, const float p[3], float joint)
+{
+    out[0] = p[0];
+    out[1] = p[1];
+    out[2] = p[2];
+    out[3] = 0.0f;
+    out[4] = -1.0f;
+    out[5] = 0.0f;
+    out[6] = out[7] = 0.5f;
+    out[8] = joint;
+    out[9] = out[10] = out[11] = 0.0f;
+    out[12] = 1.0f;
+    out[13] = out[14] = out[15] = 0.0f;
+}
+
+/* Where bone `b` sits in the bind pose: the inverse of its inverse bind matrix (3x4, row major). */
+static void native_bone_bind(const NativeMesh *mesh, uint32_t b, float p[3])
+{
+    float m[12];
+    int i;
+    for (i = 0; i < 12; i++) memcpy(&m[i], &mesh->bone_table[(size_t)b * 16 + 1 + (uint32_t)i], sizeof(float));
+    for (i = 0; i < 3; i++) p[i] = -(m[i] * m[3] + m[4 + i] * m[7] + m[8 + i] * m[11]);
+}
+
+static void native_overlay_lines(const NativeMesh *mesh)
+{
+    static GLuint vbo[3], tex[3];
+    static const uint8_t colour[3][4] = {{255, 220, 0, 255}, {150, 150, 150, 255}, {0, 255, 0, 255}};
+    float min[3], max[3];
+    int flags;
+    native_mesh_bounds(mesh, min, max);
+    NativeOverlay_Record(min, max);
+    flags = NativeOverlay_Flags();
+    if (!flags) return;
+    if (flags & 1) {
+        float edges[12][2][3], v[24 * 16];
+        int i;
+        NativeOverlay_BoxLines(min, max, edges);
+        for (i = 0; i < 12; i++) {
+            native_overlay_vertex(&v[(i * 2) * 16], edges[i][0], 0.0f);
+            native_overlay_vertex(&v[(i * 2 + 1) * 16], edges[i][1], 0.0f);
+        }
+        native_overlay_group(&vbo[0], &tex[0], colour[0], v, 24);
+    }
+    if (flags & 2) {
+        float grid[64][2][3], v[128 * 16];
+        int i, n = NativeOverlay_GridLines(min, max, 8, grid, 64);
+        for (i = 0; i < n; i++) {
+            native_overlay_vertex(&v[(i * 2) * 16], grid[i][0], 0.0f);
+            native_overlay_vertex(&v[(i * 2 + 1) * 16], grid[i][1], 0.0f);
+        }
+        native_overlay_group(&vbo[1], &tex[1], colour[1], v, n * 2);
+    }
+    if ((flags & 4) && mesh->bone_table) {
+        static float v[NATIVE_MAX_BONES * 2 * 16];
+        uint32_t b, n = 0;
+        for (b = 0; b < mesh->bones && b < NATIVE_MAX_BONES; b++) {
+            int32_t parent;
+            float p[3], q[3];
+            memcpy(&parent, &mesh->bone_table[(size_t)b * 16], sizeof(parent));
+            if (parent < 0 || (uint32_t)parent >= mesh->bones) continue;
+            native_bone_bind(mesh, (uint32_t)parent, p);
+            native_bone_bind(mesh, b, q);
+            native_overlay_vertex(&v[(size_t)n * 16], p, (float)parent);
+            native_overlay_vertex(&v[(size_t)(n + 1) * 16], q, (float)b);
+            n += 2;
+        }
+        native_overlay_group(&vbo[2], &tex[2], colour[2], v, (int)n);
+    }
+}
+
 static void native_draw(unsigned id)
 {
     const NativeDraw *d = &native_ring[id % NATIVE_RING];
@@ -2479,6 +2603,7 @@ static void native_draw(unsigned id)
                 }
             }
         }
+        native_overlay_lines(mesh);
         for (k = 1; k < 5; k++) gl_DisableVertexAttribArray((GLuint)k);
         gl_BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         gl_BindBuffer(GL_ARRAY_BUFFER, nat.buffer); /* the composite below fills it */

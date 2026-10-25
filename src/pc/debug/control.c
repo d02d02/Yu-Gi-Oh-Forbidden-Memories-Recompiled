@@ -12,6 +12,7 @@
 #include "pc/platform/menu.h"
 #include "pc/platform/settings.h"
 #include "pc/sdk/display.h"
+#include "pc/render/native_overlay.h"
 #include "pc/render/native_anim.h"
 #include "pc/render/native_registry.h"
 #include "pc/render/native_cinematic.h"
@@ -321,9 +322,21 @@ static int handle(char *text)
     }
 
     /* Forward "cam ..." commands to the native cinematic command. */
-    if (strncmp(text, "cam", 3) == 0 && (text[3] == ' ' || text[3] == '\t')) {
+    if (strncmp(text, "cam", 3) == 0 && (text[3] == ' ' || text[3] == '	')) {
         char reply_buf[256];
         int rc = NativeCinematic_Command(text, reply_buf, sizeof(reply_buf));
+        if (rc == 0) {
+            send_line(reply_buf);
+        } else {
+            send_error(reply_buf + 4);
+        }
+        return 0;
+    }
+
+    /* Forward "ov ..." commands to the native overlay. */
+    if (strncmp(text, "ov ", 3) == 0) {
+        char reply_buf[256];
+        int rc = NativeOverlay_Command(text, reply_buf, sizeof(reply_buf));
         if (rc == 0) {
             send_line(reply_buf);
         } else {

@@ -119,6 +119,7 @@ COMMON_FILES = [
     "render/packets.c",
     "render/native_anim.c",
     "render/native_cinematic.c",
+    "render/native_overlay.c",
     "render/native_format.c",
     "render/native_model.c",
     "render/native_registry.c",
