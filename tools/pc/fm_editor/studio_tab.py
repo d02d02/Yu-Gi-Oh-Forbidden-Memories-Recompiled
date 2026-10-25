@@ -263,6 +263,30 @@ class StudioTab(Tab):
         self.prepare_thread = threading.Thread(target=work, daemon=True)
         self.prepare_thread.start()
 
+    def show_result(self, job):
+        """A capture ended: log its output, then show the contact sheet in a window (the game window is gone by now)."""
+        row, out = self.job_info
+        text = (job.stdout.read() if job.stdout else "") or ""
+        log.event("run", row["id"], f"ended code={job.returncode} {text[-600:]}")
+        sheet = Path(out) / "sheet.png"
+        shots = len(preview.frames(out))
+        if job.returncode != 0 or not sheet.is_file():
+            tail = (text.strip().splitlines() or ["no output"])[-1]
+            self.heading.configure(text=f"{row['label']} did not finish (code {job.returncode}): {tail}")
+            return
+        self.heading.configure(text=f"{row['label']}: {shots} frames captured ({sheet})")
+        try:
+            from PIL import Image, ImageTk
+            win = tk.Toplevel(self)
+            win.title(f"{row['label']} - {shots} frames")
+            image = Image.open(sheet)
+            image.thumbnail((min(1400, win.winfo_screenwidth() - 80), min(900, win.winfo_screenheight() - 120)))
+            win.photo = ImageTk.PhotoImage(image)      # kept on the window, or Tk drops it
+            ttk.Label(win, image=win.photo).pack()
+            ttk.Label(win, text=str(sheet), style="Note.TLabel").pack(anchor="w", padx=6, pady=4)
+        except Exception as error:      # no viewer is not a failed run: the sheet is on disk
+            log.error("show sheet", error)
+
     def finish_run(self):
         """Main thread, after the preview build: install it and launch."""
         row, scene, out, card = self.prepare_job
@@ -275,8 +299,9 @@ class StudioTab(Tab):
         try:
             preview.install(result["dir"], preview.game_mods())
             self.job = preview.start(scene, out, card)
+            self.job_info = (row, out)
             log.event("run", row["id"], f"started card={card}")
-            self.heading.configure(text=f"Running {row['label']}")
+            self.heading.configure(text=f"Capturing {row['label']}: the game window flashes while it records; the result opens here when done.")
         except (RuntimeError, OSError) as e:
             log.error(f"run {row['id']}", e)
             self.heading.configure(text=str(e))
@@ -381,6 +406,10 @@ class StudioTab(Tab):
                     else:
                         self.session.apply_build(result, self.build_out)
                     ran = True
+                job = getattr(self, "job", None)
+                if job is not None and job.poll() is not None:
+                    self.job = None
+                    self.show_result(job)
                 if getattr(self, "preparing", False) and not self.prepare_thread.is_alive():
                     self.preparing = False
                     self.finish_run()

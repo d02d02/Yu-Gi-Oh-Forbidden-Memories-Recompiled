@@ -20,6 +20,7 @@ Model: `tmp/agent/angel/work/angel_rigged.glb` (no clips; mesh and skeleton from
 4. The S5 "bone 1" message gives no bone name (hard to judge); show the bone name.
 5. (S8, 2026-10-25) Run was grayed with no reason shown. Causes: Run needed the S9 package (stage order felt wrong: S8 needs S9) and `MEMORIES_DISC` was unset in Studio though the editor had found the disc. Fixed, awaiting user validation: Run builds its own cached preview package (`5c9e0508a`), run-list note names the reason (`1397da91f`), Studio adopts the editor's game path as MEMORIES_DISC (`d16bdcd7f`). Uncovered: game files loaded as a SLUS+WA pair give no disc path; last error not yet shown in the check row.
 6. No log existed to read an error from. Fixed, awaiting validation: `studio.log` beside the recipe, size-capped (512 KB x 4 files), one line per step (`1397da91f`).
+7. (S8) Library turntable Run: the game window flashed several times and closed fast, nothing to see. Cause: the run is a frame capture (6 shots, `sheet.png` written fine in `runs/library/`) but Studio never showed the result. Fixed, awaiting validation: the heading says the window flashes while recording, and when the capture ends the contact sheet opens in a window (exit code and output tail go to `studio.log`). Open risk: the run's stdout pipe is not drained while it runs (a chatty field/arena run could block).
 
 ## User feedback and decisions (verbatim intent)
 * Wants the angel glb imported and applied to the game; wants short step-by-step instructions, minimal words, no assumed knowledge.
