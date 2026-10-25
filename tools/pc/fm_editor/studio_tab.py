@@ -15,9 +15,9 @@ from .widgets import px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
-    from studio import build, checkrows, knobs, preview, rail, runs, session as session_module
+    from studio import build, checkrows, knobs, log, preview, rail, runs, session as session_module
 except ImportError:      # the tools are not next to the editor (a frozen build): the tab says so
-    build = checkrows = knobs = preview = rail = runs = session_module = None
+    build = checkrows = knobs = log = preview = rail = runs = session_module = None
 
 TICK_MS = 300
 CHIP_COLOUR = {"fail": "#b00020", "warn": "#9a6700", "acked": "#555555", "info": "#555555", "pass": "#1a7f37"}
@@ -84,6 +84,8 @@ class StudioTab(Tab):
             self.session.run_stage("S0")
         except Exception as error:      # a note in the window, never a crash
             self.session = None
+            if log:
+                log.error("open", error)
             messagebox.showerror("Studio", f"Could not open {Path(path).name}: {error}")
             return
         self.title.configure(text=Path(path).name)
@@ -200,6 +202,7 @@ class StudioTab(Tab):
             try:
                 self.build_result = build.run_build_s9(rec, glb, out, cards)
             except (ValueError, OSError) as e:
+                log.error("build", e)
                 self.build_result = {"error": str(e)}
         self.build_thread = threading.Thread(target=work, daemon=True)
         self.build_thread.start()
@@ -224,10 +227,12 @@ class StudioTab(Tab):
                 run.state(["disabled"])
             for text, result in (("Looks right", "seen"), ("Report a problem", "problem")):
                 ttk.Button(line, text=text, command=lambda r=row, res=result: self.mark_row(r, res)).pack(side="left", padx=2)
-        if not package:
-            ttk.Label(self.form, text="Build the package (S9) to enable Run.", style="Note.TLabel").pack(anchor="w")
-        elif not disc:
-            ttk.Label(self.form, text="Library turntable only; set MEMORIES_DISC for field and arena.", style="Note.TLabel").pack(anchor="w")
+        why = ("Build the package (S9) to enable Run." if not package else
+               "No card is set in the recipe (S0.cards); Run needs one." if not cards else
+               "Library turntable only; set MEMORIES_DISC for field and arena." if not disc else "")
+        if why:
+            ttk.Label(self.form, text=why, style="Note.TLabel").pack(anchor="w")
+        log.event("S8", "run list", why or "all rows ready")
 
     def run_scene(self, row, scene):
         rec = self.session.studio.recipe
@@ -236,6 +241,7 @@ class StudioTab(Tab):
             preview.install(knobs.value(rec, "pkg.path"), preview.game_mods())   # pkg.path is the built mod folder (S9)
             self.job = preview.start(scene, out, rec["model"]["cards"][0])
         except (RuntimeError, OSError) as e:
+            log.error(f"run {row['id']}", e)
             self.heading.configure(text=str(e))
 
     def mark_row(self, row, result):

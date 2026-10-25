@@ -13,6 +13,7 @@ from . import audit
 from . import build
 from . import clipdata
 from . import clips
+from . import log
 from . import look
 from . import package
 from . import placement
@@ -71,6 +72,8 @@ class Session:
             pass
 
         session = cls(glb_path, studio, recipe_path, model)
+        log.attach(recipe_path.parent if recipe_path else glb_path.parent)
+        log.event("open", glb_path.name, f"model={'ok' if model else 'failed'}")
         # Store sha256 in recipe if not present
         if "sha256" not in studio.recipe.get("source", {}):
             state.set_path(studio.recipe, "source.sha256", sha256)
@@ -259,6 +262,7 @@ class Session:
     def apply_build(self, result, out_dir):
         """Store the S9 findings of a build and set pkg.path to the first build ("a"). Main thread only."""
         self.studio.set_findings("S9", result["findings"], self.stage_inputs("S9"))
+        log.event("S9", "build", f"ok={result['build'].get('ok')} out={out_dir}")
         self.last_build = result["build"]
         if result["build"]["ok"]:
             self.edit("pkg.path", str(Path(out_dir) / "a"))
@@ -278,6 +282,15 @@ class Session:
 
     def run_stage(self, stage):
         """Run audit for the stage, store findings, return them."""
+        try:
+            findings = self._run_stage(stage)
+        except Exception as error:
+            log.error(f"stage {stage}", error)
+            raise
+        log.event(stage, "audit", ", ".join(f"{f.get('level', '?')}:{f.get('id', '?')}" for f in findings) or "no findings")
+        return findings
+
+    def _run_stage(self, stage):
         if stage in ("S4", "S5", "S6", "S7", "S8", "S9"):
             findings = self._run_fit_stage(stage)
             self.studio.set_findings(stage, findings, self.stage_inputs(stage))
@@ -306,6 +319,7 @@ class Session:
         if now is None:
             now = time.monotonic()
         marked = self.studio.edit(path, value)
+        log.event("edit", path, f"{value!r} stale={sorted(marked)}")
         # Also update pending for stages that were already stale (debounce reset)
         for s in self.studio.stale:
             if s in self._pending:
