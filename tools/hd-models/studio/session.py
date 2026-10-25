@@ -420,6 +420,18 @@ class Session:
             self._pending[s] = now
         return marked
 
+    # The procedural move that stands in for each act a model has no clip for.
+    STAND_IN_KIND = {"idle": "idle", "enter": "rise", "attack": "lunge", "hit": "recoil", "destroyed": "collapse", "win": "rise", "guard": "brace"}
+
+    def use_stand_in(self, act):
+        """Resolve S5.missing-act for `act` with a tool-made procedural clip: the source goes in the recipe (the converter's
+        --procedural) and the choice in recipe["resolutions"] (the report lists it as a stand-in). Two undo entries."""
+        kind = self.STAND_IN_KIND[act]
+        finding = {"id": "S5.missing-act", "level": "fail" if act == "idle" else "warn", "value": None if act == "idle" else act}
+        updated = resolutions.choose(self.studio.recipe, finding, "fallback", source={"procedural": kind}, act=act)
+        self.studio.edit(f"acts.{act}.source", {"procedural": kind})
+        self.studio.edit("resolutions", updated["resolutions"])
+
     def acknowledge(self, check_id, value):
         self.studio.acknowledge(check_id, value)
         # acknowledging marks recipe unsaved; stage stays same

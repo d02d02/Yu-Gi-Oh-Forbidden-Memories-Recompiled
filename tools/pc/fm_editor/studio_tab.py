@@ -164,6 +164,9 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
+            if row["id"] == "S5.missing-act":
+                act = row["value"] or "idle"
+                ttk.Button(line, text=f"Make a {act} clip", command=lambda a=act: self.use_stand_in(a)).pack(side="right", padx=4)
         if stage == "S8":
             self.add_run_list()
         self.widgets = {}
@@ -409,6 +412,10 @@ class StudioTab(Tab):
 
     def auto(self, k):
         knobs.back_to_auto(self.session.studio, k["path"])
+        self.draw_stage()
+
+    def use_stand_in(self, act):
+        self.session.use_stand_in(act)
         self.draw_stage()
 
     def accept(self, row):

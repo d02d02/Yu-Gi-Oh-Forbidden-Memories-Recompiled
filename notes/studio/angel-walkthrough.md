@@ -59,3 +59,9 @@ Model: `tmp/agent/angel/work/angel_rigged.glb` (no clips; mesh and skeleton from
 * Route B transport: passes on `at` tracking (scrub wins over pause). Hash equality is not a criterion.
 * Harness: job r1 (resolutions.py, clone ~/work/r1, branch ralph/r1) RUNNING at save time; job r3 (procedural idle, ~/work/r3) created, NOT started (start after r1; quota thin). Specs in tmp/specs/r1, tmp/specs/r3. Land with job-land.sh after reading the diff.
 * Queue after R1: R6 (report stand-ins), R5 (provide.file validator), R7 (corpus missing cases), R2 (design call first), R4 mine (Tk buttons).
+
+## Resolutions status 2026-10-25 (late)
+* Landed: R1 resolutions.py, R3 procedural idle, R3b converter `--procedural` over the bind pose (no-clip models), R5 provided.py (validator, not yet wired to a file picker), R6 report Stand-ins section, R7 corpus_missing.py (+ catalogue gaps closed), R4 first button: S5 "Make a <act> clip" (session.use_stand_in: acts.<act>.source = {"procedural": kind}, recipe resolutions entry, listed in the report).
+* Recipe form of a procedural source is the dict `{"procedural": kind}` (not the string `procedural:<kind>` of resolutions.md).
+* Not done: file picker for provide.file (R5 validator waits for it), provide.library UI (library.path knob exists), S0.cards/category pick rows (knobs exist, no buttons), "Make a clip" untested in the real Tk window.
+* Harness lesson: parallel loops work; do not start the same job twice (r7 ran twice and thrashed to the iteration cap); items whose check counts tests can unrick themselves, check the clone with verify.sh before judging.
