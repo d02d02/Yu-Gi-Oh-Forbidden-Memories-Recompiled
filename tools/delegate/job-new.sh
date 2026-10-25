@@ -13,11 +13,11 @@ W="$HOME/work/$id"
 for f in progress.md JOB.md verify.sh; do [ -f "$spec/$f" ] || { echo "spec needs $f" >&2; exit 1; }; done
 mkdir -p "$HOME/work"
 if [ -f "$spec/paths.txt" ]; then   # optional: only these paths are checked out (gitignore-style patterns, one per line)
-  git clone -q --depth 1 --no-checkout --branch "$base" "file://$SRC" "$W"
+  git clone -q -c core.autocrlf=false --depth 1 --no-checkout --branch "$base" "file://$SRC" "$W"
   MSYS_NO_PATHCONV=1 git -C "$(cygpath -m "$W" 2>/dev/null || echo "$W")" sparse-checkout set --no-cone --stdin < <(cat "$spec/paths.txt"; echo /progress.md; echo /JOB.md; echo /verify.sh)
   git -C "$W" checkout -q
 else
-  git clone -q --depth 1 --branch "$base" "file://$SRC" "$W"
+  git clone -q -c core.autocrlf=false --depth 1 --branch "$base" "file://$SRC" "$W"
 fi
 git -C "$W" config user.name "ralph-bot"; git -C "$W" config user.email "ralph-bot@localhost"
 git -C "$W" config core.autocrlf false
