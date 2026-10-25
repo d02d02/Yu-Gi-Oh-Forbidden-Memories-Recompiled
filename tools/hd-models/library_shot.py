@@ -28,7 +28,7 @@ out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
 ANCHOR_CARD = 366   # right x10, down x6, right x5 after R1 lands on card 366 (measured)
 settings = {"mod.3d-monsters": 1, "mod.camera-pin": 1, "library_all_cards": 1}
 settings.update(dict(x.split("=", 1) for x in a.setting))
-env = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1"}   # the game window is never shown
+env = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1", "MEMORIES_NO_AUDIO": "1"}   # the game window is never shown
 env.update(dict(e.split("=", 1) for e in a.env))
 state = out / "library.state"
 

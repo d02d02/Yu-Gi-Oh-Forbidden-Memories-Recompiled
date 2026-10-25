@@ -35,7 +35,7 @@ a = ap.parse_args()
 out = Path(a.out).resolve(); out.mkdir(parents=True, exist_ok=True)
 settings = {"mod.3d-monsters": 1, "mod.3d-monsters.attack": 2, "mod.camera-pin": 1, "mod.native-test": int(a.native)}
 settings.update(dict(s.split("=", 1) for s in a.setting))
-env = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1"}   # the game window is never shown
+env = {"MEMORIES_FPS": "-1", "MEMORIES_WINDOW_HIDDEN": "1", "MEMORIES_NO_AUDIO": "1"}   # the game window is never shown
 env.update(dict(e.split("=", 1) for e in a.env))
 hand = [int(c) for c in a.cards.split(",")]
 column, target = (int(x) for x in a.attack.split(","))
