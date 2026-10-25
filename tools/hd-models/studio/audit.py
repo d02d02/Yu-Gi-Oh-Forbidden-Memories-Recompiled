@@ -258,6 +258,9 @@ def s0(model, recipe):
     if cat["confidence"] < CONFIDENCE_WARN and not chosen:
         out.append(finding("S0.category-confidence", "warn", f"The detected category {cat['category']} has {cat['confidence']}% confidence.",
                            "Check the evidence panel and choose the category.", value=cat["confidence"]))
+    if not (recipe.get("model") or {}).get("cards"):
+        out.append(finding("S0.cards", "fail", "No registry card is chosen.",
+                           "Set the card the model replaces (S6 timing, the preview and the build all need it)."))
     if model.skins > 1 and ((recipe.get("source") or {}).get("skin") is None):
         out.append(finding("S0.skins", "warn", f"{model.skins} skins and none chosen.", "Choose the skin to use.", value=model.skins))
     if not out:

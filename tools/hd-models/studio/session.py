@@ -244,8 +244,8 @@ class Session:
         name = attack.get("source")
         if self._model is not None and isinstance(name, str):
             try:
-                return int(round(clipdata.clip_length(self._model, name) * clipdata.DEFAULT_FPS)) + 1
-            except KeyError:
+                return int(round(clipdata.clip_length(self._clip_model(rec), name) * clipdata.DEFAULT_FPS)) + 1
+            except (KeyError, audit.AuditError):
                 pass
         return attack.get("clip_frames", 30)
 

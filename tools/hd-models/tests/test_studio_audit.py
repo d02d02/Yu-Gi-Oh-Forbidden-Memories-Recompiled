@@ -263,7 +263,7 @@ class TestS0(unittest.TestCase):
             p = variant(tmp, add_second_skin)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test"},
-                "model": {"category": "C5"},
+                "model": {"category": "C5", "cards": [364]},
                 "source": {"skin": "0"}  # skin as string per recipe validation
             }
             results = audit.audit_all(p, recipe)
@@ -277,7 +277,7 @@ class TestS0(unittest.TestCase):
             p = variant(tmp, lambda doc: None)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test"},
-                "model": {"category": "C5"}
+                "model": {"category": "C5", "cards": [364]}
             }
             results = audit.audit_all(p, recipe)
             findings = results["S0"]["findings"]
@@ -573,7 +573,7 @@ class TestIntegration(unittest.TestCase):
             p = variant(tmp, lambda doc: None)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test Author"},
-                "model": {"category": "C5"},
+                "model": {"category": "C5", "cards": [364]},
                 "source": {"skin": "0"},
                 "rig": {"profile": "auto"},
                 "mat": {}
@@ -602,7 +602,7 @@ class TestIntegration(unittest.TestCase):
             p = variant(tmp, lambda doc: None)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test Author"},
-                "model": {"category": "C5"},
+                "model": {"category": "C5", "cards": [364]},
                 "source": {"skin": "0"},
                 "rig": {"profile": "auto"},
                 "mat": {}
@@ -633,7 +633,7 @@ class TestIntegration(unittest.TestCase):
             p = variant(tmp, lambda doc: None)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test Author"},
-                "model": {"category": "C5"},
+                "model": {"category": "C5", "cards": [364]},
                 "source": {"skin": "0"},
                 "rig": {"profile": "auto"},
                 "mat": {}
@@ -664,7 +664,7 @@ class TestIntegration(unittest.TestCase):
             p = variant(tmp, lambda doc: None)
             recipe = {
                 "meta": {"license": "CC0-1.0", "author": "Test Author"},
-                "model": {"category": "C5"},
+                "model": {"category": "C5", "cards": [364]},
                 "source": {"skin": "0"},
                 "rig": {"profile": "auto"},
                 "mat": {}

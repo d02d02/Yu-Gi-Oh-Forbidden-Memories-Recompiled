@@ -7,6 +7,7 @@ FIX_TARGET = {
     "S0.licence": "meta.license",
     "S0.attribution": "meta.author",
     "S0.category": "model.category",
+    "S0.cards": "model.cards",
     "S0.category-confidence": "model.category",
     "S0.skins": "source.skin",
     "S1.bones": "audit.bone_limit",

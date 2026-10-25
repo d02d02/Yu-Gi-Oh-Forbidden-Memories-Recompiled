@@ -84,7 +84,7 @@ class TestKnobs(unittest.TestCase):
             k = knobs.knob(path)
             self.assertIsNotNone(k, f"unknown knob path: {path}")
             # Build a minimal recipe with this value
-            rec = {"schema": 1, "source": {"path": "model.glb", "sha256": "a" * 64}, "model": {"category": "C1"}}
+            rec = {"schema": 1, "source": {"path": "model.glb", "sha256": "a" * 64}, "model": {"category": "C1", "cards": [364]}}
             state.set_path(rec, path, val)
             findings = recipe.validate(rec)
             errors = [f for f in findings if f["level"] == "error"]
@@ -99,13 +99,13 @@ class TestCheckRows(unittest.TestCase):
         result = checkrows.check_rows(studio, "S0")
         rows = result["rows"]
         summary = result["summary"]
-        # Licence is info only; fail (category) and warn (category-confidence)
-        self.assertEqual(summary["fail"], 1, f"expected 1 fail, got {summary}")
+        # Licence is info only; fail (category, cards) and warn (category-confidence)
+        self.assertEqual(summary["fail"], 2, f"expected 2 fails, got {summary}")
         self.assertEqual(summary["warn"], 1, f"expected 1 warn, got {summary}")
         self.assertEqual(summary["info"], 1, f"expected 1 info, got {summary}")
         # Order: fail, warn, acked, info
         chips = [r["chip"] for r in rows]
-        self.assertEqual(chips, ["fail", "warn", "info"])
+        self.assertEqual(chips, ["fail", "fail", "warn", "info"])
         # Check fix_targets
         fix_targets = {r["id"]: r["fix_target"] for r in rows}
         self.assertEqual(fix_targets.get("S0.licence"), "meta.license")
@@ -187,6 +187,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             self.assertIsInstance(sess, session.Session)
             self.assertEqual(sess.glb, glb_path)
             self.assertIsNone(sess.recipe_path)
@@ -222,6 +223,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "bad.glb"
             glb_path.write_bytes(b"not a glb")
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             self.assertIsNone(sess._model)
             # S0 should have a load fail finding
             findings = sess.studio.findings.get("S0", [])
@@ -235,6 +237,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             inputs = sess.stage_inputs("S0")
             self.assertIn("sha256", inputs)
             self.assertIn("source", inputs)
@@ -252,6 +255,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             inputs = sess.stage_inputs("S1")
             self.assertIn("audit", inputs)
 
@@ -263,6 +267,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             inputs = sess.stage_inputs("S2")
             self.assertIn("rig", inputs)
             self.assertIn("model", inputs)
@@ -276,6 +281,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             inputs = sess.stage_inputs("S3")
             self.assertIn("mat", inputs)
 
@@ -287,6 +293,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             inputs1 = sess.stage_inputs("S0")
             inputs2 = sess.stage_inputs("S0")
             self.assertEqual(inputs1, inputs2)
@@ -299,6 +306,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             findings = sess.run_stage("S0")
             self.assertIsInstance(findings, list)
             self.assertTrue(len(findings) > 0)
@@ -313,6 +321,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             # S0 is todo initially
             self.assertEqual(sess.studio.state("S0"), "todo")
             ran = sess.open_stage("S0")
@@ -327,6 +336,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             sess.run_stage("S0")
             self.assertEqual(sess.studio.state("S0"), "pass")
             # Reopen with same inputs should not run
@@ -342,6 +352,7 @@ class TestSessionOpen(unittest.TestCase):
             glb_path = tmp / "model.glb"
             synthetic_gltf.write(str(glb_path))
             sess = session.Session.open(glb_path)
+            sess.studio.edit("model.cards", [364])
             sess.run_stage("S0")
             # Change a knob that S0 reads
             sess.edit("meta.license", "CC-BY-4.0")
@@ -501,6 +512,7 @@ class TestWalk(unittest.TestCase):
         self.glb_path = tmp / "model.glb"
         synthetic_gltf.write(str(self.glb_path))
         self.sess = session.Session.open(self.glb_path)
+        self.sess.studio.edit("model.cards", [364])
         self.sess.run_stage("S0")
 
     def tearDown(self):
