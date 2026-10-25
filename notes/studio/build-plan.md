@@ -30,12 +30,13 @@ Order notes
 ## SM3 split (2026-10-23)
 The delegation harness has no display, so a Tk check would skip and pass vacuously. SM3 is therefore two parts. **SM3a** (delegated, job `sm3-model`, spec `tools/delegate/specs/sm3-model`): the UI-free layer in `tools/hd-models/studio/`: `rail.py` (rail rows, footer gating), `knobs.py` (S0-S3 knob tables as data), `checkrows.py` (check rows with fix targets), `session.py` (open a glb, run stages on a cached model, inputs digest and silent return of unchanged stale stages, 300 ms debounce, autosave, undo), `run_audit.py` (the subprocess the tab polls). **SM3b** (not delegated): the thin Tk tab on those modules in `tools/pc/fm_editor/`, written and checked on the Windows machine.
 
-## Status (2026-10-24)
+## Status (2026-10-25, end of day)
 | Step | State |
 |---|---|
-| SM0 | done except the card footprint (proxy = BLS bbox); reference pack in `tools/hd-models/studio/reference/`; finding: arena camera is per-monster script data, not per class |
-| SM1, SM2 | done (recipe.py, state.py, audit.py) |
-| SM3a, SM3b | done (view layer by the harness; Studio tab `tools/pc/fm_editor/studio_tab.py`; the user has not walked it yet) |
-| SM4 | not started (engine, Claude) |
-| SM5 | S4 maths `placement.py` done (harness); S5 clips and viewer parts open |
-| SM6-SM8 | sm6-timemap landed (timemap.py, 23 tests); UI and engine pieces remain |
+| SM0-SM2 | done |
+| SM3 | done (Tk shell S0-S9, resolutions R1-R7 with buttons, S0 Choose card, S1/S2 Open a rigged glb) |
+| SM4 | engine side done: E1 reload, E3 transport, E4 camera presets (`cam`), E5/E6 overlays and bounds (`ov`), E8 A/B toggle (`native show`), E9 time map in the sampler. Studio window: S8 "Scrub the attack live..." with slider, Play/Pause, shot, camera presets, bbox/grid/bones, show disc model. Window-only parts (overlays, A/B) cannot be pixel-tested headless: `shot`/`hash` read VRAM |
+| SM5-SM7 | knobs and checks done for S4, S6, S7 (text controls, time map `pairs`); a recipe edit reaches the engine on the next live scrub (preview rebuild) |
+| SM8 | corpus C1-C8 golden clean; how-to updated; laptop and macOS pass not done (needs those machines) |
+
+Open: only the user's visual checks (list in `notes/studio/screen-checks.md`) and the laptop/macOS pass.
