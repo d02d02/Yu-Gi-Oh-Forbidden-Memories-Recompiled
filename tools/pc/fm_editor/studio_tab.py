@@ -12,7 +12,7 @@ from tkinter import messagebox, ttk
 
 from . import file_dialogs
 from .tabs import Tab
-from .widgets import px, ui_font
+from .widgets import pick_card, px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
@@ -164,6 +164,8 @@ class StudioTab(Tab):
             ttk.Label(line, text=text, wraplength=px(self.right, 520), justify="left").pack(side="left", anchor="w")
             if row["level"] == "warn" and not row["acknowledged"]:
                 ttk.Button(line, text="Accept", command=lambda r=row: self.accept(r)).pack(side="right")
+            if row["id"] in ("S1.skin", "S2.skin"):
+                ttk.Button(line, text="Open a rigged glb...", command=self.open_glb).pack(side="right")
             if row["id"] == "S5.missing-act":
                 act = row["value"] or "idle"
                 ttk.Button(line, text=f"Make a {act} clip", command=lambda a=act: self.use_stand_in(a)).pack(side="right", padx=4)
@@ -374,10 +376,22 @@ class StudioTab(Tab):
         else:
             widget = ttk.Label(row, text="(edit in the recipe file)", style="Note.TLabel")
         widget.pack(side="left")
+        if k["path"] == "model.cards":
+            ttk.Button(row, text="Choose card...", command=lambda: self.choose_card(k)).pack(side="left", padx=6)
         if knobs.is_changed(recipe, k["path"]):
             ttk.Button(row, text="Back to auto", command=lambda: self.auto(k)).pack(side="left", padx=6)
 
     # --- actions -----------------------------------------------------------------------------
+    def choose_card(self, k):
+        """The card list by name: the editor's card picker, one card (the model replaces its monster)."""
+        project = getattr(self, "project", None)
+        if project is None or not getattr(project, "cards", None):
+            messagebox.showinfo("Studio", "Open the game in the editor first: the card list comes from it.")
+            return
+        cid = pick_card(self.winfo_toplevel(), project, initial="")
+        if cid:
+            self.set(k, [int(cid)])
+
     def commit_knob(self, k, text):
         text = text.strip()
         if k["control"] == "number":
