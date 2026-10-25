@@ -215,9 +215,16 @@ class TestChecks(unittest.TestCase):
         f = findings[0]
         self.assertEqual(f["id"], "S5.bone-stretch")
         self.assertEqual(f["level"], "warn")
-        self.assertIn("bone 1 changes length to 2 times", f["message"])
+        self.assertIn("bone 1 changes length to 2.00 times", f["message"])
         self.assertEqual(f["fix"], "Check the retarget.")
         self.assertAlmostEqual(f["value"], 2.0)
+
+    def test_check_stretch_names_the_bone(self):
+        clip = {"positions": [[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+                             [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]],
+                "fps": 30.0, "loop": True}
+        f = clips.check_stretch("test", clip, self.parents, ["Hips", "Hand_R"])[0]
+        self.assertIn("bone 1 (Hand_R) changes length to 2.00 times", f["message"])
 
     def test_check_stretch_warn_min(self):
         clip = {"positions": [[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
@@ -228,7 +235,7 @@ class TestChecks(unittest.TestCase):
         f = findings[0]
         self.assertEqual(f["id"], "S5.bone-stretch")
         self.assertEqual(f["level"], "warn")
-        self.assertIn("bone 1 changes length to 0 times", f["message"])
+        self.assertIn("bone 1 changes length to 0.50 times", f["message"])
         self.assertEqual(f["fix"], "Check the retarget.")
         self.assertAlmostEqual(f["value"], 0.5)
 

@@ -75,7 +75,19 @@ def start(scene, out_dir, card_id, **kw):
     if not disc_available():
         raise RuntimeError("Field and arena scenes need the disc: set MEMORIES_DISC.")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    return subprocess.Popen(command(scene, out_dir, card_id, **kw), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    log = open(Path(out_dir) / "run.log", "w", encoding="utf-8", errors="replace")      # a file, not a pipe: nobody drains a pipe while the run goes
+    try:
+        return subprocess.Popen(command(scene, out_dir, card_id, **kw), stdout=log, stderr=subprocess.STDOUT, text=True)
+    finally:
+        log.close()
+
+
+def output(out_dir, tail=2000):
+    """The last `tail` characters of the run's output ('' before the first run)."""
+    try:
+        return (Path(out_dir) / "run.log").read_text(encoding="utf-8", errors="replace")[-tail:]
+    except OSError:
+        return ""
 
 
 def frames(out_dir):

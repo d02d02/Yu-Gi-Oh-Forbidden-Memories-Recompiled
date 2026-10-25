@@ -266,7 +266,7 @@ class StudioTab(Tab):
     def show_result(self, job):
         """A capture ended: log its output, then show the contact sheet in a window (the game window is gone by now)."""
         row, out = self.job_info
-        text = (job.stdout.read() if job.stdout else "") or ""
+        text = preview.output(out)
         log.event("run", row["id"], f"ended code={job.returncode} {text[-600:]}")
         sheet = Path(out) / "sheet.png"
         shots = len(preview.frames(out))

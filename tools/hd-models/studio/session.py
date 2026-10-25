@@ -199,7 +199,7 @@ class Session:
             except audit.AuditError as e:
                 return [audit.finding("S5.library", "fail", f"The library file did not open: {e}", "Pick a glb with clips, or clear the library field.")]
             sampled = clipdata.sample_all(cm, loops=loops)
-            return self._missing_act_findings(rec, cm) + clips.run_s5(sampled, cm.parents)["findings"]
+            return self._missing_act_findings(rec, cm) + clips.run_s5(sampled, cm.parents, getattr(cm, "names", None))["findings"]
         if stage == "S8":
             disc = bool(os.environ.get("MEMORIES_DISC"))
             return runs.run_s8(rec, self._sha256, disc)["findings"]

@@ -69,5 +69,18 @@ class TestFrames(unittest.TestCase):
             self.assertEqual(preview.frames(Path(d) / "none"), [])
 
 
+class TestOutput(unittest.TestCase):
+    def test_run_output_goes_to_a_file_and_is_tailed(self):
+        import os
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"MEMORIES_DISC": "x.bin"}):
+            argv = [sys.executable, "-c", "print('a' * 300000)"]      # far more than a pipe holds
+            with mock.patch.object(preview, "command", return_value=argv):
+                proc = preview.start("library", d, 1)
+                self.assertEqual(proc.wait(timeout=30), 0)
+            self.assertEqual(len(preview.output(d, tail=100)), 100)
+            self.assertEqual(preview.output(Path(d) / "none"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

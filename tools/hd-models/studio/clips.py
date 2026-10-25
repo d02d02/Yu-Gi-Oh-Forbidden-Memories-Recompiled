@@ -198,7 +198,7 @@ def check_speed(name, clip):
     return []
 
 
-def check_stretch(name, clip, parents):
+def check_stretch(name, clip, parents, names=None):
     """Warn if any bone's length leaves 0.8..1.25 of its rest length."""
     P = clip["positions"]
     bs = bone_stretch(P, parents)
@@ -213,19 +213,20 @@ def check_stretch(name, clip, parents):
     if not violating:
         return []
     ratio = max(violating, key=lambda r: abs(r - 1.0))
-    n = int(round(ratio))
+    label = f"{joint} ({names[joint]})" if names and 0 <= joint < len(names) else f"{joint}"
     return [audit.finding("S5.bone-stretch", "warn",
-                          f"Clip {name}: bone {joint} changes length to {n} times its rest length.",
+                          f"Clip {name}: bone {label} changes length to {ratio:.2f} times its rest length.",
                           fix="Check the retarget.",
                           value=ratio)]
 
 
-def run_s5(clips, parents):
+def run_s5(clips, parents, names=None):
     """Run all S5 stats and checks for a set of clips.
 
     Args:
         clips: dict of name -> clip (with "positions", "fps", "loop")
         parents: list of parent indices for each joint
+        names: optional joint names, shown in the stretch warning
 
     Returns:
         {"stats": {name: {loop_gap, root_drift, speed_peak, bone_stretch, bbox}},
@@ -247,5 +248,5 @@ def run_s5(clips, parents):
         findings.extend(check_loop(name, clip))
         findings.extend(check_drift(name, clip))
         findings.extend(check_speed(name, clip))
-        findings.extend(check_stretch(name, clip, parents))
+        findings.extend(check_stretch(name, clip, parents, names))
     return {"stats": stats, "findings": findings}
