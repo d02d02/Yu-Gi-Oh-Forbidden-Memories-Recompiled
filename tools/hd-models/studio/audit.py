@@ -284,9 +284,12 @@ def skin_positions(model, world_of_joint):
     return out
 
 
-def pose_function(model, clips_doc, clip_name, t):
-    """World matrices of the model's joints in the pose of one clip at time t (a clip of another file is matched by node name)."""
-    gc, cscene = clips_doc
+def _clip_channels(model, gc, cscene, clip_name):
+    """{(node, path): Channel} of one clip, decoded once per (model, clip file, clip): sampling a clip asks for it once per frame."""
+    cache = model.__dict__.setdefault("_channel_cache", {})
+    key = (id(gc), clip_name)
+    if key in cache:
+        return cache[key]
     nodes = model.scene.nodes
     by_name = {nd.get("name", ""): i for i, nd in enumerate(nodes)}
     same = gc is model.g
@@ -301,6 +304,15 @@ def pose_function(model, clips_doc, clip_name, t):
             continue
         times = nc.accessor(gc, smp["input"]).reshape(-1)
         chans[(mine, tgt["path"])] = nc.Channel(times, nc.accessor(gc, smp["output"]), tgt["path"], smp.get("interpolation", "LINEAR"))
+    cache[key] = chans
+    return chans
+
+
+def pose_function(model, clips_doc, clip_name, t):
+    """World matrices of the model's joints in the pose of one clip at time t (a clip of another file is matched by node name)."""
+    gc, cscene = clips_doc
+    nodes = model.scene.nodes
+    chans = _clip_channels(model, gc, cscene, clip_name)
     trs = {}
     for i in range(len(nodes)):
         tt, qq, ss = model.scene.rest[i]
