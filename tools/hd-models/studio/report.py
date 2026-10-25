@@ -152,7 +152,45 @@ def runs_lines(runs):
     return lines
 
 
-def render(findings, acks, meta, build, runs):
+def stand_in_lines(entries):
+    """Return markdown lines for stand-in entries.
+
+    * If ``entries`` is ``None`` or empty, return a single line:
+      ``["None: every part is authentic."]``.
+    * Otherwise, for each entry dict in order, produce a line of the form::
+
+        - <check>( <value>)? : <desc>[, source <source>]
+
+      where ``<desc>`` is ``"tool-made stand-in"`` when ``kind`` is ``"fallback"``
+      and ``"accepted without it"`` when ``kind`` is ``"accept"``.
+      ``<value>`` is included only if the entry's ``value`` is not ``None``.
+      ``source`` is appended if ``data`` contains a ``"source"`` key.
+    """
+    if not entries:
+        return ["None: every part is authentic."]
+    lines = []
+    for e in entries:
+        check = e.get("check", "")
+        value = e.get("value")
+        kind = e.get("kind", "")
+        data = e.get("data", {}) or {}
+        # Base description
+        if kind == "fallback":
+            desc = "tool-made stand-in"
+        elif kind == "accept":
+            desc = "accepted without it"
+        else:
+            desc = ""
+        line = f"- {check}"
+        if value is not None:
+            line += f" ({value})"
+        line += f" : {desc}"
+        source = data.get("source")
+        if source:
+            line += f", source {source}"
+        lines.append(line)
+    return lines
+def render(findings, acks, meta, build, runs, stand_ins=None):
     """Render the full export report as a Markdown string ending with a newline."""
     name = (meta.get("name") if meta else None) or "unnamed"
     out = [f"# Model report: {name}"]
@@ -170,6 +208,11 @@ def render(findings, acks, meta, build, runs):
     out.append("")
     out.append("## Summary")
     out.extend(summary_table(findings, acks))
+
+    # Stand-ins section
+    out.append("")
+    out.append("## Stand-ins")
+    out.extend(stand_in_lines(stand_ins))
 
     out.append("")
     out.append("## Stages")

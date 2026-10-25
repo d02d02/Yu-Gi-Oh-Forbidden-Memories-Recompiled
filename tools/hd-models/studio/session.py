@@ -18,6 +18,7 @@ from . import look
 from . import package
 from . import placement
 from . import report
+from . import resolutions
 from . import runs
 from . import timemap
 from . import state
@@ -299,7 +300,8 @@ class Session:
                 self.run_stage(stage)
         meta = {"name": rec.get("pkg", {}).get("name") or self.glb.stem, **rec.get("meta", {})}
         text = report.render(self.studio.findings, rec.get("acks", []), meta,
-                             getattr(self, "last_build", None), rec.get("runs", []))
+                             getattr(self, "last_build", None), rec.get("runs", []),
+                             stand_ins=resolutions.stand_ins(rec))
         Path(path).write_text(text, encoding="utf-8")
         return text
 
