@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 FIELD_ATTACK = HERE.parent / "field_attack.py"
 LIBRARY_SHOT = HERE.parent / "library_shot.py"
 SCENES = ("library", "field", "arena")
-WINDOW = {"library": (20, 20, 120), "field": (60, 12, 240), "arena": (1250, 80, 1650)}   # (start, every, last frame) that show the fight (measured)        # the library turntable is a separate recipe (progress.md), not built here
+WINDOW = {"library": (20, 150, 620), "field": (60, 12, 240), "arena": (1250, 80, 1650)}   # (start, every, last frame) that show the fight (measured)        # the library turntable is a separate recipe (progress.md), not built here
 
 
 MOD_ID = "studio-preview"
