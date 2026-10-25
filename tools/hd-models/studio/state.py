@@ -46,6 +46,8 @@ def stage_of_path(path):
         return "S3"
     if top == "size":
         return "S4"
+    if top == "library":
+        return "S5"
     if top == "timing":
         return "S6"
     if top == "acts":

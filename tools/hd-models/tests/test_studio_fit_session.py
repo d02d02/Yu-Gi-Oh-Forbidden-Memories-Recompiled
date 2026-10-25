@@ -20,7 +20,7 @@ class TestFitKnobs(unittest.TestCase):
     def test_knobs_by_stage(self):
         self.assertEqual(len(knobs.knobs("S7")), 9)
         self.assertEqual(len(knobs.knobs("S6")), 3)
-        self.assertEqual(len(knobs.knobs("S5")), 9)
+        self.assertEqual(len(knobs.knobs("S5")), 10)
         for k in knobs.knobs("S5") + knobs.knobs("S6") + knobs.knobs("S7"):
             self.assertEqual(state.stage_of_path(k["path"]), k["stage"], k["path"])
 

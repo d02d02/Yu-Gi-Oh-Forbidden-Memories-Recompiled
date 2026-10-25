@@ -31,7 +31,7 @@ class RecipeError(ValueError):
 # Known top-level keys (from schema + JOB.md)
 KNOWN_TOP_KEYS = {
     "schema", "studio", "source", "model", "meta", "audit", "rig", "mat",
-    "size", "acts", "look", "shots", "pkg", "acks", "runs", "timing"
+    "size", "acts", "look", "shots", "pkg", "acks", "runs", "timing", "library"
 }
 
 # Acts (from spec.ACTS)
@@ -484,6 +484,11 @@ def convert_args(recipe) -> dict:
         name = model.get("name")
         if name is not None:
             result["name"] = name
+
+    # library.path -> clips_from (clips taken from another glb, bones matched by name)
+    library = recipe.get("library")
+    if isinstance(library, dict) and isinstance(library.get("path"), str) and library["path"]:
+        result["clips_from"] = library["path"]
 
     # Any act with root_motion "keep" -> keep_root_motion True
     acts = recipe.get("acts")

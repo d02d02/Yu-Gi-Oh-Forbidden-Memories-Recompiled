@@ -71,6 +71,9 @@ S3_KNOBS = [
 
 S5_ACTS = ("idle", "enter", "attack", "hit", "destroyed", "win", "guard")
 S5_KNOBS = [
+    {"path": "library.path", "stage": "S5", "label": "Library clips (glb)", "control": "text",
+     "choices": None, "unit": None, "auto": "none: the model's own clips", "help": "Take the clips from this glb (bones matched by name); name its clips in the act fields below"},
+] + [
     {"path": f"acts.{act}.source", "stage": "S5", "label": f"Clip: {act}", "control": "text",
      "choices": None, "unit": None, "auto": "the model's own clip of that name", "help": f"Clip name for the {act} act"}
     for act in S5_ACTS

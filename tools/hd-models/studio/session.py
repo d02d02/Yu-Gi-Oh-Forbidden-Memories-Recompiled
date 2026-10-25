@@ -29,6 +29,7 @@ class Session:
         self.studio = studio
         self.recipe_path = Path(recipe_path) if recipe_path else None
         self._model = model
+        self._library = None
         self._sha256 = self._file_sha256(self.glb)
         self._pending = {}      # stage -> time (monotonic) when edit was made
 
@@ -190,8 +191,12 @@ class Session:
             if self._model is None:
                 return [audit.finding("S5.model", "fail", "The model did not open.", "Open a rigged glb.")]
             loops = rec.get("acts", {}).get("idle", {}).get("loop") and ["idle"] or ()
-            sampled = clipdata.sample_all(self._model, loops=loops)
-            return self._missing_act_findings(rec) + clips.run_s5(sampled, self._model.parents)["findings"]
+            try:
+                cm = self._clip_model(rec)
+            except audit.AuditError as e:
+                return [audit.finding("S5.library", "fail", f"The library file did not open: {e}", "Pick a glb with clips, or clear the library field.")]
+            sampled = clipdata.sample_all(cm, loops=loops)
+            return self._missing_act_findings(rec, cm) + clips.run_s5(sampled, cm.parents)["findings"]
         if stage == "S8":
             disc = bool(os.environ.get("MEMORIES_DISC"))
             return runs.run_s8(rec, self._sha256, disc)["findings"]
@@ -206,10 +211,20 @@ class Session:
             lengths["attack"] = contact["row_length"]
         return look.run_s7(rec, lengths)["findings"]
 
-    def _missing_act_findings(self, rec):
+    def _clip_model(self, rec):
+        """The model whose clips S5 judges: the library glb when the recipe names one (path relative to the model's folder), else the model."""
+        path = (rec.get("library") or {}).get("path")
+        if not path:
+            return self._model
+        lib = Path(path) if Path(path).is_absolute() else Path(self.glb).parent / path
+        if self._library is None or self._library[0] != str(lib):
+            self._library = (str(lib), audit.load_model(lib))
+        return self._library[1]
+
+    def _missing_act_findings(self, rec, model=None):
         """S5.missing-act: an act with no source in the recipe and no clip of the model named for it (the game then plays the idle)."""
         import native_convert
-        names = [an.get("name", "") for an in self._model.doc.get("animations", [])]
+        names = [an.get("name", "") for an in (model or self._model).doc.get("animations", [])]
         lower = [n.lower() for n in names]
         out = []
         for act in native_convert.spec.ACTS:
