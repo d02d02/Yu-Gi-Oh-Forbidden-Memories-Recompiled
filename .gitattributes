@@ -5,3 +5,15 @@
 languages/*.txt text eol=lf
 # The packs dealer's golden deals, compared byte for byte (tests/pc/packs_test.c).
 tests/pc/packs_golden.txt text eol=lf
+
+# Source and notes: LF in the repo and in every checkout (job clones and this machine alike).
+*.c text eol=lf
+*.h text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.lua text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+Makefile text eol=lf
