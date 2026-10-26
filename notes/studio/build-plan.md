@@ -47,6 +47,6 @@ Open: only the user's visual checks (list in `notes/studio/screen-checks.md`) an
 | Model preview panel (`fm_editor/model_view.py`, math in `studio/view3d.py`, 16 tests) | done: mesh, bones, per-bone weight heat, unweighted bones red, bounding box, camera presets, clip playback on the skinned mesh (own and library clips). Screen checks 16-17 |
 | `S2.mapped-unweighted` audit warn | done (angel: foot_l carries no weights) |
 | Preview overlays per stage (S4 footprint and ghost, S6 strike joint) | not built |
-| New 3D model for a card with no model (beyond replace) | not verified: `mod.json` entries key on existing card ids; whether the engine accepts an id without a disc model is unchecked (read `src/pc/mods/mods.c` native_models parse and `NativeMesh_Choose`) |
+| New 3D model for a new card | engine side supported: the mod `cards` registry adds cards past the disc's 722 (`notes/more-cards.md`) and `native_models` entries accept any card id 1-65535 (`native_registry.c` add_card). Not tested end to end; the Studio's S0 card chooser and S9 `mod.json` write take any id but nothing walks a new-card case yet |
 | Laptop and macOS passes | need those machines |
 | Your visual checks | rows 10-17 of `screen-checks.md` |
