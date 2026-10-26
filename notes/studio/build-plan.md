@@ -40,3 +40,13 @@ The delegation harness has no display, so a Tk check would skip and pass vacuous
 | SM8 | corpus C1-C8 golden clean; how-to updated; laptop and macOS pass not done (needs those machines) |
 
 Open: only the user's visual checks (list in `notes/studio/screen-checks.md`) and the laptop/macOS pass.
+
+## Status (2026-10-26)
+| Item | State |
+|---|---|
+| Model preview panel (`fm_editor/model_view.py`, math in `studio/view3d.py`, 16 tests) | done: mesh, bones, per-bone weight heat, unweighted bones red, bounding box, camera presets, clip playback on the skinned mesh (own and library clips). Screen checks 16-17 |
+| `S2.mapped-unweighted` audit warn | done (angel: foot_l carries no weights) |
+| Preview overlays per stage (S4 footprint and ghost, S6 strike joint) | not built |
+| New 3D model for a card with no model (beyond replace) | not verified: `mod.json` entries key on existing card ids; whether the engine accepts an id without a disc model is unchecked (read `src/pc/mods/mods.c` native_models parse and `NativeMesh_Choose`) |
+| Laptop and macOS passes | need those machines |
+| Your visual checks | rows 10-17 of `screen-checks.md` |
