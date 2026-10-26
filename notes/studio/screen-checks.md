@@ -26,3 +26,4 @@ New 2026-10-25 (one at a time, reply "checked" or what is wrong):
 | 13 | Same window | "show disc model" checkbox | The disc's own monster replaces the model in the same frame; unchecking brings the model back |
 | 14 | S5 with a model that lacks an act | Make a clip / Use a clip / Library clip... buttons | Each fills the row; Undo reverts one step |
 | 15 | S0 and S1/S2 | Choose card..., Open a rigged glb... (also on S2.map rows) | Card set in the recipe; glb opens and the checks re-run |
+| 16 | Any stage after Open glb | Model preview at the top (Mesh, Bones, Box, Weights of, Front/Side/Back/Top, drag to orbit, wheel to zoom) | Angel shows its mesh and 69 bones; 36 red bones (no weight); picking a leg bone paints its weights blue to red |

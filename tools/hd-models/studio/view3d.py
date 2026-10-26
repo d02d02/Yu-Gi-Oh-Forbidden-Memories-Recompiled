@@ -143,3 +143,31 @@ def depth_order(projected, indices):
     tri = np.asarray(indices, dtype=int).reshape(-1, 3)
     depth = np.asarray(projected)[:, 2][tri].mean(axis=1)
     return np.argsort(-depth, kind="stable")
+
+
+def model_arrays(model):
+    """Plain arrays for the preview from an audit.Model: stacked mesh, 4-slot skin data (zero weights when unskinned), bones, box."""
+    pos, idx, joints, weights, base = [], [], [], [], 0
+    for p in model.prims:
+        n = len(p["pos"])
+        pos.append(np.asarray(p["pos"], dtype=float))
+        idx.append(np.asarray(p["idx"], dtype=int) + base)
+        if p["skinned"]:
+            joints.append(np.asarray(p["joints"], dtype=int)[:, :4])
+            weights.append(np.asarray(p["weights"], dtype=float)[:, :4])
+        else:
+            joints.append(np.zeros((n, 4), dtype=int))
+            weights.append(np.zeros((n, 4)))
+        base += n
+    bones = np.asarray(model.bind, dtype=float)[:, :3, 3] if len(model.bind) else np.zeros((0, 3))
+    return {"pos": np.vstack(pos), "idx": np.concatenate(idx), "joints": np.vstack(joints), "weights": np.vstack(weights),
+            "bones": bones, "parents": list(model.parents), "names": list(model.names),
+            "lo": np.asarray(model.lo, dtype=float), "hi": np.asarray(model.hi, dtype=float)}
+
+
+def unweighted_bones(joints, weights, count):
+    """Indices of bones that carry no weight on any vertex (they move nothing)."""
+    used = np.zeros(count, dtype=bool)
+    mask = np.asarray(weights) > 0
+    used[np.unique(np.asarray(joints)[mask])] = True
+    return [i for i in range(count) if not used[i]]

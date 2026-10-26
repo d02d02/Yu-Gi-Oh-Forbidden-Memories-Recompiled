@@ -11,14 +11,15 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from . import file_dialogs
+from .model_view import ModelView
 from .tabs import Tab
 from .widgets import pick_card, px, ui_font
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hd-models"))
 try:
-    from studio import build, checkrows, knobs, log, preview, rail, runs, transport, session as session_module
+    from studio import build, checkrows, knobs, log, preview, rail, runs, transport, view3d, session as session_module
 except ImportError:      # the tools are not next to the editor (a frozen build): the tab says so
-    build = checkrows = knobs = log = preview = rail = runs = transport = session_module = None
+    build = checkrows = knobs = log = preview = rail = runs = transport = view3d = session_module = None
 
 TICK_MS = 300
 CHIP_COLOUR = {"fail": "#b00020", "warn": "#9a6700", "acked": "#555555", "info": "#555555", "pass": "#1a7f37"}
@@ -54,6 +55,10 @@ class StudioTab(Tab):
 
         self.heading = ttk.Label(self.right, font=ui_font(11))
         self.heading.pack(anchor="w")
+        self.view = ModelView(self.right, view3d) if view3d else None
+        if self.view:
+            self.view.pack(fill="x", pady=(4, 0))
+        self.shown = None
         self.checks = ttk.Frame(self.right)
         self.checks.pack(fill="x", pady=(4, 8))
         self.form = ttk.Frame(self.right)
@@ -135,6 +140,18 @@ class StudioTab(Tab):
             return
         self.draw_rail()
         self.draw_stage()
+        self.show_model()
+
+    def show_model(self):
+        """Keep the preview on the session's current model; a Blender re-read swaps it."""
+        model = getattr(self.session, "_model", None)
+        if self.view and model is not self.shown:
+            self.shown = model
+            try:
+                self.view.load(model)
+            except Exception as error:      # the preview never blocks the stages
+                log.error("preview", error)
+                self.view.load(None)
 
     def draw_rail(self):
         keep = ",".join(self.stage_ids())

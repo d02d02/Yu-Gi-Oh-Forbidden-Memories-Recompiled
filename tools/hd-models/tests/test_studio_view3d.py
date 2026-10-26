@@ -192,5 +192,23 @@ class TestDepth(unittest.TestCase):
         self.assertEqual(view3d.depth_order(proj, [0, 1, 2, 3, 4, 5]).tolist(), [1, 0])
 
 
+class _Model:
+    prims = [{"pos": np.zeros((3, 3)), "idx": np.array([0, 1, 2]), "skinned": True,
+              "joints": np.array([[0, 0, 0, 0]] * 3), "weights": np.array([[1.0, 0, 0, 0]] * 3)}]
+    bind = np.tile(np.eye(4), (3, 1, 1))
+    parents = [-1, 0, 1]
+    names = ["a", "b", "c"]
+    lo = np.zeros(3)
+    hi = np.ones(3)
+
+
+class TestArrays(unittest.TestCase):
+    def test_arrays_and_unweighted(self):
+        a = view3d.model_arrays(_Model)
+        self.assertEqual(a["pos"].shape, (3, 3))
+        self.assertEqual(a["bones"].shape, (3, 3))
+        self.assertEqual(view3d.unweighted_bones(a["joints"], a["weights"], 3), [1, 2])
+
+
 if __name__ == "__main__":
     unittest.main()
