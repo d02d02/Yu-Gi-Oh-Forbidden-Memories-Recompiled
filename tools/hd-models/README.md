@@ -15,6 +15,7 @@ The modder's path (no disc, no Blender script): `new_native_mod.py` -> edit `mod
 | `studio/runs.py` | S8 run list and marks: run_rows, make_mark, owning_stage, row_status, status_table, coverage/problem/stale/disc checks, run_s8 |
 | `studio/package.py` | S9 package checks: parse_native_check, native/budget/identical/provenance checks, valid_package_name, run_s9 |
 | `studio/report.py` | S9 Export report (text): stage_status, stage_lines, summary_table, build_lines, runs_lines, render |
+| `studio/view3d.py` | Studio preview math: orbit_view, project, fit_camera, wire_edges, bone_segments, vertex_weight, heat_color, depth_order |
 | `studio/procedural.py` | Procedural root-motion tracks for acts with no clip: ease, quaternion helpers, recoil, collapse, brace, lunge, rise, sample, check_track |
 | `studio/build.py` | S9 build step: recipe to new_native_mod command, build twice with an injectable runner, tree hashes, run_build_s9 |
 | `studio/clips.py` | S5 clip statistics and checks: loop gap, root drift, speed peak, bone stretch, bbox, run_s5 (data from clipdata.py) |
