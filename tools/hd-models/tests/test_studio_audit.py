@@ -563,6 +563,13 @@ class TestS1BindVsRest(unittest.TestCase):
 
 
 # --- TestIntegration ------------------------------------------------------------------------
+def _ack_unweighted(studio, results):
+    """The synthetic rig leaves some mapped bones without weights; acknowledge that warn so these tests keep their meaning."""
+    for f in results["S2"]["findings"]:
+        if f["id"] == "S2.mapped-unweighted":
+            studio.acknowledge(f["id"], f["value"])
+
+
 class TestIntegration(unittest.TestCase):
     """Integration test: audit_all -> apply_to_studio -> state.Studio lifecycle."""
 
@@ -583,7 +590,7 @@ class TestIntegration(unittest.TestCase):
             self.assertEqual(set(results.keys()), {"S0", "S1", "S2", "S3"})
             
             studio = state.Studio(recipe)
-            audit.apply_to_studio(studio, results)
+            audit.apply_to_studio(studio, results); _ack_unweighted(studio, results)
             
             # States are pass or warn as findings dictate
             # S0: pass (S0.ok info only)
@@ -609,7 +616,7 @@ class TestIntegration(unittest.TestCase):
             }
             results = audit.audit_all(p, recipe)
             studio = state.Studio(recipe)
-            audit.apply_to_studio(studio, results)
+            audit.apply_to_studio(studio, results); _ack_unweighted(studio, results)
             
             # Find the S2.root-side warn value
             root_warn = next(f for f in results["S2"]["findings"] if f["id"] == "S2.root-side")
@@ -640,7 +647,7 @@ class TestIntegration(unittest.TestCase):
             }
             results = audit.audit_all(p, recipe)
             studio = state.Studio(recipe)
-            audit.apply_to_studio(studio, results)
+            audit.apply_to_studio(studio, results); _ack_unweighted(studio, results)
             
             # Acknowledge the warn first so we start from all pass
             root_warn = next(f for f in results["S2"]["findings"] if f["id"] == "S2.root-side")
@@ -671,7 +678,7 @@ class TestIntegration(unittest.TestCase):
             }
             results = audit.audit_all(p, recipe)
             studio = state.Studio(recipe)
-            audit.apply_to_studio(studio, results)
+            audit.apply_to_studio(studio, results); _ack_unweighted(studio, results)
             
             # Acknowledge warn
             root_warn = next(f for f in results["S2"]["findings"] if f["id"] == "S2.root-side")

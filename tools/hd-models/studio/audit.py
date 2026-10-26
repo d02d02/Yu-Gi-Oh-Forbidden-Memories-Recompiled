@@ -506,6 +506,10 @@ def s2(model, recipe):
         if bone in model.names and not used[model.names.index(bone)]:
             out.append(finding("S2.extras-weights", "warn", f"The extra bone {bone} carries no weights.",
                                "Nothing will move; cut it or paint weights.", value=bone))
+    dead = sorted(slot for slot, bone in filled.items() if bone in model.names and not used[model.names.index(bone)])
+    if dead:
+        out.append(finding("S2.mapped-unweighted", "warn", f"Mapped bones with no weights: {', '.join(dead)}. They will not move the mesh.",
+                           "Paint weights on these bones in Blender, or map the bones that do carry weight.", value=len(dead)))
     if not out:
         out.append(finding("S2.ok", "info", "The skeleton is connected and mapped.", ""))
     return {"findings": out, "data": {"root": model.names[root], "roots": [model.names[k] for k in roots], "slots": filled,
