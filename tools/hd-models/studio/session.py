@@ -230,6 +230,14 @@ class Session:
             self._library = (str(lib), audit.load_model(lib))
         return self._library[1]
 
+    def library_model(self):
+        """The recipe's clip library as a model, or None (no path, or the file does not load)."""
+        try:
+            lib = self._clip_model(self.studio.recipe)
+        except Exception:
+            return None
+        return None if lib is self._model else lib
+
     def _missing_act_findings(self, rec, model=None):
         """S5.missing-act: an act with no source in the recipe and no clip of the model named for it (the game then plays the idle)."""
         import native_convert

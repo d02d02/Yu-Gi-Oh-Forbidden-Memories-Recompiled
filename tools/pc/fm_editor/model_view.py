@@ -30,17 +30,40 @@ class ModelView(ttk.Frame):
         self.bone.bind("<<ComboboxSelected>>", lambda e: self.draw())
         for name, v in (("Front", (0, 0.1)), ("Side", (math.pi / 2, 0.1)), ("Back", (math.pi, 0.1)), ("Top", (0, 1.4))):
             ttk.Button(row, text=name, width=6, command=lambda v=v: self.view(*v)).pack(side="left", padx=1)
+        clip = ttk.Frame(self)
+        clip.pack(fill="x", pady=(4, 0))
+        ttk.Label(clip, text="Clip").pack(side="left", padx=(0, 4))
+        self.clip = ttk.Combobox(clip, state="readonly", width=28, values=["(bind pose)"])
+        self.clip.current(0)
+        self.clip.pack(side="left")
+        self.clip.bind("<<ComboboxSelected>>", lambda e: self.pick_clip())
+        self.play_button = ttk.Button(clip, text="Play", width=6, command=self.toggle_play)
+        self.play_button.pack(side="left", padx=4)
+        self.t = tk.DoubleVar(value=0.0)
+        self.scale = ttk.Scale(clip, from_=0.0, to=1.0, variable=self.t, command=lambda v: self.pose())
+        self.scale.pack(side="left", fill="x", expand=True)
+        self.sources, self.model, self.length, self.playing = {}, None, 0.0, False
         self.note = ttk.Label(self, wraplength=W)
         self.note.pack(anchor="w")
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<Button-1>", lambda e: setattr(self, "last", (e.x, e.y)))
         self.canvas.bind("<MouseWheel>", lambda e: self.wheel(1.1 if e.delta < 0 else 1 / 1.1))
 
-    def load(self, model):
-        """Show `model` (an audit.Model), or clear the view when it is None."""
+    def load(self, model, library=None):
+        """Show `model` (an audit.Model), or clear the view when it is None. Its own clips and the library's can be played."""
+        self.playing = False
+        self.play_button.configure(text="Play")
+        self.model = model
         self.data = None if model is None else self.v.model_arrays(model)
         d = self.data
+        self.sources = {}
+        for src, tag in ((model, ""), (library, "lib: ")):
+            for i, an in enumerate(src.doc.get("animations", []) if src is not None else []):
+                self.sources[tag + an.get("name", f"clip{i}")] = (src, an.get("name", f"clip{i}"))
+        self.clip.configure(values=["(bind pose)"] + sorted(self.sources))
+        self.clip.current(0)
         if d is not None:
+            self.cur_pos, self.cur_bones = d["pos"], d["bones"]
             self.target, self.dist = self.v.fit_camera(d["lo"], d["hi"])
             self.edges = self.v.wire_edges(d["idx"])
             step = max(1, len(self.edges) // MAX_LINES)
@@ -77,7 +100,7 @@ class ModelView(ttk.Frame):
             c.create_text(W // 2, H // 2, text="Open a glb to see it here", fill="#888888")
             self.note.configure(text="")
             return
-        p = self.project(d["pos"])
+        p = self.project(self.cur_pos)
         front = p[:, 2] > 0
         pick = self.bone.current() - 1
         if self.show["mesh"].get():
@@ -112,7 +135,7 @@ class ModelView(ttk.Frame):
 
     def bones(self, pick):
         d = self.data
-        q = self.project(d["bones"])
+        q = self.project(self.cur_bones)
         for par, ch in self.v.bone_segments(d["bones"], d["parents"]):
             if q[par, 2] > 0 and q[ch, 2] > 0:
                 self.canvas.create_line(q[par, 0], q[par, 1], q[ch, 0], q[ch, 1], fill="#e6e6e6", width=2)
@@ -136,3 +159,45 @@ class ModelView(ttk.Frame):
         if pick >= 0:
             text += " Blue = no weight, green = half, red = full for the chosen bone."
         self.note.configure(text=text)
+
+    # --- clips ---------------------------------------------------------------------------------
+    def pick_clip(self):
+        name = self.clip.get()
+        self.playing = False
+        self.play_button.configure(text="Play")
+        if name not in self.sources:
+            self.cur_pos, self.cur_bones = self.data["pos"], self.data["bones"]
+            self.draw()
+            return
+        from studio import clipdata
+        src, clip = self.sources[name]
+        self.length = max(clipdata.clip_length(src, clip), 1e-3)
+        self.scale.configure(to=self.length)
+        self.t.set(0.0)
+        self.pose()
+
+    def pose(self):
+        name = self.clip.get()
+        if self.data is None or name not in self.sources:
+            return
+        src, clip = self.sources[name]
+        d = self.data
+        mats, self.cur_bones = self.v.pose_data(self.model, src, clip, float(self.t.get()))
+        self.cur_pos = self.v.skin_points(d["pos"], d["joints"], d["weights"], mats)
+        self.draw()
+
+    def toggle_play(self):
+        if self.clip.get() not in self.sources:
+            return
+        self.playing = not self.playing
+        self.play_button.configure(text="Pause" if self.playing else "Play")
+        if self.playing:
+            self.step()
+
+    def step(self):
+        if not self.playing:
+            return
+        t = self.t.get() + 0.06
+        self.t.set(t if t < self.length else 0.0)
+        self.pose()
+        self.after(60, self.step)

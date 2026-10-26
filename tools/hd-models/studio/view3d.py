@@ -171,3 +171,26 @@ def unweighted_bones(joints, weights, count):
     mask = np.asarray(weights) > 0
     used[np.unique(np.asarray(joints)[mask])] = True
     return [i for i in range(count) if not used[i]]
+
+
+def skin_points(pos, joints, weights, mats):
+    """Pose the mesh: each vertex is the weighted sum of its 4 bones' skin matrices (B, 4, 4) applied to it; unweighted vertices stay."""
+    pos = np.asarray(pos, dtype=float)
+    h = np.concatenate([pos, np.ones((len(pos), 1))], axis=1)
+    out = np.zeros_like(pos)
+    total = np.zeros(len(pos))
+    for k in range(4):
+        w = np.asarray(weights)[:, k]
+        out += w[:, None] * np.einsum("nij,nj->ni", np.asarray(mats)[np.asarray(joints)[:, k]], h)[:, :3]
+        total += w
+    free = total <= 1e-9
+    out[free] = pos[free]
+    return out
+
+
+def pose_data(model, source, clip, t):
+    """(skin matrices (B, 4, 4), posed bone positions (B, 3)) of `model` playing `clip` of `source` (a model; may be the library's) at t seconds."""
+    from studio import audit
+    world = audit.pose_function(model, (source.g, source.scene), clip, t)
+    worlds = np.array([np.asarray(world(k)) for k in range(len(model.joints))])
+    return worlds @ np.asarray(model.ibm), worlds[:, :3, 3]

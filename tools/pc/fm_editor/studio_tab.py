@@ -145,10 +145,11 @@ class StudioTab(Tab):
     def show_model(self):
         """Keep the preview on the session's current model; a Blender re-read swaps it."""
         model = getattr(self.session, "_model", None)
-        if self.view and model is not self.shown:
-            self.shown = model
+        library = self.session.library_model() if model is not None else None
+        if self.view and (model, library) != self.shown:
+            self.shown = (model, library)
             try:
-                self.view.load(model)
+                self.view.load(model, library)
             except Exception as error:      # the preview never blocks the stages
                 log.error("preview", error)
                 self.view.load(None)

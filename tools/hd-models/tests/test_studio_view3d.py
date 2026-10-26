@@ -210,5 +210,18 @@ class TestArrays(unittest.TestCase):
         self.assertEqual(view3d.unweighted_bones(a["joints"], a["weights"], 3), [1, 2])
 
 
+class TestSkin(unittest.TestCase):
+    def test_translate_and_free_vertex(self):
+        m = np.tile(np.eye(4), (2, 1, 1))
+        m[1, :3, 3] = [0, 5, 0]
+        pos = np.zeros((2, 3))
+        j = np.array([[1, 0, 0, 0], [0, 0, 0, 0]])
+        w = np.array([[1.0, 0, 0, 0], [0.0, 0, 0, 0]])
+        out = view3d.skin_points(pos, j, w, m)
+        self.assertEqual(out.tolist(), [[0, 5, 0], [0, 0, 0]])
+        half = view3d.skin_points(pos[:1], np.array([[1, 0, 0, 0]]), np.array([[0.5, 0.5, 0, 0]]), m)
+        self.assertEqual(half.tolist(), [[0, 2.5, 0]])
+
+
 if __name__ == "__main__":
     unittest.main()
